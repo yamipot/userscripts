@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
+const outfile = path.join(packageDir, "dist/ehpeek.user.js");
 const texts = JSON.parse(readFileSync(path.join(packageDir, "src/texts.json"), "utf-8"));
-const installUrl = "https://github.com/yamipot/userscripts/raw/build-master/ehpeek.user.js";
+const installUrl = userscriptInstallUrl();
 const version = userscriptVersion();
 
 const metadata = [
@@ -35,7 +36,7 @@ await build({
   banner: {
     js: metadata,
   },
-  outfile: path.join(packageDir, "dist/ehpeek.user.js"),
+  outfile,
 });
 
 console.log("[ehpeek] built dist/ehpeek.user.js");
@@ -59,6 +60,14 @@ function userscriptVersion() {
   }
 
   return `${baseVersion}-dev.${devTimeStamp()}`;
+}
+
+function userscriptInstallUrl() {
+  if (process.env.EHPEEK_RELEASE_BUILD === "true") {
+    return "https://github.com/yamipot/userscripts/raw/build-master/ehpeek.user.js";
+  }
+
+  return pathToFileURL(outfile).href;
 }
 
 function devTimeStamp() {

@@ -296,54 +296,29 @@ async function loadEhImagePage(page: ViewerPage): Promise<LoadedViewerPage> {
   };
 }
 
-async function openReader(startPageUrl: string): Promise<void> {
-  const landingIndex = previewPageIndex();
-  const landingPages = collectGalleryPages();
-  const pageSize = computePreviewPageSize();
-  const maxPreviewIndex = maxPreviewPageIndex();
-  const previewCache = new Map<number, ViewerPage[]>();
-  const startUrl = normalizeUrl(startPageUrl);
-  const hashPage = peekPageFromHash();
+class EhGalleryPageProvider {
+  private readonly previewCache = new Map<number, ViewerPage[]>();
 
-  previewCache.set(landingIndex, landingPages);
-
-  async function cachedPreviewPage(index: number): Promise<ViewerPage[]> {
-    const boundedIndex = maxPreviewIndex === null ? index : Math.min(index, maxPreviewIndex);
-
-    if (boundedIndex < 0) {
-      return [];
-    }
-
-    const cached = previewCache.get(boundedIndex);
-
-    if (cached) {
-      previewCache.delete(boundedIndex);
-      previewCache.set(boundedIndex, cached);
-      return cached;
-    }
-
-    const pages = await collectPreviewPage(boundedIndex, landingIndex, landingPages);
-    previewCache.set(boundedIndex, pages);
-
-    while (previewCache.size > PREVIEW_CACHE_LIMIT) {
-      const oldest = previewCache.keys().next().value;
-
-      if (oldest === undefined) {
-        break;
-      }
-
-      previewCache.delete(oldest);
-    }
-
-    return pages;
+  constructor(
+    private readonly landingIndex: number,
+    private readonly landingPages: ViewerPage[],
+    private readonly pageSize: number,
+    private readonly maxPreviewIndex: number | null,
+  ) {
+    this.previewCache.set(landingIndex, landingPages);
   }
 
-  async function loadDisplayPages(displayNumbers: number[]): Promise<ViewerPage[]> {
-    const previewIndexes = Array.from(
-      new Set(displayNumbers.map((displayNumber) => previewPageIndexForGalleryPage(displayNumber, pageSize))),
-    ).filter((value) => value >= 0 && (maxPreviewIndex === null || value <= maxPreviewIndex));
+  previewIndexForPage(displayNumber: number): number {
+    const previewIndex = Math.max(0, Math.floor((displayNumber - 1) / this.pageSize));
+    return this.maxPreviewIndex === null ? previewIndex : Math.min(previewIndex, this.maxPreviewIndex);
+  }
+
+  async loadDisplayPages(displayNumbers: number[]): Promise<ViewerPage[]> {
+    const previewIndexes = Array.from(new Set(displayNumbers.map((displayNumber) => this.previewIndexForPage(displayNumber)))).filter(
+      (value) => value >= 0 && (this.maxPreviewIndex === null || value <= this.maxPreviewIndex),
+    );
     const requested = new Set(displayNumbers);
-    const chunks = await Promise.all(previewIndexes.map((value) => cachedPreviewPage(value)));
+    const chunks = await Promise.all(previewIndexes.map((index) => this.cachedPreviewPage(index)));
     const byUrl = new Map<string, ViewerPage>();
 
     for (const page of chunks.flat()) {
@@ -357,7 +332,7 @@ async function openReader(startPageUrl: string): Promise<void> {
     );
   }
 
-  function displayWindowAround(displayNumber: number): number[] {
+  displayWindowAround(displayNumber: number): number[] {
     const numbers: number[] = [];
 
     for (let offset = -10; offset <= 10; offset += 1) {
@@ -371,8 +346,49 @@ async function openReader(startPageUrl: string): Promise<void> {
     return numbers;
   }
 
+  private async cachedPreviewPage(index: number): Promise<ViewerPage[]> {
+    const boundedIndex = this.maxPreviewIndex === null ? index : Math.min(index, this.maxPreviewIndex);
+
+    if (boundedIndex < 0) {
+      return [];
+    }
+
+    const cached = this.previewCache.get(boundedIndex);
+
+    if (cached) {
+      this.previewCache.delete(boundedIndex);
+      this.previewCache.set(boundedIndex, cached);
+      return cached;
+    }
+
+    const pages = await collectPreviewPage(boundedIndex, this.landingIndex, this.landingPages);
+    this.previewCache.set(boundedIndex, pages);
+
+    while (this.previewCache.size > PREVIEW_CACHE_LIMIT) {
+      const oldest = this.previewCache.keys().next().value;
+
+      if (oldest === undefined) {
+        break;
+      }
+
+      this.previewCache.delete(oldest);
+    }
+
+    return pages;
+  }
+}
+
+async function openReader(startPageUrl: string): Promise<void> {
+  const landingIndex = previewPageIndex();
+  const landingPages = collectGalleryPages();
+  const pageSize = computePreviewPageSize();
+  const maxPreviewIndex = maxPreviewPageIndex();
+  const provider = new EhGalleryPageProvider(landingIndex, landingPages, pageSize, maxPreviewIndex);
+  const startUrl = normalizeUrl(startPageUrl);
+  const hashPage = peekPageFromHash();
+
   const startDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
-  let pages = startDisplayNumber ? await loadDisplayPages(displayWindowAround(startDisplayNumber)) : landingPages;
+  let pages = startDisplayNumber ? await provider.loadDisplayPages(provider.displayWindowAround(startDisplayNumber)) : landingPages;
   let startIndex =
     hashPage !== null ? pages.findIndex((page) => page.displayNumber === hashPage) : pages.findIndex((page) => page.url === startUrl);
 
@@ -395,7 +411,7 @@ async function openReader(startPageUrl: string): Promise<void> {
     farConcurrentLoads: 6,
     totalPages: readShowingRange()?.total,
     loadPage: loadEhImagePage,
-    loadPages: loadDisplayPages,
+    loadPages: (displayNumbers) => provider.loadDisplayPages(displayNumbers),
     onActivePageChange: (page) => {
       if (page.displayNumber) {
         lastDisplayNumber = page.displayNumber;
@@ -404,7 +420,7 @@ async function openReader(startPageUrl: string): Promise<void> {
       updatePeekLocation(page.displayNumber, pageSize);
     },
     onExit: () => {
-      const exitIndex = lastDisplayNumber ? previewPageIndexForGalleryPage(lastDisplayNumber, pageSize) : landingIndex;
+      const exitIndex = lastDisplayNumber ? provider.previewIndexForPage(lastDisplayNumber) : landingIndex;
       const galleryUrl = previewUrlForIndex(exitIndex);
 
       // If the page underneath already shows this preview page, keep it (just fix the URL);
