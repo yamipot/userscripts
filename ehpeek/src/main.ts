@@ -2,6 +2,7 @@ import { openFullscreenViewer, type LoadedViewerPage, type ViewerPage } from "./
 import texts from "./texts.json";
 
 const REQUEST_TIMEOUT_MS = 30000;
+const PREVIEW_CACHE_LIMIT = 10;
 
 function normalizeUrl(url: string, baseUrl = window.location.href): string {
   try {
@@ -102,7 +103,7 @@ function collectGalleryPages(root: ParentNode = document, baseUrl = window.locat
     });
   }
 
-  return pages;
+  return pages.sort((left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER));
 }
 
 function previewPageIndex(): number {
@@ -126,33 +127,32 @@ function readShowingRange(root: ParentNode = document): { start: number; end: nu
   return [start, end, total].every((value) => Number.isFinite(value) && value > 0) ? { start, end, total } : null;
 }
 
-// Number of thumbnails per preview page, derived from the "Showing A - B of C" line.
 function computePreviewPageSize(root: ParentNode = document): number {
   const range = readShowingRange(root);
 
   if (!range) {
-    return 40;
+    throw new Error(texts.errors.previewPageSizeUnknown);
   }
 
-  const { start, end, total } = range;
-  const currentPageCount = end - start + 1;
+  const currentPageCount = range.end - range.start + 1;
 
-  // Single preview page: everything is on it, so the size only needs to exceed the total.
-  if (start === 1 && end >= total) {
-    return Math.max(1, total);
+  if (range.end < range.total) {
+    return currentPageCount;
   }
 
-  // Last preview page: back the full-page size out of the pages that come before it.
-  if (end >= total) {
-    const previewIndex = previewPageIndex();
+  const lastPreviewIndex = maxPreviewPageIndex(root);
 
-    if (previewIndex > 0) {
-      return Math.max(1, Math.round((total - currentPageCount) / previewIndex));
-    }
+  if (lastPreviewIndex === null || lastPreviewIndex <= 0) {
+    return currentPageCount;
   }
 
-  // Any non-last preview page is full, so its own count is the page size.
-  return Math.max(1, currentPageCount);
+  const fullPageCount = (range.total - currentPageCount) / lastPreviewIndex;
+
+  if (!Number.isInteger(fullPageCount) || fullPageCount <= 0) {
+    throw new Error(texts.errors.previewPageSizeUnknown);
+  }
+
+  return fullPageCount;
 }
 
 function maxPreviewPageIndex(root: ParentNode = document, baseUrl = window.location.href): number | null {
@@ -300,16 +300,88 @@ async function openReader(startPageUrl: string): Promise<void> {
   const landingIndex = previewPageIndex();
   const landingPages = collectGalleryPages();
   const pageSize = computePreviewPageSize();
+  const maxPreviewIndex = maxPreviewPageIndex();
+  const previewCache = new Map<number, ViewerPage[]>();
   const startUrl = normalizeUrl(startPageUrl);
   const hashPage = peekPageFromHash();
-  const targetIndex = hashPage !== null ? previewPageIndexForGalleryPage(hashPage, pageSize) : landingIndex;
-  const pages = await collectPreviewPage(targetIndex, landingIndex, landingPages);
+
+  previewCache.set(landingIndex, landingPages);
+
+  async function cachedPreviewPage(index: number): Promise<ViewerPage[]> {
+    const boundedIndex = maxPreviewIndex === null ? index : Math.min(index, maxPreviewIndex);
+
+    if (boundedIndex < 0) {
+      return [];
+    }
+
+    const cached = previewCache.get(boundedIndex);
+
+    if (cached) {
+      previewCache.delete(boundedIndex);
+      previewCache.set(boundedIndex, cached);
+      return cached;
+    }
+
+    const pages = await collectPreviewPage(boundedIndex, landingIndex, landingPages);
+    previewCache.set(boundedIndex, pages);
+
+    while (previewCache.size > PREVIEW_CACHE_LIMIT) {
+      const oldest = previewCache.keys().next().value;
+
+      if (oldest === undefined) {
+        break;
+      }
+
+      previewCache.delete(oldest);
+    }
+
+    return pages;
+  }
+
+  async function loadDisplayPages(displayNumbers: number[]): Promise<ViewerPage[]> {
+    const previewIndexes = Array.from(
+      new Set(displayNumbers.map((displayNumber) => previewPageIndexForGalleryPage(displayNumber, pageSize))),
+    ).filter((value) => value >= 0 && (maxPreviewIndex === null || value <= maxPreviewIndex));
+    const requested = new Set(displayNumbers);
+    const chunks = await Promise.all(previewIndexes.map((value) => cachedPreviewPage(value)));
+    const byUrl = new Map<string, ViewerPage>();
+
+    for (const page of chunks.flat()) {
+      if (page.displayNumber && requested.has(page.displayNumber)) {
+        byUrl.set(page.url, page);
+      }
+    }
+
+    return Array.from(byUrl.values()).sort(
+      (left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER),
+    );
+  }
+
+  function displayWindowAround(displayNumber: number): number[] {
+    const numbers: number[] = [];
+
+    for (let offset = -10; offset <= 10; offset += 1) {
+      const value = displayNumber + offset;
+
+      if (value > 0) {
+        numbers.push(value);
+      }
+    }
+
+    return numbers;
+  }
+
+  const startDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
+  let pages = startDisplayNumber ? await loadDisplayPages(displayWindowAround(startDisplayNumber)) : landingPages;
   let startIndex =
     hashPage !== null ? pages.findIndex((page) => page.displayNumber === hashPage) : pages.findIndex((page) => page.url === startUrl);
 
   if (startIndex < 0) {
     startIndex = 0;
-    pages.unshift({ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) });
+    pages = [{ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) }, ...pages].sort(
+      (left, right) => (left.displayNumber ?? 0) - (right.displayNumber ?? 0),
+    );
+    startIndex = pages.findIndex((page) => page.url === startUrl);
   }
 
   let lastDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
@@ -317,48 +389,13 @@ async function openReader(startPageUrl: string): Promise<void> {
   openFullscreenViewer({
     pages,
     startIndex,
-    keepBehind: 5,
-    renderAhead: 10,
-    preloadAhead: 10,
+    renderWindowSize: 10,
+    preloadWindowSize: 10,
     nearConcurrentLoads: 3,
     farConcurrentLoads: 6,
     totalPages: readShowingRange()?.total,
     loadPage: loadEhImagePage,
-    loadBefore: async (firstPage) => {
-      const firstNumber = firstPage.displayNumber;
-
-      if (!firstNumber || firstNumber <= 1) {
-        return [];
-      }
-
-      const previousIndex = previewPageIndexForGalleryPage(firstNumber, pageSize) - 1;
-
-      if (previousIndex < 0) {
-        return [];
-      }
-
-      return collectPreviewPage(previousIndex, landingIndex, landingPages);
-    },
-    loadAfter: async (lastPage) => {
-      const lastNumber = lastPage.displayNumber;
-
-      if (!lastNumber) {
-        return [];
-      }
-
-      const nextIndex = previewPageIndexForGalleryPage(lastNumber, pageSize) + 1;
-      const maxIndex = maxPreviewPageIndex();
-
-      if (maxIndex !== null && nextIndex > maxIndex) {
-        return [];
-      }
-
-      return collectPreviewPage(nextIndex, landingIndex, landingPages);
-    },
-    loadAroundDisplayNumber: async (displayNumber) => {
-      const previewIndex = previewPageIndexForGalleryPage(displayNumber, pageSize);
-      return collectPreviewPage(previewIndex, landingIndex, landingPages);
-    },
+    loadPages: loadDisplayPages,
     onActivePageChange: (page) => {
       if (page.displayNumber) {
         lastDisplayNumber = page.displayNumber;
@@ -381,6 +418,12 @@ async function openReader(startPageUrl: string): Promise<void> {
   });
 }
 
+function reportOpenError(error: unknown): void {
+  const message = error instanceof Error ? error.message : texts.errors.loadFailed;
+  console.error("[ehpeek]", error);
+  window.alert(message);
+}
+
 function onDocumentClick(event: MouseEvent): void {
   const link = findClickedImageLink(event.target);
 
@@ -390,7 +433,7 @@ function onDocumentClick(event: MouseEvent): void {
 
   event.preventDefault();
   event.stopPropagation();
-  void openReader(link.href);
+  void openReader(link.href).catch(reportOpenError);
 }
 
 async function openReaderFromHash(): Promise<void> {
@@ -404,7 +447,7 @@ async function openReaderFromHash(): Promise<void> {
   const page = pages.find((item) => item.displayNumber === peekPage) ?? pages[0];
 
   if (page) {
-    await openReader(page.url);
+    await openReader(page.url).catch(reportOpenError);
   }
 }
 

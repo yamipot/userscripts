@@ -34,6 +34,7 @@ export type LoadedViewerPage = {
 };
 
 type PageState = "idle" | "loading" | "ready" | "error";
+type PrefetchDirection = -1 | 1;
 
 type InternalPage = ViewerPage & {
   index: number;
@@ -44,20 +45,18 @@ type InternalPage = ViewerPage & {
   height: number | null;
   node: HTMLElement | null;
   frame: HTMLElement | null;
+  loadToken: number;
 };
 
 export type FullscreenViewerOptions = {
   pages: ViewerPage[];
   startIndex: number;
   loadPage: (page: ViewerPage, index: number) => Promise<LoadedViewerPage>;
-  loadBefore?: (firstPage: ViewerPage) => Promise<ViewerPage[]>;
-  loadAfter?: (lastPage: ViewerPage) => Promise<ViewerPage[]>;
-  loadAroundDisplayNumber?: (displayNumber: number) => Promise<ViewerPage[]>;
+  loadPages?: (displayNumbers: number[]) => Promise<ViewerPage[]>;
   totalPages?: number;
   onExit?: () => void;
-  keepBehind?: number;
-  renderAhead?: number;
-  preloadAhead?: number;
+  renderWindowSize?: number;
+  preloadWindowSize?: number;
   nearConcurrentLoads?: number;
   farConcurrentLoads?: number;
   onActivePageChange?: (page: ViewerPage, index: number) => void;
@@ -65,9 +64,8 @@ export type FullscreenViewerOptions = {
 
 const VIEWER_ID = "ehpeek-reader";
 const STYLE_ID = "ehpeek-reader-style";
-const DEFAULT_KEEP_BEHIND = 5;
-const DEFAULT_RENDER_AHEAD = 10;
-const DEFAULT_PRELOAD_AHEAD = 10;
+const DEFAULT_RENDER_WINDOW_SIZE = 10;
+const DEFAULT_PRELOAD_WINDOW_SIZE = 10;
 const DEFAULT_NEAR_CONCURRENT_LOADS = 3;
 const DEFAULT_FAR_CONCURRENT_LOADS = 6;
 const NEAR_LOAD_AHEAD = 3;
@@ -87,14 +85,12 @@ export function openFullscreenViewer(options: FullscreenViewerOptions): void {
 class FullscreenViewer {
   private pages: InternalPage[];
   private activeIndex: number;
+  private currentPageNumber: number;
   private readonly loadPage: FullscreenViewerOptions["loadPage"];
-  private readonly loadBefore: FullscreenViewerOptions["loadBefore"];
-  private readonly loadAfter: FullscreenViewerOptions["loadAfter"];
-  private readonly loadAroundDisplayNumber: FullscreenViewerOptions["loadAroundDisplayNumber"];
+  private readonly loadPages: FullscreenViewerOptions["loadPages"];
   private readonly onExit: FullscreenViewerOptions["onExit"];
-  private readonly keepBehind: number;
-  private readonly renderAhead: number;
-  private readonly preloadAhead: number;
+  private readonly renderWindowSize: number;
+  private readonly preloadWindowSize: number;
   private readonly nearConcurrentLoads: number;
   private readonly farConcurrentLoads: number;
   private readonly onActivePageChange: ((page: ViewerPage, index: number) => void) | undefined;
@@ -112,7 +108,8 @@ class FullscreenViewer {
   private previousDocumentOverflow = "";
   private previousBodyTouchAction = "";
   private previousDocumentTouchAction = "";
-  private queue = new Map<number, InternalPage>();
+  private nearQueue = new Map<number, InternalPage>();
+  private farQueue = new Map<number, InternalPage>();
   private activeLoadCount = 0;
   private queueTimer: number | null = null;
   private scrollFrame: number | null = null;
@@ -121,10 +118,7 @@ class FullscreenViewer {
   private openUnlockTimer: number | null = null;
   private closed = false;
   private reachedEnd = false;
-  private loadingBefore = false;
-  private noMoreBefore = false;
-  private loadingAfter = false;
-  private noMoreAfter = false;
+  private loadingPageKeySet = new Set<string>();
   private historyEntry = false;
   private closing = false;
   private dragging = false;
@@ -136,7 +130,7 @@ class FullscreenViewer {
   private progressDragging = false;
   private progressCommitTimer: number | null = null;
   private pendingProgressDisplayNumber: number | null = null;
-  private loadingAroundDisplayNumber: number | null = null;
+  private prefetchDirection: PrefetchDirection = 1;
 
   constructor(options: FullscreenViewerOptions) {
     this.pages = options.pages.map((page, index) => ({
@@ -150,19 +144,16 @@ class FullscreenViewer {
       height: null,
       node: null,
       frame: null,
+      loadToken: 0,
     }));
     this.activeIndex = clamp(options.startIndex, 0, Math.max(0, this.pages.length - 1));
+    this.currentPageNumber = this.pages[this.activeIndex]?.displayNumber ?? this.activeIndex + 1;
     this.loadPage = options.loadPage;
-    this.loadBefore = options.loadBefore;
-    this.loadAfter = options.loadAfter;
-    this.loadAroundDisplayNumber = options.loadAroundDisplayNumber;
+    this.loadPages = options.loadPages;
     this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : undefined;
     this.onExit = options.onExit;
-    this.noMoreBefore = !options.loadBefore;
-    this.noMoreAfter = !options.loadAfter;
-    this.keepBehind = options.keepBehind ?? DEFAULT_KEEP_BEHIND;
-    this.renderAhead = options.renderAhead ?? DEFAULT_RENDER_AHEAD;
-    this.preloadAhead = options.preloadAhead ?? DEFAULT_PRELOAD_AHEAD;
+    this.renderWindowSize = options.renderWindowSize ?? DEFAULT_RENDER_WINDOW_SIZE;
+    this.preloadWindowSize = options.preloadWindowSize ?? DEFAULT_PRELOAD_WINDOW_SIZE;
     this.nearConcurrentLoads = options.nearConcurrentLoads ?? DEFAULT_NEAR_CONCURRENT_LOADS;
     this.farConcurrentLoads = options.farConcurrentLoads ?? DEFAULT_FAR_CONCURRENT_LOADS;
     this.onActivePageChange = options.onActivePageChange;
@@ -178,6 +169,7 @@ class FullscreenViewer {
       height: null,
       node: null,
       frame: null,
+      loadToken: 0,
     };
   }
 
@@ -277,9 +269,8 @@ class FullscreenViewer {
     this.renderWindow();
     this.scrollToPage(this.activeIndex);
     this.notifyActivePageChange();
-    this.queueLoadsForActivePage();
-    this.maybeLoadBefore();
-    this.maybeLoadAfter();
+    this.queueImageFillForActivePage();
+    void this.syncCurrentPageWindow(false);
     window.addEventListener("resize", this.onResize);
     document.addEventListener("keydown", this.onKeydown, true);
   }
@@ -318,7 +309,8 @@ class FullscreenViewer {
     this.closed = true;
     this.cancelSettle();
     this.cancelProgressCommit();
-    this.queue.clear();
+    this.nearQueue.clear();
+    this.farQueue.clear();
     this.scroller?.removeEventListener("scroll", this.onScroll);
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("popstate", this.onPopState);
@@ -433,13 +425,7 @@ class FullscreenViewer {
       return;
     }
 
-    const page = this.pages[this.activeIndex];
-
-    if (!page) {
-      return;
-    }
-
-    const current = this.displayNumberFor(page);
+    const current = this.currentPageNumber;
     this.pageNumberLabel.textContent = this.totalPages ? `${current} / ${this.totalPages}` : String(current);
     this.updateProgressInput(current);
   }
@@ -463,7 +449,9 @@ class FullscreenViewer {
   }
 
   private step(delta: number): void {
-    this.settleToPage(this.activeIndex + delta);
+    this.setPrefetchDirection(delta);
+    const target = clamp(this.currentPageNumber + delta, 1, this.totalPages ?? Number.MAX_SAFE_INTEGER);
+    void this.goToDisplayNumber(target);
   }
 
   // The end "tap to exit" slide sits just past the last image once the gallery end is loaded.
@@ -485,12 +473,12 @@ class FullscreenViewer {
 
     if (target !== this.activeIndex) {
       this.activeIndex = target;
+      this.currentPageNumber = this.displayNumberFor(this.pages[this.activeIndex]);
       this.renderWindow();
       this.pruneQueue();
       this.notifyActivePageChange();
-      this.queueLoadsForActivePage();
-      this.maybeLoadBefore();
-      this.maybeLoadAfter();
+      this.queueImageFillForActivePage();
+      this.maybeLoadBoundaryPage();
     }
 
     const node = this.nodeAt(this.activeIndex);
@@ -618,16 +606,16 @@ class FullscreenViewer {
       if (zone >= 1 / 3 && zone <= 2 / 3) {
         this.toggleToolbar();
       } else {
-        this.settleToPage(zone < 1 / 3 ? this.activeIndex + 1 : this.activeIndex - 1);
+        this.step(zone < 1 / 3 ? 1 : -1);
       }
       return;
     }
 
     // One gesture flips at most one page: drag right -> next (higher number, to the left) and back.
     if (dx >= PAGED_SWIPE_THRESHOLD) {
-      this.settleToPage(this.activeIndex + 1);
+      this.step(1);
     } else if (dx <= -PAGED_SWIPE_THRESHOLD) {
-      this.settleToPage(this.activeIndex - 1);
+      this.step(-1);
     } else {
       this.settleToPage(this.activeIndex);
     }
@@ -739,9 +727,9 @@ class FullscreenViewer {
   }
 
   private renderWindow(): void {
-    const firstIndex = Math.max(0, this.activeIndex - this.keepBehind);
+    const firstIndex = Math.max(0, this.activeIndex - this.renderWindowSize);
     const maxRenderableIndex = this.reachedEnd ? this.pages.length : this.pages.length - 1;
-    const lastIndex = Math.min(maxRenderableIndex, this.activeIndex + this.renderAhead);
+    const lastIndex = Math.min(maxRenderableIndex, this.activeIndex + this.renderWindowSize);
 
     for (const page of this.pages) {
       if (page.index < firstIndex || page.index > lastIndex) {
@@ -810,6 +798,7 @@ class FullscreenViewer {
       return;
     }
 
+    this.discardPageLoad(page);
     this.withLockedActivePosition(() => {
       page.node?.remove();
     });
@@ -928,267 +917,245 @@ class FullscreenViewer {
     }
 
     if (nextActiveIndex !== this.activeIndex) {
+      const nextPageNumber = this.displayNumberFor(this.pages[nextActiveIndex]);
+      this.setPrefetchDirection(nextPageNumber - this.currentPageNumber);
       this.activeIndex = nextActiveIndex;
+      this.currentPageNumber = nextPageNumber;
       this.renderWindow();
       this.pruneQueue();
       this.notifyActivePageChange();
-      this.queueLoadsForActivePage();
+      this.queueImageFillForActivePage();
     }
 
-    this.maybeLoadBefore();
-    this.maybeLoadAfter();
+    this.maybeLoadBoundaryPage();
+  }
+
+  private setPrefetchDirection(delta: number): void {
+    if (delta > 0) {
+      this.prefetchDirection = 1;
+    } else if (delta < 0) {
+      this.prefetchDirection = -1;
+    }
   }
 
   private async jumpToDisplayNumber(displayNumber: number): Promise<void> {
     const targetDisplayNumber = Math.round(displayNumber);
-    let targetIndex = this.indexForDisplayNumber(targetDisplayNumber);
+    await this.goToDisplayNumber(targetDisplayNumber);
+  }
 
-    if (targetIndex < 0 && this.loadAroundDisplayNumber && this.loadingAroundDisplayNumber !== targetDisplayNumber) {
-      this.loadingAroundDisplayNumber = targetDisplayNumber;
-
-      try {
-        const incoming = await this.loadAroundDisplayNumber(targetDisplayNumber);
-
-        if (!this.closed && incoming.length > 0) {
-          this.mergePages(incoming);
-          targetIndex = this.indexForDisplayNumber(targetDisplayNumber);
-        }
-      } catch {
-        // Keep the current page if the preview page cannot be fetched.
-      } finally {
-        this.loadingAroundDisplayNumber = null;
-      }
-    }
-
-    if (this.closed) {
-      return;
-    }
-
-    if (targetIndex >= 0) {
-      this.settleToPage(targetIndex);
-      this.queueLoadsForActivePage();
-      this.scheduleQueue();
-    } else {
-      this.updatePageNumber();
-    }
+  private async goToDisplayNumber(displayNumber: number): Promise<void> {
+    const targetDisplayNumber = clamp(Math.round(displayNumber), 1, this.totalPages ?? Number.MAX_SAFE_INTEGER);
+    this.setPrefetchDirection(targetDisplayNumber - this.currentPageNumber);
+    this.currentPageNumber = targetDisplayNumber;
+    this.updatePageNumber();
+    await this.syncCurrentPageWindow(true);
   }
 
   private indexForDisplayNumber(displayNumber: number): number {
     return this.pages.findIndex((page) => this.displayNumberFor(page) === displayNumber);
   }
 
-  private maybeLoadAfter(): void {
-    if (
-      this.loadingAfter ||
-      this.noMoreAfter ||
-      this.reachedEnd ||
-      !this.loadAfter ||
-      this.activeIndex < this.pages.length - 1 - this.keepBehind
-    ) {
+  private maybeLoadBoundaryPage(): void {
+    const nearStart = this.activeIndex <= this.renderWindowSize;
+    const nearEnd = this.activeIndex >= this.pages.length - 1 - this.renderWindowSize;
+
+    if (!nearStart && !nearEnd) {
       return;
     }
 
-    const lastPage = this.pages[this.pages.length - 1];
-
-    if (!lastPage) {
-      return;
-    }
-
-    this.loadingAfter = true;
-    void this.loadAfter({
-      url: lastPage.url,
-      aspectRatio: lastPage.aspectRatio,
-      displayNumber: lastPage.displayNumber,
-    })
-      .then((incoming) => {
-        if (this.closed) {
-          return;
-        }
-
-        if (incoming.length === 0 || this.appendPages(incoming) === 0) {
-          this.noMoreAfter = true;
-        }
-      })
-      .catch(() => {
-        // Leave noMoreAfter unset so a later scroll can retry.
-      })
-      .finally(() => {
-        this.loadingAfter = false;
-      });
+    void this.syncCurrentPageWindow(false);
   }
 
-  private appendPages(incoming: ViewerPage[]): number {
-    const before = this.pages.length;
+  private displayNumbersAround(center: number): number[] {
+    const numbers: number[] = [];
 
-    for (const page of incoming) {
-      this.appendPage(page);
+    for (let offset = -this.renderWindowSize; offset <= this.renderWindowSize; offset += 1) {
+      const displayNumber = center + offset;
+
+      if (displayNumber > 0 && (!this.totalPages || displayNumber <= this.totalPages)) {
+        numbers.push(displayNumber);
+      }
     }
 
-    const added = this.pages.length - before;
-
-    if (added > 0) {
-      this.renderWindow();
-      this.queueLoadsForActivePage();
-    }
-
-    return added;
+    return numbers;
   }
 
-  private mergePages(incoming: ViewerPage[]): void {
-    const existingUrls = new Set(this.pages.map((page) => page.url));
-    const fresh = incoming.filter((page) => !existingUrls.has(page.url));
+  private async syncCurrentPageWindow(scrollIntoView: boolean): Promise<void> {
+    const retainDisplayNumbers = new Set(this.displayNumbersAround(this.currentPageNumber));
+    const incoming = await this.fetchDisplayNumbers(Array.from(retainDisplayNumbers));
 
-    if (fresh.length === 0) {
+    if (this.closed) {
       return;
     }
+
+    this.rebuildContainers(incoming, retainDisplayNumbers, this.currentPageNumber);
+    this.renderWindow();
+    this.pruneQueue();
+    this.notifyActivePageChange();
+    this.queueImageFillForActivePage();
+
+    if (scrollIntoView) {
+      this.scrollToPage(this.activeIndex);
+    }
+  }
+
+  private async fetchDisplayNumbers(displayNumbers: number[]): Promise<ViewerPage[]> {
+    const missing = Array.from(
+      new Set(displayNumbers.filter((displayNumber) => displayNumber > 0 && this.indexForDisplayNumber(displayNumber) < 0)),
+    );
+
+    if (!this.loadPages || missing.length === 0) {
+      return [];
+    }
+
+    const key = missing.join(",");
+
+    if (this.loadingPageKeySet.has(key)) {
+      return [];
+    }
+
+    this.loadingPageKeySet.add(key);
+
+    try {
+      return await this.loadPages(missing);
+    } catch {
+      // Keep the current page if the surrounding pages cannot be fetched.
+      return [];
+    } finally {
+      this.loadingPageKeySet.delete(key);
+    }
+  }
+
+  private rebuildContainers(incoming: ViewerPage[], retainDisplayNumbers: Set<number>, activeDisplayNumber: number): void {
+    const byDisplayNumber = new Map<number, InternalPage>();
 
     for (const page of this.pages) {
+      const displayNumber = this.displayNumberFor(page);
+
+      if (retainDisplayNumbers.has(displayNumber)) {
+        byDisplayNumber.set(displayNumber, page);
+      } else {
+        this.discardPageLoad(page);
+      }
+
       page.node?.remove();
       page.node = null;
       page.frame = null;
     }
 
-    this.pages = [
-      ...this.pages,
-      ...fresh.map((page) => ({
+    for (const page of incoming) {
+      const displayNumber = page.displayNumber;
+
+      if (!displayNumber || !retainDisplayNumbers.has(displayNumber) || byDisplayNumber.has(displayNumber)) {
+        continue;
+      }
+
+      byDisplayNumber.set(displayNumber, {
         ...page,
         aspectRatio: normalizedAspectRatio(page.aspectRatio),
         index: 0,
-        kind: "page" as const,
-        state: "idle" as const,
+        kind: "page",
+        state: "idle",
         imageUrl: null,
         width: null,
         height: null,
         node: null,
         frame: null,
-      })),
-    ].sort((left, right) => this.displayNumberFor(left) - this.displayNumberFor(right));
-
-    this.pages.forEach((page, index) => {
-      page.index = index;
-    });
-    this.endPageEntry.index = this.pages.length;
-    this.queue.clear();
-    this.renderWindow();
-  }
-
-  private maybeLoadBefore(): void {
-    if (this.loadingBefore || this.noMoreBefore || !this.loadBefore || this.activeIndex > this.keepBehind) {
-      return;
-    }
-
-    const firstPage = this.pages[0];
-
-    if (!firstPage) {
-      return;
-    }
-
-    this.loadingBefore = true;
-    void this.loadBefore({
-      url: firstPage.url,
-      aspectRatio: firstPage.aspectRatio,
-      displayNumber: firstPage.displayNumber,
-    })
-      .then((incoming) => {
-        if (this.closed) {
-          return;
-        }
-
-        if (incoming.length === 0 || this.prependPages(incoming) === 0) {
-          this.noMoreBefore = true;
-        }
-      })
-      .catch(() => {
-        // Leave noMoreBefore unset so a later scroll can retry.
-      })
-      .finally(() => {
-        this.loadingBefore = false;
+        loadToken: 0,
       });
-  }
-
-  private prependPages(incoming: ViewerPage[]): number {
-    const existing = new Set(this.pages.map((page) => page.url));
-    const fresh = incoming.filter((page) => !existing.has(page.url));
-
-    if (fresh.length === 0) {
-      return 0;
     }
 
-    const prepended: InternalPage[] = fresh.map((page) => ({
-      ...page,
-      aspectRatio: normalizedAspectRatio(page.aspectRatio),
-      index: 0,
-      kind: "page",
-      state: "idle",
-      imageUrl: null,
-      width: null,
-      height: null,
-      node: null,
-      frame: null,
-    }));
+    this.pages = Array.from(byDisplayNumber.values()).sort(
+      (left, right) => this.displayNumberFor(left) - this.displayNumberFor(right),
+    );
 
-    this.pages = [...prepended, ...this.pages];
     this.pages.forEach((page, index) => {
       page.index = index;
-
-      if (page.node) {
-        page.node.dataset.ehpeekIndex = String(index);
-      }
     });
-    this.endPageEntry.index = this.pages.length;
-    this.activeIndex += fresh.length;
+    const nextActiveIndex = this.indexForDisplayNumber(activeDisplayNumber);
 
-    const requeued = new Map<number, InternalPage>();
-    for (const page of this.queue.values()) {
-      requeued.set(page.index, page);
+    if (nextActiveIndex >= 0) {
+      this.activeIndex = nextActiveIndex;
+      this.currentPageNumber = activeDisplayNumber;
+    } else {
+      this.activeIndex = clamp(this.activeIndex, 0, Math.max(0, this.pages.length - 1));
     }
-    this.queue = requeued;
 
-    this.renderWindow();
-    this.queueLoadsForActivePage();
-    return fresh.length;
+    this.endPageEntry.index = this.pages.length;
   }
 
   private notifyActivePageChange(): void {
     this.updatePageNumber();
 
-    const page = this.pages[this.activeIndex];
+    const page = this.pages[this.indexForDisplayNumber(this.currentPageNumber)];
 
     if (page) {
-      this.onActivePageChange?.(page, this.activeIndex);
+      this.onActivePageChange?.(page, page.index);
     }
   }
 
-  private queueLoadsForActivePage(): void {
-    this.queueLoad(this.pages[this.activeIndex]);
+  private queueImageFillForActivePage(): void {
+    this.pruneQueue();
+    this.queueLoad(this.pages[this.activeIndex], "near");
 
-    for (let offset = 1; offset <= this.preloadAhead; offset += 1) {
-      const page = this.pages[this.activeIndex + offset];
+    for (let offset = 1; offset <= this.preloadWindowSize; offset += 1) {
+      const page = this.pages[this.activeIndex + offset * this.prefetchDirection];
 
       if (page) {
-        this.queueLoad(page);
+        this.queueLoad(page, offset <= NEAR_LOAD_AHEAD ? "near" : "far");
       }
     }
   }
 
-  private queueLoad(page: InternalPage | undefined): void {
+  private queueLoad(page: InternalPage | undefined, tier: "near" | "far"): void {
     if (!page || page.state !== "idle") {
       return;
     }
 
-    this.queue.set(page.index, page);
+    if (tier === "near") {
+      this.farQueue.delete(page.index);
+      this.nearQueue.set(page.index, page);
+    } else if (!this.nearQueue.has(page.index)) {
+      this.farQueue.set(page.index, page);
+    }
+
     this.scheduleQueue();
   }
 
   private pruneQueue(): void {
-    const min = this.activeIndex;
-    const max = this.activeIndex + this.preloadAhead;
+    const min = this.activeIndex - this.renderWindowSize;
+    const max = this.activeIndex + this.renderWindowSize;
 
-    for (const index of this.queue.keys()) {
-      if (index < min || index > max) {
-        this.queue.delete(index);
+    for (const queue of [this.nearQueue, this.farQueue]) {
+      for (const index of queue.keys()) {
+        if (index < min || index > max) {
+          queue.delete(index);
+        }
       }
     }
+
+    for (const page of this.pages) {
+      if (page.index < min || page.index > max) {
+        this.discardPageLoad(page);
+      }
+    }
+  }
+
+  private discardPageLoad(page: InternalPage): void {
+    page.loadToken += 1;
+    this.nearQueue.delete(page.index);
+    this.farQueue.delete(page.index);
+
+    if (page.state === "loading" || page.state === "ready" || page.state === "error") {
+      page.state = "idle";
+      page.imageUrl = null;
+      page.width = null;
+      page.height = null;
+    }
+  }
+
+  private pageInActiveWindow(page: InternalPage): boolean {
+    return Math.abs(page.index - this.activeIndex) <= this.renderWindowSize;
   }
 
   private scheduleQueue(): void {
@@ -1211,14 +1178,12 @@ class FullscreenViewer {
       return;
     }
 
-    while (this.activeLoadCount < this.currentMaxConcurrentLoads() && this.queue.size > 0) {
+    while (this.activeLoadCount < this.currentMaxConcurrentLoads()) {
       const page = this.nextQueuedPage();
 
       if (!page) {
         return;
       }
-
-      this.queue.delete(page.index);
 
       if (page.state !== "idle") {
         continue;
@@ -1233,18 +1198,34 @@ class FullscreenViewer {
   }
 
   private currentMaxConcurrentLoads(): number {
-    return this.hasNearPageWork()
+    return this.nearQueue.size > 0 || this.hasActiveNearLoad()
       ? Math.min(this.nearConcurrentLoads, this.farConcurrentLoads)
       : this.farConcurrentLoads;
   }
 
-  private hasNearPageWork(): boolean {
-    const nearEnd = Math.min(this.pages.length - 1, this.activeIndex + NEAR_LOAD_AHEAD);
+  private nextQueuedPage(): InternalPage | null {
+    const queue = this.nearQueue.size > 0 ? this.nearQueue : this.hasActiveNearLoad() ? null : this.farQueue;
 
-    for (let index = this.activeIndex; index <= nearEnd; index += 1) {
-      const page = this.pages[index];
+    if (!queue) {
+      return null;
+    }
 
-      if (page?.state === "idle" || page?.state === "loading") {
+    const page = Array.from(queue.values()).sort(
+      (left, right) => Math.abs(left.index - this.activeIndex) - Math.abs(right.index - this.activeIndex),
+    )[0];
+
+    if (page) {
+      queue.delete(page.index);
+    }
+
+    return page ?? null;
+  }
+
+  private hasActiveNearLoad(): boolean {
+    for (let offset = 0; offset <= NEAR_LOAD_AHEAD; offset += 1) {
+      const page = this.pages[this.activeIndex + offset * this.prefetchDirection];
+
+      if (page?.state === "loading") {
         return true;
       }
     }
@@ -1252,23 +1233,14 @@ class FullscreenViewer {
     return false;
   }
 
-  private nextQueuedPage(): InternalPage | null {
-    return (
-      Array.from(this.queue.values()).sort((left, right) => {
-        const leftPriority = left.index === this.activeIndex ? 0 : left.index - this.activeIndex;
-        const rightPriority = right.index === this.activeIndex ? 0 : right.index - this.activeIndex;
-        return leftPriority - rightPriority || left.index - right.index;
-      })[0] ?? null
-    );
-  }
-
   private async loadQueuedPage(page: InternalPage): Promise<void> {
     page.state = "loading";
+    const loadToken = page.loadToken;
 
     try {
       const loaded = await this.loadPage(page, page.index);
 
-      if (this.closed) {
+      if (this.closed || page.loadToken !== loadToken || !this.pageInActiveWindow(page)) {
         return;
       }
 
@@ -1277,24 +1249,22 @@ class FullscreenViewer {
       page.width = positiveNumber(loaded.width);
       page.height = positiveNumber(loaded.height);
 
-      if (loaded.nextPage) {
-        this.appendPage(loaded.nextPage);
-      } else if (page.index === this.pages.length - 1) {
+      if (!loaded.nextPage && page.index === this.pages.length - 1) {
         this.reachedEnd = true;
         this.endPageEntry.index = this.pages.length;
       }
 
-      if (page.node) {
+      if (page.node && page.loadToken === loadToken) {
         this.applyPageSize(page);
         void this.installImage(page);
       }
 
       this.renderWindow();
-      this.queueLoadsForActivePage();
+      this.queueImageFillForActivePage();
     } catch (error) {
       page.state = "error";
 
-      if (page.frame) {
+      if (page.loadToken === loadToken && page.frame && this.pageInActiveWindow(page)) {
         const message = error instanceof Error ? error.message : texts.errors.loadFailed;
         const errorBox = document.createElement("div");
         errorBox.className = "ehpeek-error";
@@ -1304,33 +1274,13 @@ class FullscreenViewer {
     }
   }
 
-  private appendPage(page: ViewerPage): void {
-    if (this.pages.some((existing) => existing.url === page.url)) {
-      return;
-    }
-
-    this.pages.push({
-      ...page,
-      aspectRatio: normalizedAspectRatio(page.aspectRatio),
-      index: this.pages.length,
-      kind: "page",
-      state: "idle",
-      imageUrl: null,
-      width: null,
-      height: null,
-      node: null,
-      frame: null,
-    });
-    this.endPageEntry.index = this.pages.length;
-    this.reachedEnd = false;
-  }
-
   private async installImage(page: InternalPage): Promise<void> {
     if (page.kind !== "page" || !page.frame || !page.imageUrl) {
       return;
     }
 
     const expectedImageUrl = page.imageUrl;
+    const loadToken = page.loadToken;
     const image = document.createElement("img");
     image.className = "ehpeek-image";
     image.alt = `Page ${page.index + 1}`;
@@ -1351,7 +1301,7 @@ class FullscreenViewer {
       return;
     }
 
-    if (!this.closed && page.frame && page.imageUrl === expectedImageUrl) {
+    if (!this.closed && page.loadToken === loadToken && this.pageInActiveWindow(page) && page.frame && page.imageUrl === expectedImageUrl) {
       page.frame.replaceChildren(image);
     }
   }
