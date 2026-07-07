@@ -322,6 +322,7 @@ async function openReader(startPageUrl: string): Promise<void> {
     preloadAhead: 10,
     nearConcurrentLoads: 3,
     farConcurrentLoads: 6,
+    totalPages: readShowingRange()?.total,
     loadPage: loadEhImagePage,
     loadBefore: async (firstPage) => {
       const firstNumber = firstPage.displayNumber;
@@ -353,6 +354,10 @@ async function openReader(startPageUrl: string): Promise<void> {
       }
 
       return collectPreviewPage(nextIndex, landingIndex, landingPages);
+    },
+    loadAroundDisplayNumber: async (displayNumber) => {
+      const previewIndex = previewPageIndexForGalleryPage(displayNumber, pageSize);
+      return collectPreviewPage(previewIndex, landingIndex, landingPages);
     },
     onActivePageChange: (page) => {
       if (page.displayNumber) {
