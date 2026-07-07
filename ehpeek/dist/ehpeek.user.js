@@ -10,13 +10,30 @@
 
 "use strict";
 (() => {
+  // src/texts.json
+  var texts_default = {
+    description: "A mobile-optimized E-H/ExH viewer",
+    viewer: {
+      close: "Close",
+      end: "End of gallery. Tap to exit.",
+      failedPrefix: "Failed"
+    },
+    errors: {
+      imageNotFound: "Image not found",
+      loadFailed: "Load failed",
+      imageLoadFailed: "Image load failed"
+    }
+  };
+
   // src/viewer.ts
   var VIEWER_ID = "ehpeek-reader";
   var STYLE_ID = "ehpeek-reader-style";
   var DEFAULT_KEEP_BEHIND = 5;
   var DEFAULT_RENDER_AHEAD = 10;
   var DEFAULT_PRELOAD_AHEAD = 10;
-  var DEFAULT_MAX_CONCURRENT_LOADS = 3;
+  var DEFAULT_NEAR_CONCURRENT_LOADS = 3;
+  var DEFAULT_FAR_CONCURRENT_LOADS = 6;
+  var NEAR_LOAD_AHEAD = 3;
   var FALLBACK_ASPECT_RATIO = 1.42;
   var activeViewer = null;
   function openFullscreenViewer(options) {
@@ -42,6 +59,7 @@
       this.openLocked = false;
       this.openUnlockTimer = null;
       this.closed = false;
+      this.reachedEnd = false;
       this.onKeydown = (event) => {
         if (event.key !== "Escape") {
           return;
@@ -75,6 +93,7 @@
         ...page,
         aspectRatio: normalizedAspectRatio(page.aspectRatio),
         index,
+        kind: "page",
         state: "idle",
         imageUrl: null,
         width: null,
@@ -87,7 +106,21 @@
       this.keepBehind = options.keepBehind ?? DEFAULT_KEEP_BEHIND;
       this.renderAhead = options.renderAhead ?? DEFAULT_RENDER_AHEAD;
       this.preloadAhead = options.preloadAhead ?? DEFAULT_PRELOAD_AHEAD;
-      this.maxConcurrentLoads = options.maxConcurrentLoads ?? DEFAULT_MAX_CONCURRENT_LOADS;
+      this.nearConcurrentLoads = options.nearConcurrentLoads ?? DEFAULT_NEAR_CONCURRENT_LOADS;
+      this.farConcurrentLoads = options.farConcurrentLoads ?? DEFAULT_FAR_CONCURRENT_LOADS;
+      this.endPageEntry = {
+        url: "__ehpeek_end__",
+        aspectRatio: 0.42,
+        displayNumber: void 0,
+        index: this.pages.length,
+        kind: "end",
+        state: "ready",
+        imageUrl: null,
+        width: null,
+        height: null,
+        node: null,
+        frame: null
+      };
     }
     open() {
       if (this.pages.length === 0) {
@@ -110,7 +143,7 @@
       const closeButton = document.createElement("button");
       closeButton.type = "button";
       closeButton.className = "ehpeek-button";
-      closeButton.title = "Close";
+      closeButton.title = texts_default.viewer.close;
       closeButton.textContent = "x";
       closeButton.addEventListener("click", () => this.close());
       const scroller = document.createElement("div");
@@ -174,14 +207,22 @@
     }
     renderWindow() {
       const firstIndex = Math.max(0, this.activeIndex - this.keepBehind);
-      const lastIndex = Math.min(this.pages.length - 1, this.activeIndex + this.renderAhead);
+      const maxRenderableIndex = this.reachedEnd ? this.pages.length : this.pages.length - 1;
+      const lastIndex = Math.min(maxRenderableIndex, this.activeIndex + this.renderAhead);
       for (const page of this.pages) {
         if (page.index < firstIndex || page.index > lastIndex) {
           this.unmountPage(page);
         }
       }
+      if (!this.reachedEnd || this.endPageEntry.index < firstIndex || this.endPageEntry.index > lastIndex) {
+        this.unmountPage(this.endPageEntry);
+      }
       for (let index = firstIndex; index <= lastIndex; index += 1) {
-        this.mountPage(this.pages[index]);
+        const page = this.pages[index] ?? (this.reachedEnd ? this.endPageEntry : null);
+        if (!page) {
+          continue;
+        }
+        this.mountPage(page);
       }
     }
     mountPage(page) {
@@ -189,23 +230,26 @@
         return;
       }
       const section = document.createElement("section");
-      section.className = "ehpeek-page";
+      section.className = page.kind === "end" ? "ehpeek-page ehpeek-end-page" : "ehpeek-page";
       section.dataset.ehpeekIndex = String(page.index);
       const frame = document.createElement("div");
       frame.className = "ehpeek-frame";
       const placeholder = document.createElement("div");
-      placeholder.className = page.state === "error" ? "ehpeek-error" : "ehpeek-placeholder";
-      placeholder.textContent = String(page.index + 1);
+      placeholder.className = page.kind === "end" ? "ehpeek-end" : page.state === "error" ? "ehpeek-error" : "ehpeek-placeholder";
+      placeholder.textContent = page.kind === "end" ? texts_default.viewer.end : page.state === "error" ? `${texts_default.viewer.failedPrefix} ${this.displayNumberFor(page)}` : String(this.displayNumberFor(page));
+      if (page.kind === "end") {
+        placeholder.addEventListener("click", () => this.close());
+      }
       frame.append(placeholder);
       section.append(frame);
       page.node = section;
       page.frame = frame;
       this.applyPageSize(page);
-      const nextNode = this.pages.slice(page.index + 1).find((candidate) => candidate.node)?.node ?? null;
+      const nextNode = this.nextMountedNodeAfter(page.index);
       this.withLockedActivePosition(() => {
         this.strip?.insertBefore(section, nextNode);
       });
-      if (page.state === "ready" && page.imageUrl) {
+      if (page.kind === "page" && page.state === "ready" && page.imageUrl) {
         this.installImage(page);
       }
     }
@@ -224,7 +268,7 @@
         return;
       }
       const frameWidth = this.frameWidth();
-      const frameHeight = Math.ceil(frameWidth * this.aspectRatioFor(page));
+      const frameHeight = page.kind === "end" ? Math.max(220, Math.round(window.innerHeight * 0.42)) : Math.ceil(frameWidth * this.aspectRatioFor(page));
       page.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`);
       page.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`);
       page.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
@@ -237,6 +281,16 @@
         return page.height / page.width;
       }
       return normalizedAspectRatio(page.aspectRatio);
+    }
+    displayNumberFor(page) {
+      return page.displayNumber && page.displayNumber > 0 ? page.displayNumber : page.index + 1;
+    }
+    nextMountedNodeAfter(index) {
+      const nextPageNode = this.pages.slice(index + 1).find((candidate) => candidate.node)?.node ?? null;
+      if (nextPageNode) {
+        return nextPageNode;
+      }
+      return this.endPageEntry.index > index ? this.endPageEntry.node : null;
     }
     scrollToPage(index) {
       const page = this.pages[index];
@@ -330,7 +384,7 @@
       if (this.closed) {
         return;
       }
-      while (this.activeLoadCount < this.maxConcurrentLoads && this.queue.size > 0) {
+      while (this.activeLoadCount < this.currentMaxConcurrentLoads() && this.queue.size > 0) {
         const page = this.nextQueuedPage();
         if (!page) {
           return;
@@ -345,6 +399,19 @@
           this.processQueue();
         });
       }
+    }
+    currentMaxConcurrentLoads() {
+      return this.hasNearPageWork() ? Math.min(this.nearConcurrentLoads, this.farConcurrentLoads) : this.farConcurrentLoads;
+    }
+    hasNearPageWork() {
+      const nearEnd = Math.min(this.pages.length - 1, this.activeIndex + NEAR_LOAD_AHEAD);
+      for (let index = this.activeIndex; index <= nearEnd; index += 1) {
+        const page = this.pages[index];
+        if (page?.state === "idle" || page?.state === "loading") {
+          return true;
+        }
+      }
+      return false;
     }
     nextQueuedPage() {
       return Array.from(this.queue.values()).sort((left, right) => {
@@ -366,20 +433,23 @@
         page.height = positiveNumber(loaded.height);
         if (loaded.nextPage) {
           this.appendPage(loaded.nextPage);
+        } else if (page.index === this.pages.length - 1) {
+          this.reachedEnd = true;
+          this.endPageEntry.index = this.pages.length;
         }
         if (page.node) {
           this.applyPageSize(page);
-          this.installImage(page);
+          void this.installImage(page);
         }
         this.renderWindow();
         this.queueLoadsForActivePage();
       } catch (error) {
         page.state = "error";
         if (page.frame) {
-          const message = error instanceof Error ? error.message : "load failed";
+          const message = error instanceof Error ? error.message : texts_default.errors.loadFailed;
           const errorBox = document.createElement("div");
           errorBox.className = "ehpeek-error";
-          errorBox.textContent = `Failed ${page.index + 1}: ${message}`;
+          errorBox.textContent = `${texts_default.viewer.failedPrefix} ${this.displayNumberFor(page)}: ${message}`;
           page.frame.replaceChildren(errorBox);
         }
       }
@@ -392,6 +462,7 @@
         ...page,
         aspectRatio: normalizedAspectRatio(page.aspectRatio),
         index: this.pages.length,
+        kind: "page",
         state: "idle",
         imageUrl: null,
         width: null,
@@ -399,25 +470,48 @@
         node: null,
         frame: null
       });
+      this.endPageEntry.index = this.pages.length;
+      this.reachedEnd = false;
     }
-    installImage(page) {
-      if (!page.frame || !page.imageUrl) {
+    async installImage(page) {
+      if (page.kind !== "page" || !page.frame || !page.imageUrl) {
         return;
       }
+      const expectedImageUrl = page.imageUrl;
       const image = document.createElement("img");
       image.className = "ehpeek-image";
       image.alt = `Page ${page.index + 1}`;
       image.decoding = "async";
       image.loading = "eager";
       image.setAttribute("fetchpriority", page.index === this.activeIndex ? "high" : "low");
-      image.src = page.imageUrl;
+      image.src = expectedImageUrl;
       if (page.width && page.height) {
         image.width = page.width;
         image.height = page.height;
       }
-      page.frame.replaceChildren(image);
+      try {
+        await loadImage(image);
+      } catch {
+        return;
+      }
+      if (!this.closed && page.frame && page.imageUrl === expectedImageUrl) {
+        page.frame.replaceChildren(image);
+      }
     }
   };
+  async function loadImage(image) {
+    if (image.complete && image.naturalWidth > 0) {
+      return;
+    }
+    await new Promise((resolve, reject) => {
+      image.addEventListener("load", () => resolve(), { once: true });
+      image.addEventListener("error", () => reject(new Error(texts_default.errors.imageLoadFailed)), { once: true });
+    });
+    try {
+      await image.decode();
+    } catch {
+    }
+  }
   function ensureViewerStyle() {
     if (document.getElementById(STYLE_ID)) {
       return;
@@ -501,25 +595,24 @@
     }
 
     .ehpeek-placeholder,
-    .ehpeek-error {
+    .ehpeek-error,
+    .ehpeek-end {
       display: flex;
-      width: min(100% - 24px, 720px);
-      height: min(180px, 100%);
+      width: 100%;
+      height: 100%;
       align-items: center;
       justify-content: center;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 6px;
-      color: #cfcfcf;
-      background: #111;
-      font-size: clamp(96px, 34vw, 180px);
-      font-weight: 800;
+      color: rgba(245, 245, 245, 0.72);
+      background: #151515;
+      font-size: clamp(88px, 25vw, 180px);
+      font-weight: 850;
       line-height: 1;
       text-align: center;
     }
 
     @media (min-width: 760px) {
       .ehpeek-placeholder {
-        font-size: clamp(72px, 12vw, 150px);
+        font-size: clamp(72px, 10vw, 140px);
       }
     }
 
@@ -527,6 +620,13 @@
       color: #ffb2a7;
       font-size: 18px;
       font-weight: 700;
+    }
+
+    .ehpeek-end {
+      cursor: pointer;
+      color: rgba(245, 245, 245, 0.78);
+      font-size: clamp(22px, 6vw, 34px);
+      font-weight: 760;
     }
 
     .ehpeek-image {
@@ -570,6 +670,16 @@
     const height = image?.naturalHeight || image?.height || Number(image?.getAttribute("height") || "");
     return width > 0 && height > 0 ? height / width : 1.42;
   }
+  function galleryPageNumber(url) {
+    try {
+      const parsed = new URL(url, window.location.href);
+      const match = parsed.pathname.match(/\/(\d+)-(\d+)\/?$/);
+      const pageNumber = Number(match?.[2] || "");
+      return Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : void 0;
+    } catch {
+      return void 0;
+    }
+  }
   function collectGalleryPages() {
     const links = Array.from(
       document.querySelectorAll("#gdt a[href], .gdtm a[href], .gdtl a[href], a[href*='/s/']")
@@ -584,7 +694,8 @@
       seen.add(url);
       pages.push({
         url,
-        aspectRatio: imageAspectRatio(link.querySelector("img"))
+        aspectRatio: imageAspectRatio(link.querySelector("img")),
+        displayNumber: galleryPageNumber(url)
       });
     }
     return pages;
@@ -638,7 +749,7 @@
     const imageSrc = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.currentSrc || "";
     const imageUrl = imageSrc ? normalizeUrl(imageSrc, page.url) : "";
     if (!imageUrl) {
-      throw new Error("image not found");
+      throw new Error(texts_default.errors.imageNotFound);
     }
     const imageLink = image?.closest("a[href]") ?? null;
     const imageLinkUrl = imageLink instanceof HTMLAnchorElement ? normalizeUrl(imageLink.getAttribute("href") || "", page.url) : null;
@@ -651,7 +762,8 @@
       height,
       nextPage: nextPageUrl && nextPageUrl !== page.url ? {
         url: nextPageUrl,
-        aspectRatio: width && height ? height / width : page.aspectRatio
+        aspectRatio: width && height ? height / width : page.aspectRatio,
+        displayNumber: galleryPageNumber(nextPageUrl)
       } : null
     };
   }
@@ -661,7 +773,7 @@
     let startIndex = pages.findIndex((page) => page.url === startUrl);
     if (startIndex < 0) {
       startIndex = 0;
-      pages.unshift({ url: startUrl, aspectRatio: 1.42 });
+      pages.unshift({ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) });
     }
     openFullscreenViewer({
       pages,
@@ -669,7 +781,8 @@
       keepBehind: 5,
       renderAhead: 10,
       preloadAhead: 10,
-      maxConcurrentLoads: 3,
+      nearConcurrentLoads: 3,
+      farConcurrentLoads: 6,
       loadPage: loadEhImagePage
     });
   }

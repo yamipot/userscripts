@@ -1,0 +1,13 @@
+{
+  "description": "A mobile-optimized E-H/ExH viewer",
+  "viewer": {   
+    "close": "Close",
+    "end": "End of gallery. Tap to exit.",
+    "failedPrefix": "Failed"
+  },
+  "errors": {
+    "imageNotFound": "Image not found",
+    "loadFailed": "Load failed",
+    "imageLoadFailed": "Image load failed"
+  }
+}

@@ -3,15 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
-const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(path.join(packageDir, "package.json"), "utf-8"));
+const texts = JSON.parse(readFileSync(path.join(packageDir, "src/texts.json"), "utf-8"));
 
 const metadata = [
   "// ==UserScript==",
-  "// @name         ehpeek: E-H/ExH viewer",
-  "// @namespace    ehpeek",
+  `// @name         ehpeek: E-H/ExH viewer`,
+  `// @namespace    ehpeek`,
   `// @version      ${pkg.version}`,
-  "// @description  A mobile-optimized E-H/ExH viewer",
+  `// @description  ${texts.description}`,
   "// @match        *://e-hentai.org/*",
   "// @match        *://exhentai.org/*",
   "// @run-at       document-end",

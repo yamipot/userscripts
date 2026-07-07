@@ -1,4 +1,5 @@
 import { openFullscreenViewer, type LoadedViewerPage, type ViewerPage } from "./viewer";
+import texts from "./texts.json";
 
 const REQUEST_TIMEOUT_MS = 30000;
 
@@ -26,6 +27,18 @@ function imageAspectRatio(image: HTMLImageElement | null): number {
   return width > 0 && height > 0 ? height / width : 1.42;
 }
 
+function galleryPageNumber(url: string): number | undefined {
+  try {
+    const parsed = new URL(url, window.location.href);
+    const match = parsed.pathname.match(/\/(\d+)-(\d+)\/?$/);
+    const pageNumber = Number(match?.[2] || "");
+
+    return Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function collectGalleryPages(): ViewerPage[] {
   const links = Array.from(
     document.querySelectorAll<HTMLAnchorElement>("#gdt a[href], .gdtm a[href], .gdtl a[href], a[href*='/s/']"),
@@ -44,6 +57,7 @@ function collectGalleryPages(): ViewerPage[] {
     pages.push({
       url,
       aspectRatio: imageAspectRatio(link.querySelector("img")),
+      displayNumber: galleryPageNumber(url),
     });
   }
 
@@ -112,7 +126,7 @@ async function loadEhImagePage(page: ViewerPage): Promise<LoadedViewerPage> {
   const imageUrl = imageSrc ? normalizeUrl(imageSrc, page.url) : "";
 
   if (!imageUrl) {
-    throw new Error("image not found");
+    throw new Error(texts.errors.imageNotFound);
   }
 
   const imageLink = image?.closest<HTMLAnchorElement>("a[href]") ?? null;
@@ -134,6 +148,7 @@ async function loadEhImagePage(page: ViewerPage): Promise<LoadedViewerPage> {
         ? {
             url: nextPageUrl,
             aspectRatio: width && height ? height / width : page.aspectRatio,
+            displayNumber: galleryPageNumber(nextPageUrl),
           }
         : null,
   };
@@ -146,7 +161,7 @@ function openReader(startPageUrl: string): void {
 
   if (startIndex < 0) {
     startIndex = 0;
-    pages.unshift({ url: startUrl, aspectRatio: 1.42 });
+    pages.unshift({ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) });
   }
 
   openFullscreenViewer({
@@ -155,7 +170,8 @@ function openReader(startPageUrl: string): void {
     keepBehind: 5,
     renderAhead: 10,
     preloadAhead: 10,
-    maxConcurrentLoads: 3,
+    nearConcurrentLoads: 3,
+    farConcurrentLoads: 6,
     loadPage: loadEhImagePage,
   });
 }

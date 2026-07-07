@@ -1,6 +1,9 @@
+import texts from "./texts.json";
+
 export type ViewerPage = {
   url: string;
   aspectRatio: number;
+  displayNumber?: number;
 };
 
 export type LoadedViewerPage = {
@@ -14,6 +17,7 @@ type PageState = "idle" | "loading" | "ready" | "error";
 
 type InternalPage = ViewerPage & {
   index: number;
+  kind: "page" | "end";
   state: PageState;
   imageUrl: string | null;
   width: number | null;
@@ -29,7 +33,8 @@ export type FullscreenViewerOptions = {
   keepBehind?: number;
   renderAhead?: number;
   preloadAhead?: number;
-  maxConcurrentLoads?: number;
+  nearConcurrentLoads?: number;
+  farConcurrentLoads?: number;
 };
 
 const VIEWER_ID = "ehpeek-reader";
@@ -37,7 +42,9 @@ const STYLE_ID = "ehpeek-reader-style";
 const DEFAULT_KEEP_BEHIND = 5;
 const DEFAULT_RENDER_AHEAD = 10;
 const DEFAULT_PRELOAD_AHEAD = 10;
-const DEFAULT_MAX_CONCURRENT_LOADS = 3;
+const DEFAULT_NEAR_CONCURRENT_LOADS = 3;
+const DEFAULT_FAR_CONCURRENT_LOADS = 6;
+const NEAR_LOAD_AHEAD = 3;
 const FALLBACK_ASPECT_RATIO = 1.42;
 
 let activeViewer: FullscreenViewer | null = null;
@@ -56,7 +63,9 @@ class FullscreenViewer {
   private readonly keepBehind: number;
   private readonly renderAhead: number;
   private readonly preloadAhead: number;
-  private readonly maxConcurrentLoads: number;
+  private readonly nearConcurrentLoads: number;
+  private readonly farConcurrentLoads: number;
+  private readonly endPageEntry: InternalPage;
   private overlay: HTMLDivElement | null = null;
   private scroller: HTMLDivElement | null = null;
   private strip: HTMLElement | null = null;
@@ -72,12 +81,14 @@ class FullscreenViewer {
   private openLocked = false;
   private openUnlockTimer: number | null = null;
   private closed = false;
+  private reachedEnd = false;
 
   constructor(options: FullscreenViewerOptions) {
     this.pages = options.pages.map((page, index) => ({
       ...page,
       aspectRatio: normalizedAspectRatio(page.aspectRatio),
       index,
+      kind: "page",
       state: "idle",
       imageUrl: null,
       width: null,
@@ -90,7 +101,21 @@ class FullscreenViewer {
     this.keepBehind = options.keepBehind ?? DEFAULT_KEEP_BEHIND;
     this.renderAhead = options.renderAhead ?? DEFAULT_RENDER_AHEAD;
     this.preloadAhead = options.preloadAhead ?? DEFAULT_PRELOAD_AHEAD;
-    this.maxConcurrentLoads = options.maxConcurrentLoads ?? DEFAULT_MAX_CONCURRENT_LOADS;
+    this.nearConcurrentLoads = options.nearConcurrentLoads ?? DEFAULT_NEAR_CONCURRENT_LOADS;
+    this.farConcurrentLoads = options.farConcurrentLoads ?? DEFAULT_FAR_CONCURRENT_LOADS;
+    this.endPageEntry = {
+      url: "__ehpeek_end__",
+      aspectRatio: 0.42,
+      displayNumber: undefined,
+      index: this.pages.length,
+      kind: "end",
+      state: "ready",
+      imageUrl: null,
+      width: null,
+      height: null,
+      node: null,
+      frame: null,
+    };
   }
 
   open(): void {
@@ -118,7 +143,7 @@ class FullscreenViewer {
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.className = "ehpeek-button";
-    closeButton.title = "Close";
+    closeButton.title = texts.viewer.close;
     closeButton.textContent = "x";
     closeButton.addEventListener("click", () => this.close());
 
@@ -233,7 +258,8 @@ class FullscreenViewer {
 
   private renderWindow(): void {
     const firstIndex = Math.max(0, this.activeIndex - this.keepBehind);
-    const lastIndex = Math.min(this.pages.length - 1, this.activeIndex + this.renderAhead);
+    const maxRenderableIndex = this.reachedEnd ? this.pages.length : this.pages.length - 1;
+    const lastIndex = Math.min(maxRenderableIndex, this.activeIndex + this.renderAhead);
 
     for (const page of this.pages) {
       if (page.index < firstIndex || page.index > lastIndex) {
@@ -241,8 +267,18 @@ class FullscreenViewer {
       }
     }
 
+    if (!this.reachedEnd || this.endPageEntry.index < firstIndex || this.endPageEntry.index > lastIndex) {
+      this.unmountPage(this.endPageEntry);
+    }
+
     for (let index = firstIndex; index <= lastIndex; index += 1) {
-      this.mountPage(this.pages[index]);
+      const page = this.pages[index] ?? (this.reachedEnd ? this.endPageEntry : null);
+
+      if (!page) {
+        continue;
+      }
+
+      this.mountPage(page);
     }
   }
 
@@ -252,15 +288,24 @@ class FullscreenViewer {
     }
 
     const section = document.createElement("section");
-    section.className = "ehpeek-page";
+    section.className = page.kind === "end" ? "ehpeek-page ehpeek-end-page" : "ehpeek-page";
     section.dataset.ehpeekIndex = String(page.index);
 
     const frame = document.createElement("div");
     frame.className = "ehpeek-frame";
 
     const placeholder = document.createElement("div");
-    placeholder.className = page.state === "error" ? "ehpeek-error" : "ehpeek-placeholder";
-    placeholder.textContent = String(page.index + 1);
+    placeholder.className =
+      page.kind === "end" ? "ehpeek-end" : page.state === "error" ? "ehpeek-error" : "ehpeek-placeholder";
+    placeholder.textContent =
+      page.kind === "end"
+        ? texts.viewer.end
+        : page.state === "error"
+          ? `${texts.viewer.failedPrefix} ${this.displayNumberFor(page)}`
+          : String(this.displayNumberFor(page));
+    if (page.kind === "end") {
+      placeholder.addEventListener("click", () => this.close());
+    }
     frame.append(placeholder);
     section.append(frame);
 
@@ -268,12 +313,12 @@ class FullscreenViewer {
     page.frame = frame;
     this.applyPageSize(page);
 
-    const nextNode = this.pages.slice(page.index + 1).find((candidate) => candidate.node)?.node ?? null;
+    const nextNode = this.nextMountedNodeAfter(page.index);
     this.withLockedActivePosition(() => {
       this.strip?.insertBefore(section, nextNode);
     });
 
-    if (page.state === "ready" && page.imageUrl) {
+    if (page.kind === "page" && page.state === "ready" && page.imageUrl) {
       this.installImage(page);
     }
   }
@@ -296,7 +341,8 @@ class FullscreenViewer {
     }
 
     const frameWidth = this.frameWidth();
-    const frameHeight = Math.ceil(frameWidth * this.aspectRatioFor(page));
+    const frameHeight =
+      page.kind === "end" ? Math.max(220, Math.round(window.innerHeight * 0.42)) : Math.ceil(frameWidth * this.aspectRatioFor(page));
     page.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`);
     page.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`);
     page.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
@@ -312,6 +358,20 @@ class FullscreenViewer {
     }
 
     return normalizedAspectRatio(page.aspectRatio);
+  }
+
+  private displayNumberFor(page: InternalPage): number {
+    return page.displayNumber && page.displayNumber > 0 ? page.displayNumber : page.index + 1;
+  }
+
+  private nextMountedNodeAfter(index: number): HTMLElement | null {
+    const nextPageNode = this.pages.slice(index + 1).find((candidate) => candidate.node)?.node ?? null;
+
+    if (nextPageNode) {
+      return nextPageNode;
+    }
+
+    return this.endPageEntry.index > index ? this.endPageEntry.node : null;
   }
 
   private scrollToPage(index: number): void {
@@ -433,7 +493,7 @@ class FullscreenViewer {
       return;
     }
 
-    while (this.activeLoadCount < this.maxConcurrentLoads && this.queue.size > 0) {
+    while (this.activeLoadCount < this.currentMaxConcurrentLoads() && this.queue.size > 0) {
       const page = this.nextQueuedPage();
 
       if (!page) {
@@ -452,6 +512,26 @@ class FullscreenViewer {
         this.processQueue();
       });
     }
+  }
+
+  private currentMaxConcurrentLoads(): number {
+    return this.hasNearPageWork()
+      ? Math.min(this.nearConcurrentLoads, this.farConcurrentLoads)
+      : this.farConcurrentLoads;
+  }
+
+  private hasNearPageWork(): boolean {
+    const nearEnd = Math.min(this.pages.length - 1, this.activeIndex + NEAR_LOAD_AHEAD);
+
+    for (let index = this.activeIndex; index <= nearEnd; index += 1) {
+      const page = this.pages[index];
+
+      if (page?.state === "idle" || page?.state === "loading") {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private nextQueuedPage(): InternalPage | null {
@@ -481,11 +561,14 @@ class FullscreenViewer {
 
       if (loaded.nextPage) {
         this.appendPage(loaded.nextPage);
+      } else if (page.index === this.pages.length - 1) {
+        this.reachedEnd = true;
+        this.endPageEntry.index = this.pages.length;
       }
 
       if (page.node) {
         this.applyPageSize(page);
-        this.installImage(page);
+        void this.installImage(page);
       }
 
       this.renderWindow();
@@ -494,10 +577,10 @@ class FullscreenViewer {
       page.state = "error";
 
       if (page.frame) {
-        const message = error instanceof Error ? error.message : "load failed";
+        const message = error instanceof Error ? error.message : texts.errors.loadFailed;
         const errorBox = document.createElement("div");
         errorBox.className = "ehpeek-error";
-        errorBox.textContent = `Failed ${page.index + 1}: ${message}`;
+        errorBox.textContent = `${texts.viewer.failedPrefix} ${this.displayNumberFor(page)}: ${message}`;
         page.frame.replaceChildren(errorBox);
       }
     }
@@ -512,6 +595,7 @@ class FullscreenViewer {
       ...page,
       aspectRatio: normalizedAspectRatio(page.aspectRatio),
       index: this.pages.length,
+      kind: "page",
       state: "idle",
       imageUrl: null,
       width: null,
@@ -519,27 +603,55 @@ class FullscreenViewer {
       node: null,
       frame: null,
     });
+    this.endPageEntry.index = this.pages.length;
+    this.reachedEnd = false;
   }
 
-  private installImage(page: InternalPage): void {
-    if (!page.frame || !page.imageUrl) {
+  private async installImage(page: InternalPage): Promise<void> {
+    if (page.kind !== "page" || !page.frame || !page.imageUrl) {
       return;
     }
 
+    const expectedImageUrl = page.imageUrl;
     const image = document.createElement("img");
     image.className = "ehpeek-image";
     image.alt = `Page ${page.index + 1}`;
     image.decoding = "async";
     image.loading = "eager";
     image.setAttribute("fetchpriority", page.index === this.activeIndex ? "high" : "low");
-    image.src = page.imageUrl;
+    image.src = expectedImageUrl;
 
     if (page.width && page.height) {
       image.width = page.width;
       image.height = page.height;
     }
 
-    page.frame.replaceChildren(image);
+    try {
+      await loadImage(image);
+    } catch {
+      return;
+    }
+
+    if (!this.closed && page.frame && page.imageUrl === expectedImageUrl) {
+      page.frame.replaceChildren(image);
+    }
+  }
+}
+
+async function loadImage(image: HTMLImageElement): Promise<void> {
+  if (image.complete && image.naturalWidth > 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener("error", () => reject(new Error(texts.errors.imageLoadFailed)), { once: true });
+  });
+
+  try {
+    await image.decode();
+  } catch {
+    // Some browsers reject decode for already-renderable images; load is enough.
   }
 }
 
@@ -627,25 +739,24 @@ function ensureViewerStyle(): void {
     }
 
     .ehpeek-placeholder,
-    .ehpeek-error {
+    .ehpeek-error,
+    .ehpeek-end {
       display: flex;
-      width: min(100% - 24px, 720px);
-      height: min(180px, 100%);
+      width: 100%;
+      height: 100%;
       align-items: center;
       justify-content: center;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 6px;
-      color: #cfcfcf;
-      background: #111;
-      font-size: clamp(96px, 34vw, 180px);
-      font-weight: 800;
+      color: rgba(245, 245, 245, 0.72);
+      background: #151515;
+      font-size: clamp(88px, 25vw, 180px);
+      font-weight: 850;
       line-height: 1;
       text-align: center;
     }
 
     @media (min-width: 760px) {
       .ehpeek-placeholder {
-        font-size: clamp(72px, 12vw, 150px);
+        font-size: clamp(72px, 10vw, 140px);
       }
     }
 
@@ -653,6 +764,13 @@ function ensureViewerStyle(): void {
       color: #ffb2a7;
       font-size: 18px;
       font-weight: 700;
+    }
+
+    .ehpeek-end {
+      cursor: pointer;
+      color: rgba(245, 245, 245, 0.78);
+      font-size: clamp(22px, 6vw, 34px);
+      font-weight: 760;
     }
 
     .ehpeek-image {
