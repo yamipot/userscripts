@@ -17,7 +17,7 @@ const NEAR_LOAD_AHEAD = 3;
 const FALLBACK_ASPECT_RATIO = 1.42;
 const PAGED_SWIPE_THRESHOLD = 24;
 const PAGED_WHEEL_THRESHOLD = 8;
-const PAGED_SMOOTH_SCROLL_MS = 120;
+const PAGED_SMOOTH_SCROLL_MS = 240;
 const PROGRESS_IDLE_COMMIT_MS = 1000;
 
 export type ViewerPage = {
@@ -937,6 +937,7 @@ class FullscreenViewer {
 
     this.progressInput.max = String(Math.max(1, this.totalPages ? this.totalPages + 1 : this.currentPageNumber));
     this.progressInput.value = String(this.currentPageNumber);
+    this.updateProgressFill(this.currentPageNumber);
   }
 
   private notifyActivePageChange(): void {
@@ -1230,6 +1231,20 @@ class FullscreenViewer {
     if (this.pageNumberLabel) {
       this.pageNumberLabel.textContent = this.pageNumberText(displayNumber);
     }
+
+    this.updateProgressFill(displayNumber);
+  }
+
+  private updateProgressFill(displayNumber: number): void {
+    if (!this.progressInput) {
+      return;
+    }
+
+    const min = Number(this.progressInput.min || "1");
+    const max = Number(this.progressInput.max || "1");
+    const value = clamp(displayNumber, min, max);
+    const progress = max > min ? ((value - min) / (max - min)) * 100 : 100;
+    this.progressInput.style.setProperty("--ehpeek-progress-fill", `${progress}%`);
   }
 
   private previewProgressPage(displayNumber: number): void {
@@ -1269,6 +1284,10 @@ class FullscreenViewer {
   private setMode(mode: ViewMode): void {
     if (mode === this.mode) {
       return;
+    }
+
+    if (this.mode === "scroll" && mode === "paged") {
+      this.updateCurrentFromScroll();
     }
 
     this.mode = mode;
@@ -1659,6 +1678,7 @@ function ensureViewerStyle(): void {
     }
 
     .ehpeek-progress {
+      --ehpeek-progress-fill: 0%;
       width: 100%;
       height: 48px;
       margin: 0;
@@ -1686,7 +1706,19 @@ function ensureViewerStyle(): void {
     .ehpeek-progress::-webkit-slider-runnable-track {
       height: 8px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.34);
+      background: linear-gradient(
+        to right,
+        #4da3ff 0 var(--ehpeek-progress-fill),
+        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+      );
+    }
+
+    #${VIEWER_ID}.ehpeek-read-rtl .ehpeek-progress::-webkit-slider-runnable-track {
+      background: linear-gradient(
+        to left,
+        #4da3ff 0 var(--ehpeek-progress-fill),
+        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+      );
     }
 
     .ehpeek-progress::-webkit-slider-thumb {
@@ -1705,6 +1737,12 @@ function ensureViewerStyle(): void {
       height: 8px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.34);
+    }
+
+    .ehpeek-progress::-moz-range-progress {
+      height: 8px;
+      border-radius: 999px;
+      background: #4da3ff;
     }
 
     .ehpeek-progress::-moz-range-thumb {
