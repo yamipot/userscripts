@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260708.0457
+// @version      260708.0511
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -46,7 +46,7 @@
   };
 
   // src/viewer.ts
-  var VIEW_MODE_KEY = "ehpeek:view-mode", READ_DIRECTION_KEY = "ehpeek:read-direction", RIGHT_TAP_ACTION_KEY = "ehpeek:right-tap-action", VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, FALLBACK_ASPECT_RATIO = 1.42, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PAGED_SMOOTH_SCROLL_MS = 180, PROGRESS_IDLE_COMMIT_MS = 1e3, SCROLL_FLING_MIN_VELOCITY = 0.35, SCROLL_FLING_STOP_VELOCITY = 0.02, SCROLL_FLING_DECAY = 45e-4, activeViewer = null;
+  var VIEW_MODE_KEY = "ehpeek:view-mode", READ_DIRECTION_KEY = "ehpeek:read-direction", RIGHT_TAP_ACTION_KEY = "ehpeek:right-tap-action", VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, FALLBACK_ASPECT_RATIO = 1.42, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PAGED_ANIMATION = "raf", PAGED_SMOOTH_SCROLL_MS = 180, PAGED_SCROLL_EASING_POWER = 3, PROGRESS_IDLE_COMMIT_MS = 1e3, ANIMATION_FRAME_MIN_DELTA_MS = 1, ANIMATION_FRAME_MAX_DELTA_MS = 32, SCROLL_FLING_MIN_VELOCITY = 0.35, SCROLL_FLING_STOP_VELOCITY = 0.02, SCROLL_FLING_DECAY = 45e-4, activeViewer = null;
   function openFullscreenViewer(options) {
     activeViewer?.close();
     let viewer = new FullscreenViewer(options);
@@ -153,6 +153,7 @@
       this.scrollFrame = null;
       this.resizeFrame = null;
       this.flingFrame = null;
+      this.pagedAnimationFrame = null;
       this.pagedScrollCommitTimer = null;
       this.progressCommitTimer = null;
       this.pendingProgressDisplayNumber = null;
@@ -210,7 +211,7 @@
           event.button, event.buttons;
           return;
         }
-        event.preventDefault(), this.cancelScrollFling(), this.dragging = !0, this.dragPointerId = event.pointerId, this.dragStartClientX = event.clientX, this.dragStartClientY = event.clientY, this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, this.dragVelocityY = 0, event.pointerId, event.pointerType, this.dragStartClientX, this.dragStartClientY, this.dragStartScroll, this.scroller.setPointerCapture?.(event.pointerId), this.scroller.classList.add("ehpeek-scroller-dragging"), document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
+        event.preventDefault(), this.cancelScrollFling(), this.cancelPagedAnimation(), this.dragging = !0, this.dragPointerId = event.pointerId, this.dragStartClientX = event.clientX, this.dragStartClientY = event.clientY, this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, this.dragVelocityY = 0, event.pointerId, event.pointerType, this.dragStartClientX, this.dragStartClientY, this.dragStartScroll, this.scroller.setPointerCapture?.(event.pointerId), this.scroller.classList.add("ehpeek-scroller-dragging"), document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
       };
       this.onPointerMove = (event) => {
         if (!this.dragging || event.pointerId !== this.dragPointerId || !this.scroller) {
@@ -260,7 +261,7 @@
           this.cancelScrollFling();
           return;
         }
-        let elapsed = Math.min(32, Math.max(1, time - this.flingLastFrameTime));
+        let elapsed = clamp(time - this.flingLastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
         this.flingLastFrameTime = time;
         let previousScrollTop = this.scroller.scrollTop;
         if (this.setScrollTop(previousScrollTop + this.flingVelocityY * elapsed), this.scroller.scrollTop === previousScrollTop) {
@@ -357,7 +358,7 @@
       strip.className = "ehpeek-strip", this.strip = strip, scroller.append(strip), topbar.append(actions), toolbar.append(progressInput), overlay.append(topbar, pageNumberLabel, toolbar, scroller), document.body.append(overlay), this.overlay = overlay, scroller.focus({ preventScroll: !0 }), this.updateModeButton(), this.updateReadDirectionButton(), this.updateRightTapButton(), this.updatePageNumber();
     }
     finishClose() {
-      this.closed || (this.closed = !0, this.cancelProgressCommit(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.onKeydown, !0), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.overlay?.remove(), document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow, document.documentElement.style.touchAction = this.previousDocumentTouchAction, document.body.style.touchAction = this.previousBodyTouchAction, this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.cancelScrollFling(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null), activeViewer === this && (activeViewer = null));
+      this.closed || (this.closed = !0, this.cancelProgressCommit(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.onKeydown, !0), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.overlay?.remove(), document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow, document.documentElement.style.touchAction = this.previousDocumentTouchAction, document.body.style.touchAction = this.previousBodyTouchAction, this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.cancelScrollFling(), this.cancelPagedAnimation(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null), activeViewer === this && (activeViewer = null));
     }
     setCurrentPageNumber(pageNumber, scrollIntoView, scrollBehavior = "auto") {
       let target = clamp(Math.round(pageNumber), 1, this.maxDisplayNumber());
@@ -368,7 +369,7 @@
       this.maintainContainers(numbers, []), this.maintainLoadQueue(), this.notifyActivePageChange(), options.scrollIntoView && this.scrollToCurrentPage(options.scrollBehavior), missing.length > 0 && this.loadMissingPages(missing, token);
     }
     rebuildForCurrentMode() {
-      this.cancelScrollFling(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null);
+      this.cancelScrollFling(), this.cancelPagedAnimation(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null);
       for (let slot of this.slots)
         slot.node?.remove(), slot.node = null, slot.frame = null;
       this.scroller && (this.scroller.scrollLeft = 0, this.scroller.scrollTop = 0), this.syncAfterPageChange({ scrollIntoView: !0 });
@@ -493,7 +494,10 @@
       }
       this.direction = target > this.currentPageNumber ? 1 : -1, this.scrollToSlot(slot, "smooth"), this.pagedScrollCommitTimer !== null && window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = window.setTimeout(() => {
         this.pagedScrollCommitTimer = null, this.setCurrentPageNumber(target, !0);
-      }, PAGED_SMOOTH_SCROLL_MS);
+      }, this.pagedAnimationCommitDelay());
+    }
+    pagedAnimationCommitDelay() {
+      return PAGED_ANIMATION === "none" ? 0 : PAGED_SMOOTH_SCROLL_MS;
     }
     scrollToCurrentPage(behavior = "auto") {
       let slot = this.slotFor(this.currentPageNumber);
@@ -617,7 +621,42 @@
       return this.mode === "paged";
     }
     addScrollPos(delta, behavior = "auto") {
-      this.scroller && (this.horizontal() ? this.scroller.scrollTo({ left: this.scroller.scrollLeft + delta, behavior }) : this.setScrollTop(this.scroller.scrollTop + delta));
+      this.scroller && (this.horizontal() ? this.scrollPagedTo(this.scroller.scrollLeft + delta, behavior) : this.setScrollTop(this.scroller.scrollTop + delta));
+    }
+    scrollPagedTo(left, behavior = "auto") {
+      if (this.scroller) {
+        if (this.cancelPagedAnimation(), behavior !== "smooth" || PAGED_ANIMATION === "none") {
+          this.scroller.scrollLeft = left;
+          return;
+        }
+        if (PAGED_ANIMATION === "native") {
+          this.scroller.scrollTo({ left, behavior: "smooth" });
+          return;
+        }
+        this.animatePagedScrollTo(left);
+      }
+    }
+    animatePagedScrollTo(left) {
+      if (!this.scroller)
+        return;
+      let startLeft = this.scroller.scrollLeft, delta = left - startLeft, lastFrameTime = performance.now(), animationTime = 0, step = (time) => {
+        if (!this.scroller) {
+          this.cancelPagedAnimation();
+          return;
+        }
+        let elapsed = clamp(time - lastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
+        lastFrameTime = time, animationTime += elapsed;
+        let progress = clamp(animationTime / PAGED_SMOOTH_SCROLL_MS, 0, 1), eased = 1 - Math.pow(1 - progress, PAGED_SCROLL_EASING_POWER);
+        if (this.scroller.scrollLeft = startLeft + delta * eased, progress >= 1) {
+          this.pagedAnimationFrame = null;
+          return;
+        }
+        this.pagedAnimationFrame = window.requestAnimationFrame(step);
+      };
+      this.pagedAnimationFrame = window.requestAnimationFrame(step);
+    }
+    cancelPagedAnimation() {
+      this.pagedAnimationFrame !== null && (window.cancelAnimationFrame(this.pagedAnimationFrame), this.pagedAnimationFrame = null);
     }
     setScrollTop(scrollTop) {
       this.scroller && (this.scroller.scrollTop = this.clampedScrollTop(scrollTop));
