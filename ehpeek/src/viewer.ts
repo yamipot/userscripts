@@ -250,7 +250,9 @@ class FullscreenViewer {
   private toolbar: HTMLDivElement | null = null;
   private modeButton: HTMLButtonElement | null = null;
   private pageNumberLabel: HTMLElement | null = null;
-  private progressInput: HTMLInputElement | null = null;
+  private progressTrack: HTMLDivElement | null = null;
+  private progressFill: HTMLDivElement | null = null;
+  private progressThumb: HTMLDivElement | null = null;
   private previousBodyOverflow = "";
   private previousDocumentOverflow = "";
   private previousBodyTouchAction = "";
@@ -263,6 +265,7 @@ class FullscreenViewer {
   private progressCommitTimer: number | null = null;
   private pendingProgressDisplayNumber: number | null = null;
   private progressDragging = false;
+  private progressPointerId: number | null = null;
   private dragging = false;
   private dragPointerId: number | null = null;
   private dragStartClientX = 0;
@@ -368,17 +371,22 @@ class FullscreenViewer {
     toolbar.className = "ehpeek-progressbar ehpeek-toolbar-hidden";
     this.toolbar = toolbar;
 
-    const progressInput = document.createElement("input");
-    progressInput.type = "range";
-    progressInput.className = "ehpeek-progress";
-    progressInput.min = "1";
-    progressInput.step = "1";
-    progressInput.addEventListener("pointerdown", this.onProgressPointerDown);
-    progressInput.addEventListener("input", this.onProgressInput);
-    progressInput.addEventListener("change", this.onProgressCommit);
-    progressInput.addEventListener("pointerup", this.onProgressCommit);
-    progressInput.addEventListener("pointercancel", this.onProgressCommit);
-    this.progressInput = progressInput;
+    const progressTrack = document.createElement("div");
+    progressTrack.className = "ehpeek-progress";
+    progressTrack.addEventListener("pointerdown", this.onProgressPointerDown);
+    progressTrack.addEventListener("pointermove", this.onProgressPointerMove);
+    progressTrack.addEventListener("pointerup", this.onProgressPointerUp);
+    progressTrack.addEventListener("pointercancel", this.onProgressPointerUp);
+    this.progressTrack = progressTrack;
+
+    const progressFill = document.createElement("div");
+    progressFill.className = "ehpeek-progress-fill";
+    this.progressFill = progressFill;
+
+    const progressThumb = document.createElement("div");
+    progressThumb.className = "ehpeek-progress-thumb";
+    this.progressThumb = progressThumb;
+    progressTrack.append(progressFill, progressThumb);
 
     const scroller = document.createElement("div");
     scroller.className = "ehpeek-scroller";
@@ -397,7 +405,7 @@ class FullscreenViewer {
 
     scroller.append(strip);
     topbar.append(actions);
-    toolbar.append(progressInput);
+    toolbar.append(progressTrack);
     overlay.append(topbar, pageNumberLabel, toolbar, scroller);
     document.body.append(overlay);
     this.overlay = overlay;
@@ -423,6 +431,7 @@ class FullscreenViewer {
     this.closed = true;
     this.cancelSettle();
     this.cancelProgressCommit();
+    this.progressPointerId = null;
     this.imageQueue.dispose();
     window.removeEventListener("resize", this.onResize);
     window.removeEventListener("popstate", this.onPopState);
@@ -696,12 +705,11 @@ class FullscreenViewer {
 
     this.pageNumberLabel.textContent = this.totalPages ? `${this.currentPageNumber} / ${this.totalPages}` : String(this.currentPageNumber);
 
-    if (!this.progressInput || this.progressDragging) {
+    if (this.progressDragging) {
       return;
     }
 
-    this.progressInput.max = String(Math.max(1, this.totalPages ?? this.currentPageNumber));
-    this.progressInput.value = String(this.currentPageNumber);
+    this.updateProgressVisual(this.currentPageNumber);
   }
 
   private notifyActivePageChange(): void {
@@ -869,31 +877,40 @@ class FullscreenViewer {
     this.toggleToolbar();
   };
 
-  private readonly onProgressPointerDown = (): void => {
+  private readonly onProgressPointerDown = (event: PointerEvent): void => {
     this.progressDragging = true;
+    this.progressPointerId = event.pointerId;
     this.cancelProgressCommit();
+    this.progressTrack?.setPointerCapture(event.pointerId);
+    this.updateProgressFromClientX(event.clientX);
+    event.preventDefault();
   };
 
-  private readonly onProgressInput = (): void => {
-    const displayNumber = Number(this.progressInput?.value || "");
-
-    if (!Number.isFinite(displayNumber) || displayNumber <= 0) {
+  private readonly onProgressPointerMove = (event: PointerEvent): void => {
+    if (!this.progressDragging || event.pointerId !== this.progressPointerId) {
       return;
     }
 
-    this.progressDragging = true;
-    this.pendingProgressDisplayNumber = displayNumber;
-    this.pageNumberLabel!.textContent = this.totalPages ? `${displayNumber} / ${this.totalPages}` : String(displayNumber);
-    this.cancelProgressCommit();
-    this.progressCommitTimer = window.setTimeout(() => this.onProgressCommit(), 1500);
+    this.updateProgressFromClientX(event.clientX);
+    event.preventDefault();
   };
 
-  private readonly onProgressCommit = (): void => {
+  private readonly onProgressPointerUp = (event: PointerEvent): void => {
+    if (event.pointerId !== this.progressPointerId) {
+      return;
+    }
+
+    this.progressTrack?.releasePointerCapture?.(event.pointerId);
+    this.progressPointerId = null;
+    this.onProgressCommit();
+  };
+
+  private onProgressCommit(): void {
     if (!this.progressDragging && this.pendingProgressDisplayNumber === null) {
       return;
     }
 
-    const displayNumber = this.pendingProgressDisplayNumber ?? Number(this.progressInput?.value || "");
+    const displayNumber = this.pendingProgressDisplayNumber ?? this.currentPageNumber;
     this.progressDragging = false;
     this.pendingProgressDisplayNumber = null;
     this.cancelProgressCommit();
@@ -901,7 +918,52 @@ class FullscreenViewer {
     if (Number.isFinite(displayNumber) && displayNumber > 0) {
       void this.setCurrentPageNumber(displayNumber, true);
     }
-  };
+  }
+
+  private updateProgressFromClientX(clientX: number): void {
+    const displayNumber = this.displayNumberFromProgressClientX(clientX);
+
+    if (displayNumber === null) {
+      return;
+    }
+
+    this.pendingProgressDisplayNumber = displayNumber;
+    this.updatePageNumberText(displayNumber);
+    this.updateProgressVisual(displayNumber);
+    this.cancelProgressCommit();
+    this.progressCommitTimer = window.setTimeout(() => this.onProgressCommit(), 1500);
+  }
+
+  private displayNumberFromProgressClientX(clientX: number): number | null {
+    if (!this.progressTrack) {
+      return null;
+    }
+
+    const max = Math.max(1, this.totalPages ?? this.currentPageNumber);
+    const rect = this.progressTrack.getBoundingClientRect();
+
+    if (rect.width <= 0) {
+      return null;
+    }
+
+    const ratio = clamp((rect.right - clientX) / rect.width, 0, 1);
+    return clamp(Math.round(1 + ratio * (max - 1)), 1, max);
+  }
+
+  private updatePageNumberText(displayNumber: number): void {
+    if (this.pageNumberLabel) {
+      this.pageNumberLabel.textContent = this.totalPages ? `${displayNumber} / ${this.totalPages}` : String(displayNumber);
+    }
+  }
+
+  private updateProgressVisual(displayNumber: number): void {
+    const max = Math.max(1, this.totalPages ?? displayNumber);
+    const ratio = max <= 1 ? 0 : (displayNumber - 1) / (max - 1);
+    const percent = `${ratio * 100}%`;
+
+    this.progressFill?.style.setProperty("--ehpeek-progress-value", percent);
+    this.progressThumb?.style.setProperty("--ehpeek-progress-value", percent);
+  }
 
   private cancelProgressCommit(): void {
     if (this.progressCommitTimer !== null) {
@@ -1157,9 +1219,47 @@ function ensureViewerStyle(): void {
     }
 
     .ehpeek-progress {
+      position: relative;
       width: 100%;
-      accent-color: #f3f3f3;
-      direction: rtl;
+      height: 32px;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .ehpeek-progress::before {
+      position: absolute;
+      right: 0;
+      left: 0;
+      top: 50%;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.24);
+      content: "";
+      transform: translateY(-50%);
+    }
+
+    .ehpeek-progress-fill {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      width: var(--ehpeek-progress-value, 0%);
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.84);
+      transform: translateY(-50%);
+    }
+
+    .ehpeek-progress-thumb {
+      position: absolute;
+      right: var(--ehpeek-progress-value, 0%);
+      top: 50%;
+      width: 22px;
+      height: 22px;
+      border: 2px solid rgba(15, 15, 15, 0.92);
+      border-radius: 50%;
+      background: #f3f3f3;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      transform: translate(50%, -50%);
     }
 
     .ehpeek-scroller {
