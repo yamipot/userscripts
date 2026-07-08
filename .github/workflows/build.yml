@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-userscripts-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build-ehpeek:
     name: Build ehpeek
@@ -50,12 +54,24 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           cp ehpeek/dist/ehpeek.user.js "$artifact"
-          git worktree add --detach "$worktree"
+
+          if git ls-remote --exit-code --heads origin "$build_branch" >/dev/null 2>&1; then
+            git fetch origin "$build_branch"
+            git worktree add -B "$build_branch" "$worktree" "origin/$build_branch"
+          else
+            git worktree add --detach "$worktree"
+            cd "$worktree"
+            git checkout --orphan "$build_branch"
+            git rm -rf . >/dev/null 2>&1 || true
+            cd -
+          fi
 
           cd "$worktree"
-          git checkout --orphan "$build_branch"
-          git rm -rf . >/dev/null 2>&1 || true
           cp "$artifact" ehpeek.user.js
           git add ehpeek.user.js
+          if git diff --cached --quiet; then
+            echo "No build output changes."
+            exit 0
+          fi
           git commit -m "build ehpeek from ${GITHUB_SHA}"
-          git push --force origin "HEAD:${build_branch}"
+          git push origin "HEAD:${build_branch}"
