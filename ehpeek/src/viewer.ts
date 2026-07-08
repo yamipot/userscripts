@@ -1,4 +1,5 @@
 import texts from "./texts.json";
+import { debugLog } from "./utils";
 
 export type ViewMode = "scroll" | "paged";
 type ReadDirection = "ltr" | "rtl";
@@ -943,11 +944,21 @@ class FullscreenViewer {
   };
 
   private readonly onPointerDown = (event: PointerEvent): void => {
+    debugLog("pointerdown", {
+      pointerType: event.pointerType,
+      button: event.button,
+      buttons: event.buttons,
+      mode: this.mode,
+      target: targetSummary(event.target),
+    });
+
     if (!this.scroller) {
+      debugLog("pointerdown ignored: no scroller");
       return;
     }
 
     if (event.pointerType === "mouse" && event.button !== 0) {
+      debugLog("pointerdown ignored: mouse buttons", { button: event.button, buttons: event.buttons });
       return;
     }
 
@@ -957,6 +968,13 @@ class FullscreenViewer {
     this.dragStartClientX = event.clientX;
     this.dragStartClientY = event.clientY;
     this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop;
+    debugLog("drag start", {
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      startX: this.dragStartClientX,
+      startY: this.dragStartClientY,
+      startScroll: this.dragStartScroll,
+    });
     this.scroller.setPointerCapture?.(event.pointerId);
     this.scroller.classList.add("ehpeek-scroller-dragging");
     document.addEventListener("pointermove", this.onPointerMove, true);
@@ -965,13 +983,33 @@ class FullscreenViewer {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
+    // Some desktop userscript/browser combinations have been observed to report
+    // a mouse pointerdown/up and pen pointermove, with different pointerIds for
+    // one physical drag. If desktop drag support is revisited, handle non-touch
+    // drags with a looser matcher while keeping touch pointerIds strict for
+    // future two-finger pinch zoom.
     if (!this.dragging || event.pointerId !== this.dragPointerId || !this.scroller) {
+      debugLog("pointermove ignored", {
+        pointerId: event.pointerId,
+        dragPointerId: this.dragPointerId,
+        pointerType: event.pointerType,
+        dragging: this.dragging,
+        hasScroller: Boolean(this.scroller),
+      });
       return;
     }
 
     if (this.mode === "paged") {
       this.scroller.scrollLeft = this.dragStartScroll - (event.clientX - this.dragStartClientX);
     } else {
+      const nextScrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
+      debugLog("drag move", {
+        pointerType: event.pointerType,
+        clientY: event.clientY,
+        startY: this.dragStartClientY,
+        before: this.scroller.scrollTop,
+        next: nextScrollTop,
+      });
       this.scroller.scrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
     }
 
@@ -980,9 +1018,21 @@ class FullscreenViewer {
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     if (!this.dragging || event.pointerId !== this.dragPointerId) {
+      debugLog("pointerup ignored", {
+        pointerId: event.pointerId,
+        dragPointerId: this.dragPointerId,
+        pointerType: event.pointerType,
+        dragging: this.dragging,
+      });
       return;
     }
 
+    debugLog("drag end", {
+      pointerType: event.pointerType,
+      scrollTop: this.scroller?.scrollTop,
+      dx: event.clientX - this.dragStartClientX,
+      dy: event.clientY - this.dragStartClientY,
+    });
     this.dragging = false;
     this.dragPointerId = null;
     this.scroller?.releasePointerCapture?.(event.pointerId);
@@ -1365,6 +1415,17 @@ function aspectRatioFor(slot: PageSlot): number {
 
 function targetIsToolbar(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest(".ehpeek-topbar, .ehpeek-progressbar"));
+}
+
+function targetSummary(target: EventTarget | null): string {
+  if (!(target instanceof Element)) {
+    return String(target);
+  }
+
+  const id = target.id ? `#${target.id}` : "";
+  const className = typeof target.className === "string" && target.className ? `.${target.className.replace(/\s+/g, ".")}` : "";
+
+  return `${target.tagName.toLowerCase()}${id}${className}`;
 }
 
 function loadViewMode(): ViewMode {

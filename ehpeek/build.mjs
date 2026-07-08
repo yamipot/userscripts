@@ -8,6 +8,7 @@ const packageDir = path.dirname(fileURLToPath(import.meta.url));
 const outfile = path.join(packageDir, "dist/ehpeek.user.js");
 const texts = JSON.parse(readFileSync(path.join(packageDir, "src/texts.json"), "utf-8"));
 const releaseBuild = process.env.EHPEEK_RELEASE_BUILD === "true";
+const debugBuild = process.env.EHPEEK_DEBUG === "true";
 const installUrl = userscriptInstallUrl();
 const version = userscriptVersion();
 
@@ -36,9 +37,13 @@ await build({
   format: "iife",
   target: "es2020",
   charset: "utf8",
+  minifySyntax: !debugBuild,
   sourcemap: releaseBuild ? false : "linked",
   banner: {
     js: metadata,
+  },
+  define: {
+    __EHPEEK_DEBUG__: JSON.stringify(debugBuild),
   },
   outfile,
 });
