@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260708.0419
+// @version      260708.0440
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -46,7 +46,7 @@
   };
 
   // src/viewer.ts
-  var VIEW_MODE_KEY = "ehpeek:view-mode", READ_DIRECTION_KEY = "ehpeek:read-direction", RIGHT_TAP_ACTION_KEY = "ehpeek:right-tap-action", VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, FALLBACK_ASPECT_RATIO = 1.42, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PAGED_SMOOTH_SCROLL_MS = 120, PROGRESS_IDLE_COMMIT_MS = 1e3, activeViewer = null;
+  var VIEW_MODE_KEY = "ehpeek:view-mode", READ_DIRECTION_KEY = "ehpeek:read-direction", RIGHT_TAP_ACTION_KEY = "ehpeek:right-tap-action", VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, FALLBACK_ASPECT_RATIO = 1.42, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PAGED_SMOOTH_SCROLL_MS = 240, PROGRESS_IDLE_COMMIT_MS = 1e3, SCROLL_FLING_MIN_VELOCITY = 0.35, SCROLL_FLING_STOP_VELOCITY = 0.02, SCROLL_FLING_DECAY = 45e-4, activeViewer = null;
   function openFullscreenViewer(options) {
     activeViewer?.close();
     let viewer = new FullscreenViewer(options);
@@ -152,6 +152,7 @@
       this.previousDocumentTouchAction = "";
       this.scrollFrame = null;
       this.resizeFrame = null;
+      this.flingFrame = null;
       this.pagedScrollCommitTimer = null;
       this.progressCommitTimer = null;
       this.pendingProgressDisplayNumber = null;
@@ -162,6 +163,11 @@
       this.dragStartClientX = 0;
       this.dragStartClientY = 0;
       this.dragStartScroll = 0;
+      this.dragLastClientY = 0;
+      this.dragLastMoveTime = 0;
+      this.dragVelocityY = 0;
+      this.flingVelocityY = 0;
+      this.flingLastFrameTime = 0;
       this.syncToken = 0;
       this.historyEntry = !1;
       this.closing = !1;
@@ -204,7 +210,7 @@
           event.button, event.buttons;
           return;
         }
-        event.preventDefault(), this.dragging = !0, this.dragPointerId = event.pointerId, this.dragStartClientX = event.clientX, this.dragStartClientY = event.clientY, this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop, event.pointerId, event.pointerType, this.dragStartClientX, this.dragStartClientY, this.dragStartScroll, this.scroller.setPointerCapture?.(event.pointerId), this.scroller.classList.add("ehpeek-scroller-dragging"), document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
+        event.preventDefault(), this.cancelScrollFling(), this.dragging = !0, this.dragPointerId = event.pointerId, this.dragStartClientX = event.clientX, this.dragStartClientY = event.clientY, this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, this.dragVelocityY = 0, event.pointerId, event.pointerType, this.dragStartClientX, this.dragStartClientY, this.dragStartScroll, this.scroller.setPointerCapture?.(event.pointerId), this.scroller.classList.add("ehpeek-scroller-dragging"), document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
       };
       this.onPointerMove = (event) => {
         if (!this.dragging || event.pointerId !== this.dragPointerId || !this.scroller) {
@@ -214,8 +220,8 @@
         if (this.mode === "paged")
           this.scroller.scrollLeft = this.dragStartScroll - (event.clientX - this.dragStartClientX);
         else {
-          let nextScrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
-          event.pointerType, event.clientY, this.dragStartClientY, this.scroller.scrollTop, this.scroller.scrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
+          let nextScrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY), elapsed = Math.max(1, event.timeStamp - this.dragLastMoveTime);
+          this.dragVelocityY = (event.clientY - this.dragLastClientY) / elapsed, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, event.pointerType, event.clientY, this.dragStartClientY, this.scroller.scrollTop, this.scroller.scrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
         }
         event.preventDefault();
       };
@@ -227,7 +233,7 @@
         event.pointerType, this.scroller?.scrollTop, event.clientX - this.dragStartClientX, event.clientY - this.dragStartClientY, this.dragging = !1, this.dragPointerId = null, this.scroller?.releasePointerCapture?.(event.pointerId), this.scroller?.classList.remove("ehpeek-scroller-dragging"), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0);
         let dx = event.clientX - this.dragStartClientX, dy = event.clientY - this.dragStartClientY;
         if (this.mode !== "paged") {
-          Math.abs(dx) >= 8 || Math.abs(dy) >= 8 ? (this.suppressNextClick = !0, this.setScrollTop(this.scroller?.scrollTop ?? 0), this.updateCurrentFromScroll()) : (this.suppressNextClick = !0, this.toggleToolbar());
+          Math.abs(dx) >= 8 || Math.abs(dy) >= 8 ? (this.suppressNextClick = !0, this.setScrollTop(this.scroller?.scrollTop ?? 0), this.applyScrollFling(), this.updateCurrentFromScroll()) : (this.suppressNextClick = !0, this.toggleToolbar());
           return;
         }
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
@@ -248,6 +254,24 @@
         this.scrollFrame === null && (this.scrollFrame = window.requestAnimationFrame(() => {
           this.scrollFrame = null, this.updateCurrentFromScroll();
         }));
+      };
+      this.onScrollFlingFrame = (time) => {
+        if (!this.scroller || this.mode !== "scroll") {
+          this.cancelScrollFling();
+          return;
+        }
+        let elapsed = Math.min(32, Math.max(1, time - this.flingLastFrameTime));
+        this.flingLastFrameTime = time;
+        let previousScrollTop = this.scroller.scrollTop;
+        if (this.setScrollTop(previousScrollTop + this.flingVelocityY * elapsed), this.scroller.scrollTop === previousScrollTop) {
+          this.cancelScrollFling(), this.updateCurrentFromScroll();
+          return;
+        }
+        if (this.flingVelocityY *= Math.exp(-SCROLL_FLING_DECAY * elapsed), Math.abs(this.flingVelocityY) < SCROLL_FLING_STOP_VELOCITY) {
+          this.cancelScrollFling(), this.updateCurrentFromScroll();
+          return;
+        }
+        this.flingFrame = window.requestAnimationFrame(this.onScrollFlingFrame);
       };
       this.onScrollerClick = (event) => {
         if (this.suppressNextClick) {
@@ -333,7 +357,7 @@
       strip.className = "ehpeek-strip", this.strip = strip, scroller.append(strip), topbar.append(actions), toolbar.append(progressInput), overlay.append(topbar, pageNumberLabel, toolbar, scroller), document.body.append(overlay), this.overlay = overlay, scroller.focus({ preventScroll: !0 }), this.updateModeButton(), this.updateReadDirectionButton(), this.updateRightTapButton(), this.updatePageNumber();
     }
     finishClose() {
-      this.closed || (this.closed = !0, this.cancelProgressCommit(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.onKeydown, !0), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.overlay?.remove(), document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow, document.documentElement.style.touchAction = this.previousDocumentTouchAction, document.body.style.touchAction = this.previousBodyTouchAction, this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null), activeViewer === this && (activeViewer = null));
+      this.closed || (this.closed = !0, this.cancelProgressCommit(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.onKeydown, !0), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.overlay?.remove(), document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow, document.documentElement.style.touchAction = this.previousDocumentTouchAction, document.body.style.touchAction = this.previousBodyTouchAction, this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.cancelScrollFling(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null), activeViewer === this && (activeViewer = null));
     }
     setCurrentPageNumber(pageNumber, scrollIntoView, scrollBehavior = "auto") {
       let target = clamp(Math.round(pageNumber), 1, this.maxDisplayNumber());
@@ -494,7 +518,7 @@
       slot.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`), slot.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`), slot.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
     }
     updatePageNumber() {
-      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(this.currentPageNumber), !(!this.progressInput || this.progressDragging) && (this.progressInput.max = String(Math.max(1, this.totalPages ? this.totalPages + 1 : this.currentPageNumber)), this.progressInput.value = String(this.currentPageNumber)));
+      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(this.currentPageNumber), !(!this.progressInput || this.progressDragging) && (this.progressInput.max = String(Math.max(1, this.totalPages ? this.totalPages + 1 : this.currentPageNumber)), this.progressInput.value = String(this.currentPageNumber), this.updateProgressFill(this.currentPageNumber)));
     }
     notifyActivePageChange() {
       let page = this.loadedSlotFor(this.currentPageNumber);
@@ -502,6 +526,12 @@
     }
     pageNumberText(displayNumber) {
       return this.totalPages && displayNumber === this.totalPages + 1 ? "End" : this.totalPages ? `${displayNumber} / ${this.totalPages}` : String(displayNumber);
+    }
+    applyScrollFling() {
+      !this.scroller || Math.abs(this.dragVelocityY) < SCROLL_FLING_MIN_VELOCITY || (this.flingVelocityY = -this.dragVelocityY, this.flingLastFrameTime = performance.now(), this.flingFrame = window.requestAnimationFrame(this.onScrollFlingFrame));
+    }
+    cancelScrollFling() {
+      this.flingFrame !== null && (window.cancelAnimationFrame(this.flingFrame), this.flingFrame = null), this.flingVelocityY = 0;
     }
     updateCurrentFromScroll() {
       if (!this.scroller)
@@ -519,7 +549,13 @@
       }
     }
     updatePageNumberText(displayNumber) {
-      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(displayNumber));
+      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(displayNumber)), this.updateProgressFill(displayNumber);
+    }
+    updateProgressFill(displayNumber) {
+      if (!this.progressInput)
+        return;
+      let min = Number(this.progressInput.min || "1"), max = Number(this.progressInput.max || "1"), value = clamp(displayNumber, min, max), progress = max > min ? (value - min) / (max - min) * 100 : 100;
+      this.progressInput.style.setProperty("--ehpeek-progress-fill", `${progress}%`);
     }
     previewProgressPage(displayNumber) {
       let target = clamp(Math.round(displayNumber), 1, this.maxDisplayNumber());
@@ -529,7 +565,7 @@
       this.progressCommitTimer !== null && (window.clearTimeout(this.progressCommitTimer), this.progressCommitTimer = null);
     }
     setMode(mode) {
-      mode !== this.mode && (this.mode = mode, saveViewMode(mode), this.overlay?.classList.toggle("ehpeek-paged", mode === "paged"), this.updateModeButton(), window.requestAnimationFrame(() => this.scrollToCurrentPage("smooth")));
+      mode !== this.mode && (this.mode === "scroll" && mode === "paged" && this.updateCurrentFromScroll(), this.mode = mode, saveViewMode(mode), this.overlay?.classList.toggle("ehpeek-paged", mode === "paged"), this.updateModeButton(), window.requestAnimationFrame(() => this.scrollToCurrentPage("smooth")));
     }
     toggleReadDirection() {
       this.readDirection = this.readDirection === "rtl" ? "ltr" : "rtl", saveReadDirection(this.readDirection), this.overlay?.classList.toggle("ehpeek-read-rtl", this.readDirection === "rtl"), this.overlay?.classList.toggle("ehpeek-read-ltr", this.readDirection === "ltr"), this.updateReadDirectionButton();
@@ -808,6 +844,7 @@
     }
 
     .ehpeek-progress {
+      --ehpeek-progress-fill: 0%;
       width: 100%;
       height: 48px;
       margin: 0;
@@ -835,7 +872,19 @@
     .ehpeek-progress::-webkit-slider-runnable-track {
       height: 8px;
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.34);
+      background: linear-gradient(
+        to right,
+        #4da3ff 0 var(--ehpeek-progress-fill),
+        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+      );
+    }
+
+    #${VIEWER_ID}.ehpeek-read-rtl .ehpeek-progress::-webkit-slider-runnable-track {
+      background: linear-gradient(
+        to left,
+        #4da3ff 0 var(--ehpeek-progress-fill),
+        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+      );
     }
 
     .ehpeek-progress::-webkit-slider-thumb {
@@ -854,6 +903,12 @@
       height: 8px;
       border-radius: 999px;
       background: rgba(255, 255, 255, 0.34);
+    }
+
+    .ehpeek-progress::-moz-range-progress {
+      height: 8px;
+      border-radius: 999px;
+      background: #4da3ff;
     }
 
     .ehpeek-progress::-moz-range-thumb {
