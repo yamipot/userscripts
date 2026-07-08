@@ -15,24 +15,22 @@ export class ScrollAnimator {
 
   constructor(private readonly axis: ScrollAxis) {}
 
-  commitDelay(): number {
-    return SCROLL_ANIMATION_MODE === "none" ? 0 : SCROLL_ANIMATION_MS;
-  }
-
-  scrollTo(scroller: HTMLElement, target: number, behavior: ScrollBehavior = "auto"): void {
+  scrollTo(scroller: HTMLElement, target: number, behavior: ScrollBehavior = "auto", onComplete?: () => void): void {
     this.cancel();
 
     if (behavior !== "smooth" || SCROLL_ANIMATION_MODE === "none") {
       this.setScrollPosition(scroller, target);
+      onComplete?.();
       return;
     }
 
     if (SCROLL_ANIMATION_MODE === "native") {
       scroller.scrollTo(this.axis === "x" ? { left: target, behavior: "smooth" } : { top: target, behavior: "smooth" });
+      window.setTimeout(() => onComplete?.(), SCROLL_ANIMATION_MS);
       return;
     }
 
-    this.scrollWithRaf(scroller, target);
+    this.scrollWithRaf(scroller, target, onComplete);
   }
 
   cancel(): void {
@@ -42,7 +40,7 @@ export class ScrollAnimator {
     }
   }
 
-  private scrollWithRaf(scroller: HTMLElement, target: number): void {
+  private scrollWithRaf(scroller: HTMLElement, target: number, onComplete?: () => void): void {
     const start = this.scrollPosition(scroller);
     const delta = target - start;
     let lastFrameTime = performance.now();
@@ -59,6 +57,7 @@ export class ScrollAnimator {
 
       if (progress >= 1) {
         this.frame = null;
+        onComplete?.();
         return;
       }
 

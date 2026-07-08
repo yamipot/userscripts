@@ -331,7 +331,6 @@ class FullscreenViewer {
   private previousDocumentTouchAction = "";
   private scrollFrame: number | null = null;
   private resizeFrame: number | null = null;
-  private pagedScrollCommitTimer: number | null = null;
   private progressCommitTimer: number | null = null;
   private pendingProgressDisplayNumber: number | null = null;
   private progressDragging = false;
@@ -346,6 +345,7 @@ class FullscreenViewer {
   private dragVelocityY = 0;
   private readonly horizontalScrollAnimator = new ScrollAnimator("x");
   private readonly scrollFlingAnimator = new ScrollFlingAnimator();
+  private pagedTargetPageNumber: number | null = null;
   private syncToken = 0;
   private historyEntry = false;
   private closing = false;
@@ -559,17 +559,13 @@ class FullscreenViewer {
     this.scrollFlingAnimator.cancel();
     this.horizontalScrollAnimator.cancel();
 
-    if (this.pagedScrollCommitTimer !== null) {
-      window.clearTimeout(this.pagedScrollCommitTimer);
-      this.pagedScrollCommitTimer = null;
-    }
-
     if (activeViewer === this) {
       activeViewer = null;
     }
   }
 
   private setCurrentPageNumber(pageNumber: number, scrollIntoView: boolean, scrollBehavior: ScrollBehavior = "auto"): void {
+    this.pagedTargetPageNumber = null;
     const target = clamp(Math.round(pageNumber), 1, this.maxDisplayNumber());
 
     if (target !== this.currentPageNumber) {
@@ -604,11 +600,6 @@ class FullscreenViewer {
   private rebuildForCurrentMode(): void {
     this.scrollFlingAnimator.cancel();
     this.horizontalScrollAnimator.cancel();
-
-    if (this.pagedScrollCommitTimer !== null) {
-      window.clearTimeout(this.pagedScrollCommitTimer);
-      this.pagedScrollCommitTimer = null;
-    }
 
     for (const slot of this.slots) {
       slot.node?.remove();
@@ -864,9 +855,10 @@ class FullscreenViewer {
   }
 
   private animatePagedStep(delta: number): void {
-    const target = clamp(Math.round(this.currentPageNumber + delta), 1, this.maxDisplayNumber());
+    const base = this.pagedTargetPageNumber ?? this.currentPageNumber;
+    const target = clamp(Math.round(base + delta), 1, this.maxDisplayNumber());
 
-    if (target === this.currentPageNumber) {
+    if (target === base) {
       this.scrollToCurrentPage("smooth");
       return;
     }
@@ -874,21 +866,21 @@ class FullscreenViewer {
     const slot = this.slotFor(target);
 
     if (!slot?.node) {
+      this.pagedTargetPageNumber = null;
       this.setCurrentPageNumber(target, true, "smooth");
       return;
     }
 
-    this.direction = target > this.currentPageNumber ? 1 : -1;
-    this.scrollToSlot(slot, "smooth");
+    this.direction = target > base ? 1 : -1;
+    this.pagedTargetPageNumber = target;
+    this.scrollToSlot(slot, "smooth", () => {
+      if (this.pagedTargetPageNumber !== target) {
+        return;
+      }
 
-    if (this.pagedScrollCommitTimer !== null) {
-      window.clearTimeout(this.pagedScrollCommitTimer);
-    }
-
-    this.pagedScrollCommitTimer = window.setTimeout(() => {
-      this.pagedScrollCommitTimer = null;
+      this.pagedTargetPageNumber = null;
       this.setCurrentPageNumber(target, true);
-    }, this.horizontalScrollAnimator.commitDelay());
+    });
   }
 
   private scrollToCurrentPage(behavior: ScrollBehavior = "auto"): void {
@@ -901,7 +893,7 @@ class FullscreenViewer {
     this.scrollToSlot(slot, behavior);
   }
 
-  private scrollToSlot(slot: PageSlot, behavior: ScrollBehavior = "auto"): void {
+  private scrollToSlot(slot: PageSlot, behavior: ScrollBehavior = "auto", onComplete?: () => void): void {
     if (!this.scroller || !slot.node) {
       return;
     }
@@ -909,7 +901,7 @@ class FullscreenViewer {
     const pageRect = slot.node.getBoundingClientRect();
     const scrollerRect = this.scroller.getBoundingClientRect();
     const delta = this.horizontal() ? pageRect.left - scrollerRect.left : pageRect.top - scrollerRect.top;
-    this.addScrollPos(delta, behavior);
+    this.addScrollPos(delta, behavior, onComplete);
   }
 
   private readonly onImageLoaded = (slot: PageSlot, loaded: LoadedViewerPage, token: number): void => {
@@ -1451,24 +1443,25 @@ class FullscreenViewer {
     return this.mode === "paged";
   }
 
-  private addScrollPos(delta: number, behavior: ScrollBehavior = "auto"): void {
+  private addScrollPos(delta: number, behavior: ScrollBehavior = "auto", onComplete?: () => void): void {
     if (!this.scroller) {
       return;
     }
 
     if (this.horizontal()) {
-      this.scrollPagedTo(this.scroller.scrollLeft + delta, behavior);
+      this.scrollPagedTo(this.scroller.scrollLeft + delta, behavior, onComplete);
     } else {
       this.setScrollTop(this.scroller.scrollTop + delta);
+      onComplete?.();
     }
   }
 
-  private scrollPagedTo(left: number, behavior: ScrollBehavior = "auto"): void {
+  private scrollPagedTo(left: number, behavior: ScrollBehavior = "auto", onComplete?: () => void): void {
     if (!this.scroller) {
       return;
     }
 
-    this.horizontalScrollAnimator.scrollTo(this.scroller, left, behavior);
+    this.horizontalScrollAnimator.scrollTo(this.scroller, left, behavior, onComplete);
   }
 
   private setScrollTop(scrollTop: number): void {
