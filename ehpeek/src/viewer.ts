@@ -17,6 +17,7 @@ const NEAR_LOAD_AHEAD = 3;
 const FALLBACK_ASPECT_RATIO = 1.42;
 const PAGED_SWIPE_THRESHOLD = 24;
 const PAGED_WHEEL_THRESHOLD = 8;
+const PAGED_SMOOTH_SCROLL_MS = 260;
 
 export type ViewerPage = {
   url: string;
@@ -281,6 +282,7 @@ class FullscreenViewer {
   private previousDocumentTouchAction = "";
   private scrollFrame: number | null = null;
   private resizeFrame: number | null = null;
+  private pagedScrollCommitTimer: number | null = null;
   private progressCommitTimer: number | null = null;
   private pendingProgressDisplayNumber: number | null = null;
   private progressDragging = false;
@@ -497,12 +499,17 @@ class FullscreenViewer {
       window.cancelAnimationFrame(this.resizeFrame);
     }
 
+    if (this.pagedScrollCommitTimer !== null) {
+      window.clearTimeout(this.pagedScrollCommitTimer);
+      this.pagedScrollCommitTimer = null;
+    }
+
     if (activeViewer === this) {
       activeViewer = null;
     }
   }
 
-  private setCurrentPageNumber(pageNumber: number, scrollIntoView: boolean): void {
+  private setCurrentPageNumber(pageNumber: number, scrollIntoView: boolean, scrollBehavior: ScrollBehavior = "auto"): void {
     const target = clamp(Math.round(pageNumber), 1, this.maxDisplayNumber());
 
     if (target !== this.currentPageNumber) {
@@ -510,10 +517,10 @@ class FullscreenViewer {
       this.currentPageNumber = target;
     }
 
-    this.syncAfterPageChange({ scrollIntoView });
+    this.syncAfterPageChange({ scrollIntoView, scrollBehavior });
   }
 
-  private syncAfterPageChange(options: { scrollIntoView: boolean }): void {
+  private syncAfterPageChange(options: { scrollIntoView: boolean; scrollBehavior?: ScrollBehavior }): void {
     const token = ++this.syncToken;
     const numbers = this.windowNumbers();
     const missing = numbers.filter((number) => this.isRealDisplayNumber(number) && !this.loadedSlotFor(number));
@@ -523,7 +530,7 @@ class FullscreenViewer {
     this.notifyActivePageChange();
 
     if (options.scrollIntoView) {
-      this.scrollToCurrentPage();
+      this.scrollToCurrentPage(options.scrollBehavior);
     }
 
     if (missing.length > 0) {
@@ -786,20 +793,61 @@ class FullscreenViewer {
   }
 
   private step(delta: number): void {
+    if (this.mode === "paged") {
+      this.animatePagedStep(delta);
+      return;
+    }
+
     this.setCurrentPageNumber(this.currentPageNumber + delta, true);
   }
 
-  private scrollToCurrentPage(): void {
+  private animatePagedStep(delta: number): void {
+    const target = clamp(Math.round(this.currentPageNumber + delta), 1, this.maxDisplayNumber());
+
+    if (target === this.currentPageNumber) {
+      this.scrollToCurrentPage("smooth");
+      return;
+    }
+
+    const slot = this.slotFor(target);
+
+    if (!slot?.node) {
+      this.setCurrentPageNumber(target, true, "smooth");
+      return;
+    }
+
+    this.direction = target > this.currentPageNumber ? 1 : -1;
+    this.scrollToSlot(slot, "smooth");
+
+    if (this.pagedScrollCommitTimer !== null) {
+      window.clearTimeout(this.pagedScrollCommitTimer);
+    }
+
+    this.pagedScrollCommitTimer = window.setTimeout(() => {
+      this.pagedScrollCommitTimer = null;
+      this.setCurrentPageNumber(target, true);
+    }, PAGED_SMOOTH_SCROLL_MS);
+  }
+
+  private scrollToCurrentPage(behavior: ScrollBehavior = "auto"): void {
     const slot = this.slotFor(this.currentPageNumber);
 
-    if (!this.scroller || !slot?.node) {
+    if (!slot) {
+      return;
+    }
+
+    this.scrollToSlot(slot, behavior);
+  }
+
+  private scrollToSlot(slot: PageSlot, behavior: ScrollBehavior = "auto"): void {
+    if (!this.scroller || !slot.node) {
       return;
     }
 
     const pageRect = slot.node.getBoundingClientRect();
     const scrollerRect = this.scroller.getBoundingClientRect();
     const delta = this.horizontal() ? pageRect.left - scrollerRect.left : pageRect.top - scrollerRect.top;
-    this.addScrollPos(delta);
+    this.addScrollPos(delta, behavior);
   }
 
   private readonly onImageLoaded = (slot: PageSlot, loaded: LoadedViewerPage, token: number): void => {
@@ -1073,7 +1121,7 @@ class FullscreenViewer {
     } else if (dx <= -PAGED_SWIPE_THRESHOLD) {
       this.step(this.rightwardDelta());
     } else {
-      this.scrollToCurrentPage();
+      this.scrollToCurrentPage("smooth");
     }
   };
 
@@ -1211,7 +1259,7 @@ class FullscreenViewer {
     saveViewMode(mode);
     this.overlay?.classList.toggle("ehpeek-paged", mode === "paged");
     this.updateModeButton();
-    window.requestAnimationFrame(() => this.scrollToCurrentPage());
+    window.requestAnimationFrame(() => this.scrollToCurrentPage("smooth"));
   }
 
   private toggleReadDirection(): void {
@@ -1287,13 +1335,13 @@ class FullscreenViewer {
     return this.mode === "paged";
   }
 
-  private addScrollPos(delta: number): void {
+  private addScrollPos(delta: number, behavior: ScrollBehavior = "auto"): void {
     if (!this.scroller) {
       return;
     }
 
     if (this.horizontal()) {
-      this.scroller.scrollLeft += delta;
+      this.scroller.scrollTo({ left: this.scroller.scrollLeft + delta, behavior });
     } else {
       this.setScrollTop(this.scroller.scrollTop + delta);
     }
