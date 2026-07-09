@@ -14,13 +14,13 @@ export type PreviewSnapshot = {
   thumbs: Node | null;
 };
 
-type ExtractedPage =
+type PageType =
   | {
       type: "image";
       pageNum: number;
     }
   | {
-      type: "gallery" | "other";
+      type: "gallery" | "search" | "other";
     };
 
 export function imageAspectRatio(image: HTMLImageElement | null): number {
@@ -31,7 +31,7 @@ export function imageAspectRatio(image: HTMLImageElement | null): number {
 }
 
 export function collectGalleryPages(
-  extractPageType: (url: string) => ExtractedPage,
+  extractPageType: (url: string) => PageType,
   root: ParentNode = document,
   baseUrl = window.location.href,
 ): ReaderPage[] {
@@ -75,6 +75,13 @@ export function readShowingRange(root: ParentNode = document): { start: number; 
   return [start, end, total].every((value) => Number.isFinite(value) && value > 0) ? { start, end, total } : null;
 }
 
+export function searchPageNavigation(root: ParentNode = document): { previousUrl: string | null; nextUrl: string | null } | null {
+  const previousUrl = root.querySelector<HTMLAnchorElement>(".searchnav a[id$='prev'][href]")?.href ?? null;
+  const nextUrl = root.querySelector<HTMLAnchorElement>(".searchnav a[id$='next'][href]")?.href ?? null;
+
+  return previousUrl || nextUrl ? { previousUrl, nextUrl } : null;
+}
+
 export function maxPreviewPageIndex(root: ParentNode = document, baseUrl = window.location.href): number | null {
   const indexes = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href*='?p='], a[href*='&p=']"))
     .map((link) => {
@@ -93,7 +100,7 @@ export function maxPreviewPageIndex(root: ParentNode = document, baseUrl = windo
   return Math.max(...indexes);
 }
 
-export function findClickedImageLink(target: EventTarget | null, extractPageType: (url: string) => ExtractedPage): HTMLAnchorElement | null {
+export function findClickedImageLink(target: EventTarget | null, extractPageType: (url: string) => PageType): HTMLAnchorElement | null {
   const link = target instanceof Element ? target.closest<HTMLAnchorElement>("a[href]") : null;
 
   if (!(link instanceof HTMLAnchorElement) || extractPageType(link.href).type !== "image") {

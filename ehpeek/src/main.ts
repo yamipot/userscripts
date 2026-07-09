@@ -7,6 +7,7 @@ import {
   navigateGalleryPreview,
   toggleEnhanceGalleryThumbs,
 } from "./components/EnhanceGallery";
+import { installSearchPageSwipeNavigation } from "./components/EnhanceSearchPage";
 import * as eh from "./eh";
 import texts from "./texts.json";
 import { state } from "./state";
@@ -48,10 +49,16 @@ function toggleEnhanceGalleryThumbsSetting(): void {
   settingsMenu?.update();
 }
 
+function toggleEnhanceSearchPageSetting(): void {
+  state.search.enhance.set(!state.search.enhance.value);
+  settingsMenu?.update();
+}
+
 function settingsMenuState() {
   return {
     readerEnabled: state.reader.enabled.value,
     enhanceGalleryThumbsEnabled: enhanceGalleryThumbsEnabled(),
+    enhanceSearchPageEnabled: state.search.enhance.value,
   };
 }
 
@@ -158,6 +165,7 @@ function installSettingsMenu(): void {
   settingsMenu = new SettingsMenu(eh.settingsMenuTriggerTagName(), settingsMenuState, {
     onReaderToggle: toggleReader,
     onEnhanceGalleryThumbsToggle: toggleEnhanceGalleryThumbsSetting,
+    onEnhanceSearchPageToggle: toggleEnhanceSearchPageSetting,
   });
 
   if (!eh.mountSettingsMenu(settingsMenu)) {
@@ -199,12 +207,14 @@ async function openReaderFromHash(): Promise<void> {
 registerUserscriptMenu();
 
 const pageType = eh.extractPageType();
+installSettingsMenu();
 
 if (pageType.type === "gallery") {
-  installSettingsMenu();
   installGalleryThumbEnhancement(reportOpenError);
   document.addEventListener("click", onDocumentClick, true);
   if (state.reader.enabled.value && pageType.peekPage !== null) {
     void openReaderFromHash();
   }
+} else if (pageType.type === "search" && state.search.enhance.value) {
+  installSearchPageSwipeNavigation(pageType);
 }

@@ -20,6 +20,9 @@ export const state = {
   gallery: {
     enhanceThumbs: persisted("ehpeek:gallery:enhance-thumbs", true),
   },
+  search: {
+    enhance: persisted("ehpeek:search:enhance", true),
+  },
 } as const;
 
 function persisted<T>(key: string, defaultValue: T): StateValue<T> {

@@ -8,6 +8,7 @@ const STYLE_ID = "ehpeek-settings-style";
 export type SettingsMenuState = {
   readerEnabled: boolean;
   enhanceGalleryThumbsEnabled: boolean;
+  enhanceSearchPageEnabled: boolean;
 };
 
 export class SettingsMenu {
@@ -16,6 +17,7 @@ export class SettingsMenu {
   private readonly menu: HTMLElement;
   private readonly readerSetting: HTMLButtonElement;
   private readonly enhanceGalleryThumbsSetting: HTMLButtonElement;
+  private readonly enhanceSearchPageSetting: HTMLButtonElement;
 
   constructor(
     triggerTagName: "a" | "button",
@@ -23,6 +25,7 @@ export class SettingsMenu {
     private readonly handlers: {
       onReaderToggle: () => void;
       onEnhanceGalleryThumbsToggle: () => void;
+      onEnhanceSearchPageToggle: () => void;
     },
   ) {
     this.root = document.createElement(triggerTagName === "a" ? "div" : "span");
@@ -37,8 +40,12 @@ export class SettingsMenu {
       this.handlers.onEnhanceGalleryThumbsToggle();
       this.update();
     });
+    this.enhanceSearchPageSetting = this.createSwitchButton(() => {
+      this.handlers.onEnhanceSearchPageToggle();
+      this.update();
+    });
 
-    this.menu.append(this.readerSetting, this.enhanceGalleryThumbsSetting);
+    this.menu.append(this.readerSetting, this.enhanceGalleryThumbsSetting, this.enhanceSearchPageSetting);
     this.root.append(this.trigger, this.menu);
     this.update();
   }
@@ -83,6 +90,12 @@ export class SettingsMenu {
       current.enhanceGalleryThumbsEnabled,
       current.enhanceGalleryThumbsEnabled ? texts.settings.enhanceGalleryThumbsOn : texts.settings.enhanceGalleryThumbsOff,
       current.enhanceGalleryThumbsEnabled ? texts.settings.disableEnhanceGalleryThumbs : texts.settings.enableEnhanceGalleryThumbs,
+    );
+    this.updateSwitch(
+      this.enhanceSearchPageSetting,
+      current.enhanceSearchPageEnabled,
+      current.enhanceSearchPageEnabled ? texts.settings.enhanceSearchPageOn : texts.settings.enhanceSearchPageOff,
+      current.enhanceSearchPageEnabled ? texts.settings.disableEnhanceSearchPage : texts.settings.enableEnhanceSearchPage,
     );
 
     this.position();

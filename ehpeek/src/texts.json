@@ -23,7 +23,11 @@
     "enhanceGalleryThumbsOn": "Enhance gallery thumbs: on",
     "enhanceGalleryThumbsOff": "Enhance gallery thumbs: off",
     "enableEnhanceGalleryThumbs": "Enable enhanced gallery thumbs",
-    "disableEnhanceGalleryThumbs": "Disable enhanced gallery thumbs"
+    "disableEnhanceGalleryThumbs": "Disable enhanced gallery thumbs",
+    "enhanceSearchPageOn": "Enhance search page: on",
+    "enhanceSearchPageOff": "Enhance search page: off",
+    "enableEnhanceSearchPage": "Enable enhanced search page",
+    "disableEnhanceSearchPage": "Disable enhanced search page"
   },
   "errors": {
     "imageNotFound": "Image not found",

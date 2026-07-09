@@ -5,7 +5,7 @@ import * as dom from "./dom";
 
 export type PreviewSnapshot = dom.PreviewSnapshot;
 
-export type EhPage =
+export type PageType =
   | {
       type: "gallery";
       url: string;
@@ -21,11 +21,15 @@ export type EhPage =
       pageNum: number;
     }
   | {
+      type: "search";
+      url: string;
+    }
+  | {
       type: "other";
       url: string;
     };
 
-export function extractPageType(url = window.location.href): EhPage {
+export function extractPageType(url = window.location.href): PageType {
   try {
     const parsed = new URL(url, window.location.href);
     const galleryMatch = parsed.pathname.match(/^\/g\/(\d+)\/([^/]+)\/?$/i);
@@ -59,6 +63,13 @@ export function extractPageType(url = window.location.href): EhPage {
           pageNum,
         };
       }
+    }
+
+    if (parsed.pathname === "/" || parsed.pathname.startsWith("/tag/") || parsed.pathname === "/watched") {
+      return {
+        type: "search",
+        url: parsed.href,
+      };
     }
 
     return {
@@ -168,6 +179,10 @@ export function collectGalleryPages(root: ParentNode = document, baseUrl = windo
 
 export function readShowingRange(root: ParentNode = document): { start: number; end: number; total: number } | null {
   return dom.readShowingRange(root);
+}
+
+export function searchPageNavigation(root: ParentNode = document): { previousUrl: string | null; nextUrl: string | null } | null {
+  return dom.searchPageNavigation(root);
 }
 
 export function computePreviewPageSize(root: ParentNode = document): number {
