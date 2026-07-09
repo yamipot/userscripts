@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260708.0511
+// @version      260709.1239
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @run-at       document-end
@@ -17,7 +19,7 @@
   // src/texts.json
   var texts_default = {
     description: "A mobile-optimized E-H/ExH viewer",
-    viewer: {
+    reader: {
       close: "Close",
       scrollMode: "Switch to scroll mode",
       pagedMode: "Switch to page-flip mode",
@@ -26,6 +28,7 @@
       rightTapPrevious: "Right tap goes to previous page",
       rightTapNext: "Right tap goes to next page",
       disableReader: "Disable Ehpeek Reader",
+      endPage: "End",
       end: "End of gallery. Tap to exit.",
       failedPrefix: "Failed"
     },
@@ -45,16 +48,1193 @@
     }
   };
 
-  // src/viewer.ts
-  var VIEW_MODE_KEY = "ehpeek:view-mode", READ_DIRECTION_KEY = "ehpeek:read-direction", RIGHT_TAP_ACTION_KEY = "ehpeek:right-tap-action", VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, FALLBACK_ASPECT_RATIO = 1.42, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PAGED_ANIMATION = "raf", PAGED_SMOOTH_SCROLL_MS = 180, PAGED_SCROLL_EASING_POWER = 3, PROGRESS_IDLE_COMMIT_MS = 1e3, ANIMATION_FRAME_MIN_DELTA_MS = 1, ANIMATION_FRAME_MAX_DELTA_MS = 32, SCROLL_FLING_MIN_VELOCITY = 0.35, SCROLL_FLING_STOP_VELOCITY = 0.02, SCROLL_FLING_DECAY = 45e-4, activeViewer = null;
-  function openFullscreenViewer(options) {
-    activeViewer?.close();
-    let viewer = new FullscreenViewer(options);
-    activeViewer = viewer, viewer.open();
+  // src/state.ts
+  var state = {
+    reader: {
+      enabled: persisted("ehpeek:reader:enabled", !0),
+      viewMode: persisted("ehpeek:reader:view-mode", "scroll"),
+      readDirection: persisted("ehpeek:reader:read-direction", "rtl"),
+      rightTapAction: persisted("ehpeek:reader:right-tap-action", "previous")
+    }
+  };
+  function persisted(key, defaultValue) {
+    let item = {
+      key,
+      defaultValue,
+      value: GM_getValue(key, defaultValue),
+      set(value) {
+        item.value = value, GM_setValue(key, value);
+      },
+      reload() {
+        return item.value = GM_getValue(key, defaultValue), item.value;
+      }
+    };
+    return item;
   }
-  var TwoTierImageQueue = class {
-    constructor(loadPage, onLoaded, onError, nearConcurrentLoads, farConcurrentLoads) {
-      this.loadPage = loadPage;
+
+  // src/utils.ts
+  function clamp(value, min, max) {
+    return max < min ? min : Math.min(max, Math.max(min, value));
+  }
+  function normalizeUrl(url, baseUrl = window.location.href) {
+    try {
+      return new URL(url, baseUrl).href;
+    } catch {
+      return "";
+    }
+  }
+  function normalizedAspectRatio(value, fallback) {
+    return value && Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+  function positiveNumber(value) {
+    return value && Number.isFinite(value) && value > 0 ? value : null;
+  }
+  function stopEvent(event) {
+    event.stopPropagation();
+  }
+  function targetSummary(target) {
+    if (!(target instanceof Element))
+      return String(target);
+    let id = target.id ? `#${target.id}` : "", className = typeof target.className == "string" && target.className ? `.${target.className.replace(/\s+/g, ".")}` : "";
+    return `${target.tagName.toLowerCase()}${id}${className}`;
+  }
+
+  // src/components/reader/gesture.ts
+  var TAP_MOVE_THRESHOLD = 8, PagesGesture = class {
+    constructor(target, handlers) {
+      this.target = target;
+      this.handlers = handlers;
+      this.mouseDragPointerId = -1;
+      this.drag = null;
+      this.passiveTap = null;
+      this.suppressNextClick = !1;
+      this.onKeydown = (event) => {
+        if (!this.shouldIgnoreKeyboardEvent(event)) {
+          if (event.key === "Escape") {
+            event.preventDefault(), this.handlers.onKeyboardClose();
+            return;
+          }
+          if (event.key === "ArrowLeft") {
+            event.preventDefault(), this.handlers.onKeyboardArrow("left");
+            return;
+          }
+          event.key === "ArrowRight" && (event.preventDefault(), this.handlers.onKeyboardArrow("right"));
+        }
+      };
+      this.onClick = (event) => {
+        if (this.suppressNextClick) {
+          this.suppressNextClick = !1, event.preventDefault();
+          return;
+        }
+        this.handlers.onTap(
+          {
+            pointerId: null,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            dx: 0,
+            dy: 0
+          },
+          event
+        );
+      };
+      this.onWheel = (event) => {
+        let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+        this.handlers.onWheel(delta, event);
+      };
+      this.onDragStartEvent = (event) => {
+        event.preventDefault();
+      };
+      this.onMouseDown = (event) => {
+        if (event.button !== 0)
+          return;
+        if (this.drag?.pointerType === "mouse") {
+          this.addMouseListeners();
+          return;
+        }
+        if (typeof PointerEvent < "u" || this.drag)
+          return;
+        let synthetic = this.mouseEventToPointerLike(event, "pointerdown");
+        this.handlers.shouldStartDrag(synthetic) && (event.preventDefault(), this.startDragFromPoint(this.mouseDragPointerId, "mouse", event.clientX, event.clientY, event.timeStamp, event), this.addMouseListeners());
+      };
+      this.onMouseMove = (event) => {
+        !this.drag || this.drag.pointerType !== "mouse" || (this.updateDrag(event.clientX, event.clientY, event.timeStamp, event), event.preventDefault());
+      };
+      this.onMouseUp = (event) => {
+        !this.drag || this.drag.pointerType !== "mouse" || (this.finishDrag(event.clientX, event.clientY, event), this.removeMouseListeners());
+      };
+      this.onPointerDown = (event) => {
+        if (event.pointerType, event.button, event.buttons, targetSummary(event.target), event.pointerType === "mouse" && event.button !== 0) {
+          event.button, event.buttons;
+          return;
+        }
+        if (!this.handlers.shouldStartDrag(event)) {
+          this.beginPassiveTap(event);
+          return;
+        }
+        event.preventDefault(), this.startDragFromPoint(event.pointerId, event.pointerType, event.clientX, event.clientY, event.timeStamp, event), event.pointerType === "mouse" && this.addMouseListeners();
+      };
+      this.onPointerMove = (event) => {
+        let drag = this.drag;
+        if (!drag) {
+          this.trackPassiveTap(event);
+          return;
+        }
+        if (!this.matchesDragPointer(event, drag)) {
+          event.pointerId, drag?.pointerId, event.pointerType;
+          return;
+        }
+        this.updateDrag(event.clientX, event.clientY, event.timeStamp, event), event.preventDefault();
+      };
+      this.onPointerUp = (event) => {
+        let drag = this.drag;
+        if (!drag) {
+          this.endPassiveTap(event);
+          return;
+        }
+        if (!this.matchesDragPointer(event, drag)) {
+          event.pointerId, drag?.pointerId, event.pointerType;
+          return;
+        }
+        this.finishDrag(event.clientX, event.clientY, event);
+      };
+      this.onScroll = () => {
+        this.handlers.onNativeScroll();
+      };
+      target.addEventListener("click", this.onClick), target.addEventListener("scroll", this.onScroll), target.addEventListener("wheel", this.onWheel), target.addEventListener("pointerdown", this.onPointerDown), target.addEventListener("mousedown", this.onMouseDown), target.addEventListener("dragstart", this.onDragStartEvent);
+    }
+    dispose() {
+      this.drag && (this.target.releasePointerCapture?.(this.drag.pointerId), this.drag = null), this.passiveTap = null, this.target.classList.remove("ehpeek-scroller-dragging"), this.removePointerListeners(), this.target.removeEventListener("click", this.onClick), this.target.removeEventListener("scroll", this.onScroll), this.target.removeEventListener("wheel", this.onWheel), this.target.removeEventListener("pointerdown", this.onPointerDown), this.target.removeEventListener("mousedown", this.onMouseDown), this.target.removeEventListener("dragstart", this.onDragStartEvent);
+    }
+    dragging() {
+      return this.drag !== null;
+    }
+    shouldIgnoreKeyboardEvent(event) {
+      if (event.isComposing)
+        return !0;
+      let target = event.target;
+      return target instanceof Element ? !!target.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']") : !1;
+    }
+    startDragFromPoint(pointerId, pointerType, clientX, clientY, timeStamp, event) {
+      this.drag = {
+        pointerId,
+        pointerType,
+        startClientX: clientX,
+        startClientY: clientY,
+        lastClientY: clientY,
+        lastMoveTime: timeStamp,
+        velocityY: 0
+      }, this.beginDrag(pointerId), this.handlers.onDragStart(
+        {
+          pointerId,
+          clientX,
+          clientY
+        },
+        event
+      );
+    }
+    matchesDragPointer(event, drag) {
+      return event.pointerId === drag.pointerId ? !0 : drag.pointerType === "mouse" && event.pointerType === "mouse" && (event.type === "pointerup" || event.type === "pointercancel" || (event.buttons & 1) === 1);
+    }
+    beginDrag(pointerId) {
+      this.target.classList.add("ehpeek-scroller-dragging"), pointerId !== this.mouseDragPointerId && this.target.setPointerCapture?.(pointerId), this.addPointerListeners();
+    }
+    beginPassiveTap(event) {
+      event.pointerType !== "mouse" && (this.passiveTap = {
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        lastClientX: event.clientX,
+        lastClientY: event.clientY,
+        moved: !1
+      }, this.addPointerListeners());
+    }
+    trackPassiveTap(event) {
+      let tap = this.passiveTap;
+      !tap || !this.matchesPassiveTapPointer(event, tap) || (tap.lastClientX = event.clientX, tap.lastClientY = event.clientY, (Math.abs(event.clientX - tap.startClientX) >= TAP_MOVE_THRESHOLD || Math.abs(event.clientY - tap.startClientY) >= TAP_MOVE_THRESHOLD) && (tap.moved = !0));
+    }
+    endPassiveTap(event) {
+      let tap = this.passiveTap;
+      if (!tap || !this.matchesPassiveTapPointer(event, tap) || (this.passiveTap = null, this.removePointerListeners(), event.type === "pointercancel"))
+        return;
+      let dx = event.clientX - tap.startClientX, dy = event.clientY - tap.startClientY;
+      tap.moved || Math.abs(dx) >= TAP_MOVE_THRESHOLD || Math.abs(dy) >= TAP_MOVE_THRESHOLD || (this.suppressNextClick = !0, this.handlers.onTap(
+        {
+          pointerId: event.pointerId,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          dx,
+          dy
+        },
+        event
+      ));
+    }
+    addPointerListeners() {
+      document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
+    }
+    endDrag(pointerId) {
+      pointerId !== this.mouseDragPointerId && this.target.releasePointerCapture?.(pointerId), this.target.classList.remove("ehpeek-scroller-dragging"), this.removePointerListeners();
+    }
+    updateDrag(clientX, clientY, timeStamp, event) {
+      let drag = this.drag;
+      if (!drag)
+        return;
+      let elapsed = Math.max(1, timeStamp - drag.lastMoveTime);
+      drag.velocityY = (clientY - drag.lastClientY) / elapsed, drag.lastClientY = clientY, drag.lastMoveTime = timeStamp, this.handlers.onDragMove(
+        {
+          pointerId: drag.pointerId,
+          clientX,
+          clientY,
+          dx: clientX - drag.startClientX,
+          dy: clientY - drag.startClientY,
+          velocityY: drag.velocityY
+        },
+        event
+      );
+    }
+    finishDrag(clientX, clientY, event) {
+      let drag = this.drag;
+      if (!drag)
+        return;
+      this.drag = null, this.endDrag(drag.pointerId);
+      let dx = clientX - drag.startClientX, dy = clientY - drag.startClientY;
+      if (Math.abs(dx) < TAP_MOVE_THRESHOLD && Math.abs(dy) < TAP_MOVE_THRESHOLD) {
+        this.suppressNextClick = !0, this.handlers.onTap(
+          {
+            pointerId: drag.pointerId,
+            clientX,
+            clientY,
+            dx,
+            dy
+          },
+          event
+        );
+        return;
+      }
+      this.handlers.onDragEnd(
+        {
+          pointerId: drag.pointerId,
+          clientX,
+          clientY,
+          dx,
+          dy,
+          velocityY: drag.velocityY
+        },
+        event
+      );
+    }
+    mouseEventToPointerLike(event, type) {
+      return {
+        ...event,
+        type,
+        pointerId: this.mouseDragPointerId,
+        pointerType: "mouse",
+        isPrimary: !0
+      };
+    }
+    removePointerListeners() {
+      document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.removeMouseListeners();
+    }
+    addMouseListeners() {
+      document.addEventListener("mousemove", this.onMouseMove, !0), document.addEventListener("mouseup", this.onMouseUp, !0);
+    }
+    removeMouseListeners() {
+      document.removeEventListener("mousemove", this.onMouseMove, !0), document.removeEventListener("mouseup", this.onMouseUp, !0);
+    }
+    matchesPassiveTapPointer(event, tap) {
+      return event.pointerId === tap.pointerId && event.pointerType === tap.pointerType;
+    }
+  };
+
+  // src/jsx.ts
+  function h(tag, props, ...children) {
+    let node = document.createElement(tag);
+    return props && applyProps(node, props), appendChildren(node, children), props?.ref?.(node), node;
+  }
+  function applyProps(node, props) {
+    for (let [name, value] of Object.entries(props))
+      if (!(name === "children" || name === "ref" || value === void 0 || value === null || value === !1)) {
+        if (name === "className") {
+          node.className = String(value);
+          continue;
+        }
+        if (name.startsWith("on") && typeof value == "function") {
+          node.addEventListener(name.slice(2).toLowerCase(), value);
+          continue;
+        }
+        if (value === !0) {
+          node.setAttribute(name, "");
+          continue;
+        }
+        name in node ? node[name] = value : node.setAttribute(name, String(value));
+      }
+  }
+  function appendChildren(parent, children) {
+    for (let child of children.flat())
+      child == null || typeof child == "boolean" || parent.appendChild(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+
+  // src/components/animation.ts
+  var SCROLL_ANIMATION_MODE = "raf", SCROLL_ANIMATION_MS = 180, SCROLL_EASING_POWER = 3, ANIMATION_FRAME_MIN_DELTA_MS = 1, ANIMATION_FRAME_MAX_DELTA_MS = 32, SCROLL_FLING_MIN_VELOCITY = 0.35, SCROLL_FLING_STOP_VELOCITY = 0.02, SCROLL_FLING_DECAY = 45e-4, ScrollAnimator = class {
+    constructor(axis) {
+      this.axis = axis;
+      this.frame = null;
+    }
+    scrollTo(scroller, target, motion = "instant", onComplete) {
+      if (this.cancel(), motion !== "animated" || SCROLL_ANIMATION_MODE === "none") {
+        this.setScrollPosition(scroller, target), onComplete?.();
+        return;
+      }
+      if (SCROLL_ANIMATION_MODE === "native") {
+        scroller.scrollTo(this.axis === "x" ? { left: target, behavior: "smooth" } : { top: target, behavior: "smooth" }), window.setTimeout(() => onComplete?.(), SCROLL_ANIMATION_MS);
+        return;
+      }
+      this.scrollWithRaf(scroller, target, onComplete);
+    }
+    cancel() {
+      this.frame !== null && (window.cancelAnimationFrame(this.frame), this.frame = null);
+    }
+    scrollWithRaf(scroller, target, onComplete) {
+      let start = this.scrollPosition(scroller), delta = target - start, lastFrameTime = performance.now(), animationTime = 0, step = (time) => {
+        let elapsed = clamp(time - lastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
+        lastFrameTime = time, animationTime += elapsed;
+        let progress = clamp(animationTime / SCROLL_ANIMATION_MS, 0, 1), eased = 1 - Math.pow(1 - progress, SCROLL_EASING_POWER);
+        if (this.setScrollPosition(scroller, start + delta * eased), progress >= 1) {
+          this.frame = null, onComplete?.();
+          return;
+        }
+        this.frame = window.requestAnimationFrame(step);
+      };
+      this.frame = window.requestAnimationFrame(step);
+    }
+    scrollPosition(scroller) {
+      return this.axis === "x" ? scroller.scrollLeft : scroller.scrollTop;
+    }
+    setScrollPosition(scroller, value) {
+      this.axis === "x" ? scroller.scrollLeft = value : scroller.scrollTop = value;
+    }
+  }, ScrollFlingAnimator = class {
+    constructor() {
+      this.frame = null;
+      this.velocityY = 0;
+      this.lastFrameTime = 0;
+    }
+    start(options) {
+      if (this.cancel(), Math.abs(options.initialVelocityY) < SCROLL_FLING_MIN_VELOCITY)
+        return;
+      this.velocityY = options.initialVelocityY, this.lastFrameTime = performance.now();
+      let step = (time) => {
+        if (!options.canRun()) {
+          this.cancel();
+          return;
+        }
+        let elapsed = clamp(time - this.lastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
+        this.lastFrameTime = time;
+        let previousScrollTop = options.scroller.scrollTop;
+        if (options.setScrollTop(previousScrollTop + this.velocityY * elapsed), options.scroller.scrollTop === previousScrollTop) {
+          this.cancel(), options.onStop();
+          return;
+        }
+        if (this.velocityY *= Math.exp(-SCROLL_FLING_DECAY * elapsed), Math.abs(this.velocityY) < SCROLL_FLING_STOP_VELOCITY) {
+          this.cancel(), options.onStop();
+          return;
+        }
+        this.frame = window.requestAnimationFrame(step);
+      };
+      this.frame = window.requestAnimationFrame(step);
+    }
+    cancel() {
+      this.frame !== null && (window.cancelAnimationFrame(this.frame), this.frame = null), this.velocityY = 0;
+    }
+  };
+
+  // src/components/reader/viewport.tsx
+  var FALLBACK_ASPECT_RATIO = 1.42, PagesViewport = class {
+    constructor(options) {
+      this.options = options;
+      this.slots = [];
+      this.horizontalAnimator = new ScrollAnimator("x");
+      this.flingAnimator = new ScrollFlingAnimator();
+      this.element = /* @__PURE__ */ h(
+        "div",
+        {
+          className: "ehpeek-scroller",
+          tabIndex: -1,
+          ref: (node) => this.scroller = node
+        },
+        /* @__PURE__ */ h("main", { className: "ehpeek-strip", ref: (node) => this.strip = node })
+      );
+    }
+    scrollerElement() {
+      return this.scroller;
+    }
+    syncWindow(options) {
+      let oldSlots = new Map(this.slots.map((slot) => [slot.pageNum, slot])), nextSlots = [];
+      for (let pageNum of this.windowPageNums(options.currentPageNum, options.windowSize)) {
+        let kind = this.slotKindFor(pageNum, options.totalPages), oldSlot = oldSlots.get(pageNum), slot = oldSlot && oldSlot.kind === kind ? oldSlot : this.createSlot(pageNum, kind);
+        if (kind === "page") {
+          let page = options.pages.get(pageNum);
+          page && this.setSlotMeta(slot, page);
+        } else
+          this.clearSlotMeta(slot);
+        nextSlots.push(slot);
+      }
+      let nextSet = new Set(nextSlots);
+      for (let slot of this.slots)
+        nextSet.has(slot) || this.removeSlot(slot);
+      this.slots = nextSlots, this.slots.forEach((slot, index) => {
+        slot.index = index;
+      }), this.renderSlots();
+    }
+    resetPosition() {
+      this.scroller.scrollLeft = 0, this.scroller.scrollTop = 0;
+    }
+    stopMotion() {
+      this.flingAnimator.cancel(), this.horizontalAnimator.cancel();
+    }
+    resizePages() {
+      for (let slot of this.slots)
+        this.applySlotSize(slot);
+    }
+    requiredImagePageNums() {
+      return this.slots.filter((slot) => slot.kind === "page" && slot.state === "idle").map((slot) => slot.pageNum);
+    }
+    windowPageNums(currentPageNum, windowSize) {
+      let numbers = [];
+      for (let offset = -windowSize; offset <= windowSize; offset += 1)
+        numbers.push(currentPageNum + offset);
+      return numbers;
+    }
+    markPageLoading(pageNum) {
+      let slot = this.slotFor(pageNum);
+      return !slot || slot.kind !== "page" || slot.state !== "idle" ? null : (slot.state = "loading", slot.token += 1, this.refreshSlot(slot), slot.token);
+    }
+    createPageImage(pageNum, slotImage) {
+      let image = document.createElement("img");
+      return image.className = "ehpeek-image", image.alt = `Page ${pageNum}`, image.decoding = "async", image.loading = "eager", image.draggable = !1, image.setAttribute("fetchpriority", slotImage.highPriority ? "high" : "low"), image.src = slotImage.imageUrl, slotImage.width && slotImage.height && (image.width = slotImage.width, image.height = slotImage.height), image;
+    }
+    setPageImage(pageNum, token, slotImage, image) {
+      let slot = this.slotFor(pageNum);
+      return !slot || slot.token !== token || !slot.view ? !1 : (slot.state = "ready", slot.imageUrl = slotImage.imageUrl, slot.width = slotImage.width, slot.height = slotImage.height, this.applySlotSize(slot), slot.view.frame.replaceChildren(image), !0);
+    }
+    setPageError(pageNum, token, errorMessage) {
+      let slot = this.slotFor(pageNum);
+      return !slot || slot.token !== token ? !1 : (slot.state = "error", this.renderSlotPlaceholder(slot, errorMessage), !0);
+    }
+    moveToPage(pageNum, motion = "instant", onComplete) {
+      let delta = this.pageOffset(pageNum);
+      delta !== null && this.moveBy(delta, motion, onComplete);
+    }
+    moveBy(delta, motion = "instant", onComplete) {
+      if (this.options.mode() === "paged") {
+        this.horizontalAnimator.scrollTo(this.scroller, this.scroller.scrollLeft + delta, motion, onComplete);
+        return;
+      }
+      this.moveToTop(this.scroller.scrollTop + delta), onComplete?.();
+    }
+    moveToTop(scrollTop) {
+      this.scroller.scrollTop = this.clampedTop(scrollTop, this.verticalScrollBounds());
+    }
+    startDragPosition() {
+      return this.options.mode() === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop;
+    }
+    dragPage(startPosition, delta) {
+      if (this.options.mode() === "paged") {
+        this.scroller.scrollLeft = startPosition - delta.dx;
+        return;
+      }
+      this.moveToTop(startPosition - delta.dy);
+    }
+    scrollTop() {
+      return this.scroller.scrollTop;
+    }
+    viewportWidth() {
+      return this.scroller.clientWidth || window.innerWidth || 1;
+    }
+    viewportHeight() {
+      return this.scroller.clientHeight;
+    }
+    pageOffset(pageNum) {
+      let view = this.slotFor(pageNum)?.view;
+      return view ? this.slotOffsetFromViewport(view, this.options.mode()) : null;
+    }
+    centerPageNum() {
+      for (let slot of this.slots)
+        if (!(!slot.view || slot.kind === "blank") && this.slotContainsViewportTarget(slot.view))
+          return slot.pageNum;
+      return null;
+    }
+    isHitEndPage(point) {
+      let element = document.elementFromPoint(point.clientX, point.clientY), pageNode = element instanceof Element ? element.closest(".ehpeek-page") : null;
+      if (!pageNode)
+        return !1;
+      let pageNum = Number(pageNode.dataset.ehpeekPageNum || "");
+      return (Number.isFinite(pageNum) ? this.slotFor(pageNum) : void 0)?.kind === "end";
+    }
+    startVerticalFlingFromDragVelocity(dragVelocityY, onStop) {
+      this.flingAnimator.start({
+        scroller: this.scroller,
+        initialVelocityY: -dragVelocityY,
+        setScrollTop: (scrollTop) => this.moveToTop(scrollTop),
+        canRun: () => !this.options.closed() && this.options.mode() === "scroll",
+        onStop
+      });
+    }
+    verticalScrollBounds() {
+      if (this.options.mode() !== "scroll")
+        return null;
+      let totalPages = this.options.totalPages();
+      return this.verticalScrollBoundsForPages(1, totalPages ? totalPages + 1 : null);
+    }
+    verticalScrollBoundsForPages(firstPageNum, lastPageNum) {
+      return this.verticalScrollBoundsForViews(
+        this.slotFor(firstPageNum)?.view,
+        lastPageNum === null ? null : this.slotFor(lastPageNum)?.view
+      );
+    }
+    verticalScrollBoundsForViews(firstView, lastView) {
+      let bounds = {}, scrollerRect = this.scroller.getBoundingClientRect();
+      if (firstView) {
+        let firstRect = firstView.node.getBoundingClientRect();
+        bounds.min = this.scroller.scrollTop + firstRect.top - scrollerRect.top;
+      }
+      if (lastView) {
+        let lastRect = lastView.node.getBoundingClientRect(), lastTop = this.scroller.scrollTop + lastRect.top - scrollerRect.top;
+        bounds.max = lastTop + lastRect.height - this.viewportHeight();
+      }
+      return bounds.min === void 0 && bounds.max === void 0 ? null : (bounds.min !== void 0 && bounds.max !== void 0 && (bounds.max = Math.max(bounds.min, bounds.max)), bounds);
+    }
+    clampedTop(scrollTop, bounds) {
+      return bounds ? clamp(scrollTop, bounds.min ?? Number.NEGATIVE_INFINITY, bounds.max ?? Number.POSITIVE_INFINITY) : scrollTop;
+    }
+    slotFor(pageNum) {
+      return this.slots.find((slot) => slot.pageNum === pageNum);
+    }
+    slotKindFor(pageNum, totalPages) {
+      return pageNum < 1 ? "blank" : totalPages && pageNum === totalPages + 1 ? "end" : totalPages && pageNum > totalPages + 1 ? "blank" : "page";
+    }
+    slotContainsViewportTarget(view) {
+      let scrollerRect = this.scroller.getBoundingClientRect(), target = scrollerRect.top + Math.min(80, scrollerRect.height * 0.14), rect = view.node.getBoundingClientRect();
+      return rect.top <= target && rect.bottom > target;
+    }
+    slotOffsetFromViewport(view, mode) {
+      let pageRect = view.node.getBoundingClientRect(), scrollerRect = this.scroller.getBoundingClientRect();
+      return mode === "paged" ? pageRect.left - scrollerRect.left : pageRect.top - scrollerRect.top;
+    }
+    removeStaleSlotNodes(keepNodes) {
+      for (let node of Array.from(this.strip.children))
+        keepNodes.has(node) || node.remove();
+    }
+    appendSlotView(view) {
+      this.strip.append(view.node);
+    }
+    createSlotView(index, pageNum) {
+      let node = document.createElement("section");
+      node.className = "ehpeek-page";
+      let frame = document.createElement("div");
+      frame.className = "ehpeek-frame", node.append(frame);
+      let view = { node, frame };
+      return this.setSlotOrder(view, index, index + 1), this.setSlotPageNum(view, pageNum), view;
+    }
+    removeSlotView(view) {
+      view.node.remove();
+    }
+    slotViewConnected(view) {
+      return view.node.isConnected;
+    }
+    setSlotOrder(view, index, slotCount) {
+      let visualIndex = this.options.mode() === "paged" && this.options.readDirection() === "rtl" ? slotCount - 1 - index : index;
+      view.node.style.setProperty("order", String(visualIndex)), view.node.dataset.ehpeekIndex = String(visualIndex);
+    }
+    setSlotPageNum(view, pageNum) {
+      view.node.dataset.ehpeekPageNum = String(pageNum);
+    }
+    setSlotSize(view, frameWidth, frameHeight) {
+      view.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`), view.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`), view.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
+    }
+    setSlotPlaceholder(view, content) {
+      let placeholder = document.createElement("div");
+      placeholder.className = content.state === "error" ? "ehpeek-error" : "ehpeek-placeholder", placeholder.classList.toggle("ehpeek-placeholder-end", content.kind === "end"), placeholder.textContent = this.slotPlaceholderText(content), view.frame.replaceChildren(placeholder);
+    }
+    createSlot(pageNum, kind) {
+      return {
+        pageNum,
+        index: 0,
+        kind,
+        state: kind === "page" ? "idle" : "ready",
+        aspectRatio: FALLBACK_ASPECT_RATIO,
+        imageUrl: null,
+        width: null,
+        height: null,
+        view: null,
+        token: 0
+      };
+    }
+    setSlotMeta(slot, page) {
+      let aspectRatio = normalizedAspectRatio(page.aspectRatio, FALLBACK_ASPECT_RATIO);
+      slot.aspectRatio === aspectRatio && slot.state !== "error" || (slot.aspectRatio = aspectRatio, slot.kind = "page", slot.state = "idle", slot.imageUrl = null, slot.width = null, slot.height = null, slot.token += 1);
+    }
+    clearSlotMeta(slot) {
+      (slot.kind === "blank" || slot.kind === "end") && (slot.state = "ready", slot.imageUrl = null, slot.width = null, slot.height = null, slot.token += 1);
+    }
+    removeSlot(slot) {
+      slot.token += 1, slot.view && (this.removeSlotView(slot.view), slot.view = null);
+    }
+    renderSlots() {
+      let keepNodes = new Set(this.slots.map((slot) => slot.view?.node ?? null).filter(Boolean));
+      this.removeStaleSlotNodes(keepNodes);
+      for (let slot of this.slots)
+        slot.view && !this.slotViewConnected(slot.view) && (slot.view = null), this.mountSlot(slot), slot.view && this.setSlotOrder(slot.view, slot.index, this.slots.length);
+    }
+    mountSlot(slot) {
+      slot.view || (slot.view = this.createSlotView(slot.index, slot.pageNum), this.appendSlotView(slot.view)), this.refreshSlot(slot);
+    }
+    refreshSlot(slot) {
+      slot.view && (this.setSlotPageNum(slot.view, slot.pageNum), this.applySlotSize(slot), !(slot.state === "ready" && slot.imageUrl) && this.renderSlotPlaceholder(slot, void 0));
+    }
+    renderSlotPlaceholder(slot, errorMessage) {
+      slot.view && this.setSlotPlaceholder(slot.view, {
+        pageNum: slot.pageNum,
+        kind: slot.kind,
+        state: slot.state,
+        errorMessage
+      });
+    }
+    applySlotSize(slot) {
+      if (!slot.view)
+        return;
+      let frameWidth = Math.max(1, this.viewportWidth()), frameHeight = Math.ceil(frameWidth * this.aspectRatioFor(slot));
+      this.setSlotSize(slot.view, frameWidth, frameHeight);
+    }
+    aspectRatioFor(slot) {
+      return slot.width && slot.height && slot.width > 0 && slot.height > 0 ? slot.height / slot.width : normalizedAspectRatio(slot.aspectRatio, FALLBACK_ASPECT_RATIO);
+    }
+    slotPlaceholderText(content) {
+      if (content.state === "error") {
+        let suffix = content.errorMessage ? `: ${content.errorMessage}` : "";
+        return `${texts_default.reader.failedPrefix} ${content.pageNum}${suffix}`;
+      }
+      return content.kind === "end" ? texts_default.reader.end : content.kind === "blank" ? "" : String(content.pageNum);
+    }
+  };
+
+  // src/components/reader/reader.css
+  var reader_default = `#ehpeek-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: #070707;
+  color: #f3f3f3;
+  font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+#ehpeek-reader * {
+  box-sizing: border-box;
+}
+
+.ehpeek-topbar {
+  position: fixed;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.ehpeek-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.ehpeek-button {
+  width: 46px;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(35, 35, 35, 0.88);
+  color: #f3f3f3;
+  cursor: pointer;
+  font: 700 16px/1 system-ui, sans-serif;
+}
+
+.ehpeek-direction-button {
+  width: 46px;
+  padding: 0 10px;
+  font-size: 15px;
+}
+
+.ehpeek-disable-button {
+  width: 46px;
+  padding: 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.ehpeek-control-hidden {
+  display: none;
+}
+
+.ehpeek-pageno {
+  position: fixed;
+  top: calc(62px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 3;
+  min-width: 64px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(15, 15, 15, 0.34);
+  color: #f3f3f3;
+  font: 600 14px/1.4 system-ui, sans-serif;
+  white-space: nowrap;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.ehpeek-progressbar {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.ehpeek-toolbar-hidden {
+  opacity: 0;
+  transform: translateY(calc(100% + 16px));
+  pointer-events: none;
+}
+
+.ehpeek-progress {
+  --ehpeek-progress-fill: 0%;
+  width: 100%;
+  height: 48px;
+  margin: 0;
+  padding: 0 12px;
+  accent-color: #f3f3f3;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ehpeek-progress:active {
+  cursor: grabbing;
+}
+
+#ehpeek-reader.ehpeek-read-rtl .ehpeek-progress {
+  direction: rtl;
+}
+
+#ehpeek-reader.ehpeek-read-ltr .ehpeek-progress {
+  direction: ltr;
+}
+
+.ehpeek-progress::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    #4da3ff 0 var(--ehpeek-progress-fill),
+    rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+  );
+}
+
+#ehpeek-reader.ehpeek-read-rtl .ehpeek-progress::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to left,
+    #4da3ff 0 var(--ehpeek-progress-fill),
+    rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
+  );
+}
+
+.ehpeek-progress::-webkit-slider-thumb {
+  width: 30px;
+  height: 30px;
+  margin-top: -11px;
+  border: 2px solid rgba(15, 15, 15, 0.92);
+  border-radius: 50%;
+  background: #f3f3f3;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ehpeek-progress::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.ehpeek-progress::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: #4da3ff;
+}
+
+.ehpeek-progress::-moz-range-thumb {
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(15, 15, 15, 0.92);
+  border-radius: 50%;
+  background: #f3f3f3;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.ehpeek-scroller {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+  touch-action: pan-y;
+  cursor: grab;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ehpeek-scroller-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.ehpeek-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.ehpeek-strip {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  padding: 56px 0 72px;
+}
+
+.ehpeek-page {
+  display: flex;
+  width: 100%;
+  height: var(--ehpeek-page-height);
+  align-items: flex-start;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+.ehpeek-frame {
+  display: flex;
+  width: var(--ehpeek-frame-width);
+  height: var(--ehpeek-frame-height);
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ehpeek-placeholder,
+.ehpeek-error {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  background: #151515;
+  color: rgba(245, 245, 245, 0.72);
+  font-size: clamp(88px, 25vw, 180px);
+  font-weight: 850;
+  line-height: 1;
+  text-align: center;
+}
+
+@media (min-width: 760px) {
+  .ehpeek-placeholder {
+    font-size: clamp(72px, 10vw, 140px);
+  }
+}
+
+.ehpeek-error {
+  color: #ffb2a7;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.ehpeek-placeholder-end {
+  padding: 24px;
+  direction: ltr;
+  font-size: clamp(24px, 6vw, 42px);
+  font-weight: 700;
+  line-height: 1.3;
+  unicode-bidi: plaintext;
+}
+
+.ehpeek-image {
+  display: block;
+  width: var(--ehpeek-frame-width);
+  height: var(--ehpeek-frame-height);
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+#ehpeek-reader.ehpeek-paged .ehpeek-scroller {
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+#ehpeek-reader.ehpeek-paged .ehpeek-strip {
+  display: flex;
+  flex-direction: row;
+  width: auto;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+}
+
+#ehpeek-reader.ehpeek-paged .ehpeek-page {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  padding: 0;
+}
+
+#ehpeek-reader.ehpeek-paged .ehpeek-frame,
+#ehpeek-reader.ehpeek-paged .ehpeek-image {
+  width: 100%;
+  height: 100%;
+}
+
+@media (pointer: coarse) {
+  .ehpeek-button {
+    width: 68px;
+    height: 60px;
+    padding: 0 16px;
+    border-radius: 8px;
+    font-size: 18px;
+  }
+
+  .ehpeek-disable-button {
+    width: 68px;
+    font-size: 15px;
+  }
+
+  .ehpeek-direction-button {
+    width: 68px;
+    padding: 0 16px;
+    font-size: 16px;
+  }
+
+  .ehpeek-pageno {
+    top: calc(72px + env(safe-area-inset-top, 0px));
+  }
+
+  .ehpeek-topbar {
+    top: calc(8px + env(safe-area-inset-top, 0px));
+    right: 8px;
+  }
+
+  .ehpeek-progressbar {
+    right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    padding: 0;
+  }
+
+  .ehpeek-progress {
+    height: 72px;
+    padding: 0 19px;
+  }
+
+  .ehpeek-progress::-webkit-slider-thumb {
+    width: 43px;
+    height: 43px;
+    margin-top: -17px;
+  }
+
+  .ehpeek-progress::-moz-range-thumb {
+    width: 43px;
+    height: 43px;
+  }
+}
+
+@media (orientation: landscape) {
+  .ehpeek-pageno {
+    top: calc(54px + env(safe-area-inset-top, 0px));
+    right: 10px;
+    left: auto;
+    min-width: 0;
+    max-width: calc(100vw - 20px);
+    text-align: right;
+    transform: none;
+  }
+}
+
+@media (orientation: landscape) and (pointer: coarse) {
+  .ehpeek-pageno {
+    top: calc(62px + env(safe-area-inset-top, 0px));
+    right: 8px;
+    max-width: calc(100vw - 16px);
+  }
+}
+`;
+
+  // src/components/reader/root.tsx
+  var VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", ReaderRoot = class {
+    constructor(children) {
+      this.previousBodyOverflow = "";
+      this.previousDocumentOverflow = "";
+      this.element = /* @__PURE__ */ h("div", { id: VIEWER_ID }, children);
+    }
+    mount(focusTarget) {
+      document.getElementById(VIEWER_ID)?.remove(), ensureReaderStyle(), this.lockPageScroll(), document.body.append(this.element), focusTarget?.focus({ preventScroll: !0 });
+    }
+    remove() {
+      this.element.remove(), this.unlockPageScroll();
+    }
+    setMode(mode) {
+      this.element.classList.toggle("ehpeek-paged", mode === "paged");
+    }
+    setReadDirection(direction) {
+      this.element.classList.toggle("ehpeek-read-rtl", direction === "rtl"), this.element.classList.toggle("ehpeek-read-ltr", direction === "ltr");
+    }
+    setToolbarOpen(open) {
+      this.element.classList.toggle("ehpeek-toolbar-open", open);
+    }
+    lockPageScroll() {
+      this.previousDocumentOverflow = document.documentElement.style.overflow, this.previousBodyOverflow = document.body.style.overflow, document.documentElement.style.overflow = "hidden", document.body.style.overflow = "hidden";
+    }
+    unlockPageScroll() {
+      document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow;
+    }
+  };
+  function ensureReaderStyle() {
+    if (document.getElementById(STYLE_ID))
+      return;
+    let style = document.createElement("style");
+    style.id = STYLE_ID, style.textContent = reader_default, document.head.append(style);
+  }
+
+  // src/components/reader/toolbar.tsx
+  var Toolbar = class {
+    constructor(handlers, onToolbarOpenChange) {
+      this.handlers = handlers;
+      this.onToolbarOpenChange = onToolbarOpenChange;
+      let topbar = /* @__PURE__ */ h("div", { className: "ehpeek-topbar", onClick: stopEvent, onPointerDown: stopEvent, onWheel: stopEvent }, /* @__PURE__ */ h("div", { className: "ehpeek-actions" }, /* @__PURE__ */ h(
+        "button",
+        {
+          type: "button",
+          className: "ehpeek-button ehpeek-direction-button ehpeek-control-hidden",
+          ref: (node) => this.readDirectionButton = node,
+          onClick: handlers.onReadDirectionClick
+        }
+      ), /* @__PURE__ */ h(
+        "button",
+        {
+          type: "button",
+          className: "ehpeek-button ehpeek-direction-button ehpeek-control-hidden",
+          ref: (node) => this.rightTapButton = node,
+          onClick: handlers.onRightTapClick
+        }
+      ), /* @__PURE__ */ h(
+        "button",
+        {
+          type: "button",
+          className: "ehpeek-button ehpeek-control-hidden",
+          ref: (node) => this.modeButton = node,
+          onClick: handlers.onModeClick
+        }
+      ), /* @__PURE__ */ h(
+        "button",
+        {
+          type: "button",
+          className: "ehpeek-button ehpeek-disable-button ehpeek-control-hidden",
+          title: texts_default.reader.disableReader,
+          ref: (node) => this.disableReaderButton = node,
+          onClick: handlers.onDisableReaderClick
+        },
+        "off"
+      ), /* @__PURE__ */ h("button", { type: "button", className: "ehpeek-button", title: texts_default.reader.close, onClick: handlers.onCloseClick }, "X"))), pageNumber = /* @__PURE__ */ h("div", { className: "ehpeek-pageno", ref: (node) => this.pageNumberLabel = node }), progress = /* @__PURE__ */ h(
+        "div",
+        {
+          className: "ehpeek-progressbar ehpeek-toolbar-hidden",
+          ref: (node) => this.toolbar = node,
+          onClick: stopEvent,
+          onPointerDown: stopEvent,
+          onWheel: stopEvent
+        },
+        /* @__PURE__ */ h(
+          "input",
+          {
+            type: "range",
+            className: "ehpeek-progress",
+            min: "1",
+            step: "1",
+            ref: (node) => this.progressInput = node,
+            onPointerDown: handlers.onProgressPointerDown,
+            onInput: handlers.onProgressInput,
+            onChange: handlers.onProgressCommit,
+            onPointerUp: handlers.onProgressCommit,
+            onPointerCancel: handlers.onProgressCommit
+          }
+        )
+      );
+      this.elements = [topbar, pageNumber, progress];
+    }
+    setControls(controls) {
+      this.setModeButton(controls.mode), this.setReadDirectionButton(controls.readDirection), this.setRightTapButton(controls.rightTapAction);
+    }
+    setProgress(progress) {
+      this.pageNumberLabel.textContent = this.pageNumberText(progress.pageNum, progress.totalPages), this.progressInput.max = String(Math.max(1, progress.maxProgressPageNum)), progress.keepInputValue || (this.progressInput.value = String(progress.pageNum)), this.setProgressFill(this.progressFillPercent(progress.pageNum));
+    }
+    progressValue() {
+      return Number(this.progressInput.value || "");
+    }
+    toggle() {
+      let hidden = this.toolbar.classList.toggle("ehpeek-toolbar-hidden");
+      return this.modeButton.classList.toggle("ehpeek-control-hidden", hidden), this.readDirectionButton.classList.toggle("ehpeek-control-hidden", hidden), this.rightTapButton.classList.toggle("ehpeek-control-hidden", hidden), this.disableReaderButton.classList.toggle("ehpeek-control-hidden", hidden), this.onToolbarOpenChange(!hidden), hidden;
+    }
+    setModeButton(mode) {
+      let paged = mode === "paged";
+      this.modeButton.textContent = paged ? "⇔" : "⇕", this.modeButton.title = paged ? texts_default.reader.scrollMode : texts_default.reader.pagedMode;
+    }
+    setReadDirectionButton(direction) {
+      let rtl = direction === "rtl";
+      this.readDirectionButton.textContent = rtl ? "RL" : "LR", this.readDirectionButton.title = rtl ? texts_default.reader.readLeftToRight : texts_default.reader.readRightToLeft;
+    }
+    setRightTapButton(action) {
+      let previous = action === "previous";
+      this.rightTapButton.textContent = previous ? "R-" : "R+", this.rightTapButton.title = previous ? texts_default.reader.rightTapNext : texts_default.reader.rightTapPrevious;
+    }
+    progressRange() {
+      return {
+        min: Number(this.progressInput.min || "1"),
+        max: Number(this.progressInput.max || "1")
+      };
+    }
+    setProgressFill(fillPercent) {
+      this.progressInput.style.setProperty("--ehpeek-progress-fill", `${fillPercent}%`);
+    }
+    pageNumberText(pageNum, totalPages) {
+      return totalPages && pageNum === totalPages + 1 ? texts_default.reader.endPage : totalPages ? `${pageNum} / ${totalPages}` : String(pageNum);
+    }
+    progressFillPercent(pageNum) {
+      let { min, max } = this.progressRange(), value = Math.min(max, Math.max(min, pageNum));
+      return max > min ? (value - min) / (max - min) * 100 : 100;
+    }
+  };
+
+  // src/components/reader/reader.ts
+  var DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, FALLBACK_ASPECT_RATIO2 = 1.42, TwoTierImageQueue = class {
+    constructor(loadTarget, markLoading, onLoaded, onError, nearConcurrentLoads, farConcurrentLoads) {
+      this.loadTarget = loadTarget;
+      this.markLoading = markLoading;
       this.onLoaded = onLoaded;
       this.onError = onError;
       this.nearConcurrentLoads = nearConcurrentLoads;
@@ -69,33 +1249,26 @@
     dispose() {
       this.disposed = !0, this.nearQueue.clear(), this.farQueue.clear(), this.timer !== null && (window.clearTimeout(this.timer), this.timer = null);
     }
-    sync(slots, currentPageNumber, direction, windowNumbers, preloadWindowSize) {
+    sync(targets, currentPageNum, direction, windowNumbers, preloadWindowSize) {
       for (let queue of [this.nearQueue, this.farQueue])
-        for (let displayNumber of queue.keys())
-          windowNumbers.has(displayNumber) || queue.delete(displayNumber);
-      for (let slot of slots) {
-        let displayNumber = slot.x;
-        windowNumbers.has(displayNumber) || this.invalidate(slot);
-      }
-      this.enqueue(slots.find((slot) => slot.x === currentPageNumber), "near");
+        for (let pageNum of queue.keys())
+          windowNumbers.has(pageNum) || queue.delete(pageNum);
+      this.enqueue(targets.find((target) => target.pageNum === currentPageNum), "near");
       for (let offset = 1; offset <= preloadWindowSize; offset += 1) {
-        let displayNumber = currentPageNumber + offset * direction, slot = slots.find((candidate) => candidate.x === displayNumber);
-        slot && this.enqueue(slot, offset <= NEAR_LOAD_AHEAD ? "near" : "far");
+        let pageNum = currentPageNum + offset * direction, target = targets.find((candidate) => candidate.pageNum === pageNum);
+        target && this.enqueue(target, offset <= NEAR_LOAD_AHEAD ? "near" : "far");
       }
       this.schedule();
     }
-    invalidate(slot) {
-      slot.token += 1, this.nearQueue.delete(slot.x), this.farQueue.delete(slot.x), slot.state !== "idle" && (slot.state = "idle", slot.imageUrl = null, slot.width = null, slot.height = null);
-    }
-    enqueue(slot, tier) {
-      if (!slot || slot.kind !== "page" || !slot.meta || slot.state !== "idle")
+    enqueue(target, tier) {
+      if (!target)
         return;
-      let displayNumber = slot.x;
+      let pageNum = target.pageNum;
       if (tier === "near") {
-        this.farQueue.delete(displayNumber), this.nearQueue.set(displayNumber, slot);
+        this.farQueue.delete(pageNum), this.nearQueue.set(pageNum, target);
         return;
       }
-      this.nearQueue.has(displayNumber) || this.farQueue.set(displayNumber, slot);
+      this.nearQueue.has(pageNum) || this.farQueue.set(pageNum, target);
     }
     schedule() {
       this.timer !== null || this.disposed || (this.timer = window.setTimeout(() => {
@@ -108,67 +1281,43 @@
           let tier = this.nearQueue.size > 0 ? "near" : this.activeNearLoads > 0 ? null : "far";
           if (tier === null)
             return;
-          let queue = tier === "near" ? this.nearQueue : this.farQueue, slot = queue.values().next().value;
-          if (!slot)
+          let queue = tier === "near" ? this.nearQueue : this.farQueue, target = queue.values().next().value;
+          if (!target)
             return;
-          queue.delete(slot.x), slot.state === "idle" && this.start(slot, tier);
+          queue.delete(target.pageNum), this.start(target, tier);
         }
     }
     currentConcurrency() {
       return this.nearQueue.size > 0 || this.activeNearLoads > 0 ? Math.min(this.nearConcurrentLoads, this.farConcurrentLoads) : this.farConcurrentLoads;
     }
-    start(slot, tier) {
-      if (!slot.meta)
-        return;
-      slot.state = "loading", slot.token += 1;
-      let token = slot.token, meta = slot.meta;
-      this.activeTotalLoads += 1, tier === "near" && (this.activeNearLoads += 1), this.loadPage(meta, slot.index).then((loaded) => {
-        this.disposed || this.onLoaded(slot, loaded, token);
+    start(target, tier) {
+      let token = this.markLoading(target.pageNum);
+      token !== null && (this.activeTotalLoads += 1, tier === "near" && (this.activeNearLoads += 1), this.loadTarget(target).then((loaded) => {
+        this.disposed || this.onLoaded(target, loaded, token);
       }).catch((error) => {
-        this.disposed || this.onError(slot, error, token);
+        this.disposed || this.onError(target, error, token);
       }).finally(() => {
         this.activeTotalLoads -= 1, tier === "near" && (this.activeNearLoads -= 1), this.process();
-      });
+      }));
     }
-  }, FullscreenViewer = class {
+  }, activeReader = null;
+  function openFullscreenReader(options) {
+    activeReader?.close();
+    let reader = new FullscreenReader(options);
+    activeReader = reader, reader.open();
+  }
+  var FullscreenReader = class {
     constructor(options) {
+      this.pages = /* @__PURE__ */ new Map();
       this.direction = 1;
-      this.mode = loadViewMode();
-      this.readDirection = loadReadDirection();
-      this.rightTapAction = loadRightTapAction();
-      this.disableReaderButton = null;
-      this.overlay = null;
-      this.scroller = null;
-      this.strip = null;
-      this.toolbar = null;
-      this.modeButton = null;
-      this.readDirectionButton = null;
-      this.rightTapButton = null;
-      this.pageNumberLabel = null;
-      this.progressInput = null;
-      this.previousBodyOverflow = "";
-      this.previousDocumentOverflow = "";
-      this.previousBodyTouchAction = "";
-      this.previousDocumentTouchAction = "";
       this.scrollFrame = null;
       this.resizeFrame = null;
-      this.flingFrame = null;
-      this.pagedAnimationFrame = null;
-      this.pagedScrollCommitTimer = null;
-      this.progressCommitTimer = null;
-      this.pendingProgressDisplayNumber = null;
-      this.progressDragging = !1;
-      this.dragging = !1;
+      this.progressNavigationTimer = null;
+      this.pendingProgressNavigationPageNum = null;
+      this.progressNavigating = !1;
       this.suppressNextClick = !1;
-      this.dragPointerId = null;
-      this.dragStartClientX = 0;
-      this.dragStartClientY = 0;
-      this.dragStartScroll = 0;
-      this.dragLastClientY = 0;
-      this.dragLastMoveTime = 0;
-      this.dragVelocityY = 0;
-      this.flingVelocityY = 0;
-      this.flingLastFrameTime = 0;
+      this.viewportDrag = null;
+      this.pagedTargetPageNumber = null;
       this.syncToken = 0;
       this.historyEntry = !1;
       this.closing = !1;
@@ -176,147 +1325,85 @@
       this.onPopState = () => {
         this.historyEntry && (this.historyEntry = !1, this.finishClose(), this.onExit?.());
       };
-      this.onImageLoaded = (slot, loaded, token) => {
-        slot.token !== token || !this.windowNumbers().includes(slot.x) || (slot.state = "ready", slot.imageUrl = loaded.imageUrl, slot.width = positiveNumber(loaded.width), slot.height = positiveNumber(loaded.height), slot.node && (this.applySlotSize(slot), this.installImage(slot)));
+      this.onImageLoaded = (target, loaded, token) => {
+        this.viewport.windowPageNums(this.currentPageNum, this.renderWindowSize).includes(target.pageNum) && this.installImage(target, loaded, token);
       };
-      this.onImageError = (slot, error, token) => {
-        if (slot.token !== token || !slot.frame)
-          return;
-        slot.state = "error";
-        let message = error instanceof Error ? error.message : texts_default.errors.loadFailed, errorBox = document.createElement("div");
-        errorBox.className = "ehpeek-error", errorBox.textContent = `${texts_default.viewer.failedPrefix} ${slot.x}: ${message}`, slot.frame.replaceChildren(errorBox);
-      };
-      this.onKeydown = (event) => {
-        if (event.key === "Escape") {
-          event.preventDefault(), this.close();
-          return;
-        }
-        if (event.key === "ArrowLeft") {
-          event.preventDefault(), this.step(this.leftTapDelta());
-          return;
-        }
-        event.key === "ArrowRight" && (event.preventDefault(), this.step(this.rightTapDelta()));
-      };
-      this.onWheel = (event) => {
-        if (this.mode !== "paged" || (event.preventDefault(), this.dragging))
-          return;
-        let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-        Math.abs(delta) >= PAGED_WHEEL_THRESHOLD && this.step(delta > 0 ? this.rightwardDelta() : this.leftwardDelta());
-      };
-      this.onPointerDown = (event) => {
-        if (event.pointerType, event.button, event.buttons, this.mode, targetSummary(event.target), !this.scroller) {
-          return;
-        }
-        if (event.pointerType === "mouse" && event.button !== 0) {
-          event.button, event.buttons;
-          return;
-        }
-        event.preventDefault(), this.cancelScrollFling(), this.cancelPagedAnimation(), this.dragging = !0, this.dragPointerId = event.pointerId, this.dragStartClientX = event.clientX, this.dragStartClientY = event.clientY, this.dragStartScroll = this.mode === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, this.dragVelocityY = 0, event.pointerId, event.pointerType, this.dragStartClientX, this.dragStartClientY, this.dragStartScroll, this.scroller.setPointerCapture?.(event.pointerId), this.scroller.classList.add("ehpeek-scroller-dragging"), document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerUp, !0);
-      };
-      this.onPointerMove = (event) => {
-        if (!this.dragging || event.pointerId !== this.dragPointerId || !this.scroller) {
-          event.pointerId, this.dragPointerId, event.pointerType, this.dragging, this.scroller;
-          return;
-        }
-        if (this.mode === "paged")
-          this.scroller.scrollLeft = this.dragStartScroll - (event.clientX - this.dragStartClientX);
-        else {
-          let nextScrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY), elapsed = Math.max(1, event.timeStamp - this.dragLastMoveTime);
-          this.dragVelocityY = (event.clientY - this.dragLastClientY) / elapsed, this.dragLastClientY = event.clientY, this.dragLastMoveTime = event.timeStamp, event.pointerType, event.clientY, this.dragStartClientY, this.scroller.scrollTop, this.scroller.scrollTop = this.dragStartScroll - (event.clientY - this.dragStartClientY);
-        }
-        event.preventDefault();
-      };
-      this.onPointerUp = (event) => {
-        if (!this.dragging || event.pointerId !== this.dragPointerId) {
-          event.pointerId, this.dragPointerId, event.pointerType, this.dragging;
-          return;
-        }
-        event.pointerType, this.scroller?.scrollTop, event.clientX - this.dragStartClientX, event.clientY - this.dragStartClientY, this.dragging = !1, this.dragPointerId = null, this.scroller?.releasePointerCapture?.(event.pointerId), this.scroller?.classList.remove("ehpeek-scroller-dragging"), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0);
-        let dx = event.clientX - this.dragStartClientX, dy = event.clientY - this.dragStartClientY;
-        if (this.mode !== "paged") {
-          Math.abs(dx) >= 8 || Math.abs(dy) >= 8 ? (this.suppressNextClick = !0, this.setScrollTop(this.scroller?.scrollTop ?? 0), this.applyScrollFling(), this.updateCurrentFromScroll()) : (this.suppressNextClick = !0, this.toggleToolbar());
-          return;
-        }
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
-          let width = this.scroller?.clientWidth || window.innerWidth || 1, zone = event.clientX / width;
-          zone >= 1 / 3 && zone <= 2 / 3 ? this.toggleToolbar() : this.step(zone < 1 / 3 ? this.leftTapDelta() : this.rightTapDelta());
-          return;
-        }
-        dx >= PAGED_SWIPE_THRESHOLD ? this.step(this.leftwardDelta()) : dx <= -PAGED_SWIPE_THRESHOLD ? this.step(this.rightwardDelta()) : this.scrollToCurrentPage("smooth");
-      };
-      this.onScroll = () => {
-        if (this.dragging || this.mode === "paged")
-          return;
-        let scrollTop = this.clampedScrollTop(this.scroller?.scrollTop ?? 0);
-        if (this.scroller && scrollTop !== this.scroller.scrollTop) {
-          this.scroller.scrollTop = scrollTop;
-          return;
-        }
-        this.scrollFrame === null && (this.scrollFrame = window.requestAnimationFrame(() => {
-          this.scrollFrame = null, this.updateCurrentFromScroll();
-        }));
-      };
-      this.onScrollFlingFrame = (time) => {
-        if (!this.scroller || this.mode !== "scroll") {
-          this.cancelScrollFling();
-          return;
-        }
-        let elapsed = clamp(time - this.flingLastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
-        this.flingLastFrameTime = time;
-        let previousScrollTop = this.scroller.scrollTop;
-        if (this.setScrollTop(previousScrollTop + this.flingVelocityY * elapsed), this.scroller.scrollTop === previousScrollTop) {
-          this.cancelScrollFling(), this.updateCurrentFromScroll();
-          return;
-        }
-        if (this.flingVelocityY *= Math.exp(-SCROLL_FLING_DECAY * elapsed), Math.abs(this.flingVelocityY) < SCROLL_FLING_STOP_VELOCITY) {
-          this.cancelScrollFling(), this.updateCurrentFromScroll();
-          return;
-        }
-        this.flingFrame = window.requestAnimationFrame(this.onScrollFlingFrame);
-      };
-      this.onScrollerClick = (event) => {
-        if (this.suppressNextClick) {
-          this.suppressNextClick = !1, event.preventDefault();
-          return;
-        }
-        this.mode !== "scroll" || targetIsToolbar(event.target) || this.toggleToolbar();
+      this.onImageError = (target, error, token) => {
+        let message = error instanceof Error ? error.message : texts_default.errors.loadFailed;
+        this.viewport.setPageError(target.pageNum, token, message);
       };
       this.onProgressPointerDown = (event) => {
-        this.progressDragging = !0, this.cancelProgressCommit(), event.stopPropagation();
+        this.progressNavigating = !0, this.cancelProgressNavigation(), event.stopPropagation();
       };
       this.onProgressInput = () => {
-        let displayNumber = Number(this.progressInput?.value || "");
-        if (!Number.isFinite(displayNumber) || displayNumber <= 0)
+        let pageNum = this.toolbar.progressValue();
+        if (!Number.isFinite(pageNum) || pageNum <= 0)
           return;
-        this.progressDragging = !0;
-        let target = clamp(Math.round(displayNumber), 1, this.maxDisplayNumber());
-        this.pendingProgressDisplayNumber = target, this.previewProgressPage(target), this.cancelProgressCommit(), this.progressCommitTimer = window.setTimeout(() => this.onProgressCommit(), PROGRESS_IDLE_COMMIT_MS);
+        this.progressNavigating = !0;
+        let target = clamp(Math.round(pageNum), 1, this.maxProgressPageNum());
+        this.pendingProgressNavigationPageNum = target, this.navigateProgressPage(target), this.cancelProgressNavigation(), this.progressNavigationTimer = window.setTimeout(() => this.onProgressCommit(), PROGRESS_IDLE_COMMIT_MS);
       };
       this.onProgressCommit = () => {
-        if (!this.progressDragging && this.pendingProgressDisplayNumber === null)
+        if (!this.progressNavigating && this.pendingProgressNavigationPageNum === null)
           return;
-        let displayNumber = this.pendingProgressDisplayNumber ?? Number(this.progressInput?.value || "");
-        this.progressDragging = !1, this.pendingProgressDisplayNumber = null, this.cancelProgressCommit(), Number.isFinite(displayNumber) && displayNumber > 0 && this.setCurrentPageNumber(displayNumber, !0);
+        let pageNum = this.pendingProgressNavigationPageNum ?? this.toolbar.progressValue();
+        this.progressNavigating = !1, this.pendingProgressNavigationPageNum = null, this.cancelProgressNavigation(), Number.isFinite(pageNum) && pageNum > 0 && this.setCurrentPageNumber(pageNum, !0);
       };
       this.onResize = () => {
         this.resizeFrame === null && (this.resizeFrame = window.requestAnimationFrame(() => {
-          this.resizeFrame = null;
-          for (let slot of this.slots)
-            this.applySlotSize(slot);
+          this.resizeFrame = null, this.viewport.resizePages();
         }));
       };
-      this.slots = options.pages.map((page, index) => toPageSlot(page, index));
-      let startIndex = clamp(options.startIndex, 0, Math.max(0, this.slots.length - 1));
-      this.currentPageNumber = this.slots[startIndex]?.x ?? 1, this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : void 0, this.windowSize = options.renderWindowSize ?? DEFAULT_WINDOW_SIZE, this.preloadWindowSize = options.preloadWindowSize ?? DEFAULT_WINDOW_SIZE, this.loadPages = options.loadPages, this.onExit = options.onExit, this.onActivePageChange = options.onActivePageChange, this.onDisableReader = options.onDisableReader, this.imageQueue = new TwoTierImageQueue(
-        options.loadPage,
+      this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : void 0, this.renderWindowSize = options.renderWindowSize ?? DEFAULT_WINDOW_SIZE;
+      for (let [index, page] of options.pages.entries()) {
+        let pageNum = pageNumForPage(page, index);
+        this.pages.set(pageNum, {
+          ...page,
+          aspectRatio: normalizedAspectRatio(page.aspectRatio, FALLBACK_ASPECT_RATIO2),
+          pageNum
+        });
+      }
+      let startIndex = clamp(options.startIndex, 0, Math.max(0, options.pages.length - 1));
+      this.currentPageNum = pageNumForPage(options.pages[startIndex], startIndex), this.preloadWindowSize = options.preloadWindowSize ?? DEFAULT_WINDOW_SIZE, this.loadPages = options.loadPages, this.onExit = options.onExit, this.onActivePageChange = options.onActivePageChange, this.onDisableReader = options.onDisableReader, this.viewport = new PagesViewport({
+        mode: () => state.reader.viewMode.value,
+        readDirection: () => state.reader.readDirection.value,
+        closed: () => this.closed,
+        totalPages: () => this.totalPages
+      }), this.toolbar = new Toolbar(
+        {
+          onReadDirectionClick: () => this.toggleReadDirection(),
+          onRightTapClick: () => this.toggleRightTapAction(),
+          onModeClick: () => this.setMode(state.reader.viewMode.value === "paged" ? "scroll" : "paged"),
+          onCloseClick: () => this.close(),
+          onDisableReaderClick: () => {
+            this.onDisableReader?.(), this.close();
+          },
+          onProgressPointerDown: this.onProgressPointerDown,
+          onProgressInput: this.onProgressInput,
+          onProgressCommit: this.onProgressCommit
+        },
+        (open) => this.root.setToolbarOpen(open)
+      ), this.root = new ReaderRoot([...this.toolbar.elements, this.viewport.element]), this.gesture = new PagesGesture(this.viewport.scrollerElement(), {
+        onTap: (info, event) => this.handleTap(info, event),
+        onKeyboardClose: () => this.close(),
+        onKeyboardArrow: (direction) => this.handleKeyboardArrow(direction),
+        onWheel: (delta, event) => this.handleWheel(delta, event),
+        shouldStartDrag: (event) => this.shouldStartDrag(event),
+        onDragStart: (info, event) => this.handleDragStart(info, event),
+        onDragMove: (info, event) => this.handleDragMove(info, event),
+        onDragEnd: (info, event) => this.handleDragEnd(info, event),
+        onNativeScroll: () => this.handleNativeScroll()
+      }), this.imageQueue = new TwoTierImageQueue(
+        (target) => options.loadPage(target.page, target.index),
+        (pageNum) => this.viewport.markPageLoading(pageNum),
         this.onImageLoaded,
         this.onImageError,
         options.nearConcurrentLoads ?? DEFAULT_NEAR_CONCURRENT_LOADS,
         options.farConcurrentLoads ?? DEFAULT_FAR_CONCURRENT_LOADS
-      );
+      ), this.syncInitialUi();
     }
     open() {
-      this.slots.length !== 0 && (document.getElementById(VIEWER_ID)?.remove(), ensureViewerStyle(), this.previousDocumentOverflow = document.documentElement.style.overflow, this.previousBodyOverflow = document.body.style.overflow, this.previousDocumentTouchAction = document.documentElement.style.touchAction, this.previousBodyTouchAction = document.body.style.touchAction, document.documentElement.style.overflow = "hidden", document.body.style.overflow = "hidden", document.documentElement.style.touchAction = "none", document.body.style.touchAction = "none", this.createDom(), this.onExit && (window.history.pushState({ ehpeekReader: !0 }, "", window.location.href), this.historyEntry = !0, window.addEventListener("popstate", this.onPopState)), window.addEventListener("resize", this.onResize), document.addEventListener("keydown", this.onKeydown, !0), this.syncAfterPageChange({ scrollIntoView: !0 }));
+      this.pages.size !== 0 && (this.root.mount(this.viewport.scrollerElement()), this.onExit && (window.history.pushState({ ehpeekReader: !0 }, "", window.location.href), this.historyEntry = !0, window.addEventListener("popstate", this.onPopState)), window.addEventListener("resize", this.onResize), document.addEventListener("keydown", this.gesture.onKeydown, !0), this.syncAfterPageChange({ scrollIntoView: !0 }));
     }
     close() {
       if (!(this.closed || this.closing)) {
@@ -327,361 +1414,217 @@
         this.finishClose();
       }
     }
-    createDom() {
-      let overlay = document.createElement("div");
-      overlay.id = VIEWER_ID, overlay.classList.toggle("ehpeek-paged", this.mode === "paged"), overlay.classList.toggle("ehpeek-read-rtl", this.readDirection === "rtl"), overlay.classList.toggle("ehpeek-read-ltr", this.readDirection === "ltr");
-      let topbar = document.createElement("div");
-      topbar.className = "ehpeek-topbar", topbar.addEventListener("click", stopEvent), topbar.addEventListener("pointerdown", stopEvent), topbar.addEventListener("wheel", stopEvent);
-      let readDirectionButton = document.createElement("button");
-      readDirectionButton.type = "button", readDirectionButton.className = "ehpeek-button ehpeek-direction-button ehpeek-control-hidden", readDirectionButton.addEventListener("click", () => this.toggleReadDirection()), this.readDirectionButton = readDirectionButton;
-      let rightTapButton = document.createElement("button");
-      rightTapButton.type = "button", rightTapButton.className = "ehpeek-button ehpeek-direction-button ehpeek-control-hidden", rightTapButton.addEventListener("click", () => this.toggleRightTapAction()), this.rightTapButton = rightTapButton;
-      let modeButton = document.createElement("button");
-      modeButton.type = "button", modeButton.className = "ehpeek-button ehpeek-control-hidden", modeButton.addEventListener("click", () => this.setMode(this.mode === "paged" ? "scroll" : "paged")), this.modeButton = modeButton;
-      let closeButton = document.createElement("button");
-      closeButton.type = "button", closeButton.className = "ehpeek-button", closeButton.title = texts_default.viewer.close, closeButton.textContent = "X", closeButton.addEventListener("click", () => this.close());
-      let disableReaderButton = document.createElement("button");
-      disableReaderButton.type = "button", disableReaderButton.className = "ehpeek-button ehpeek-disable-button ehpeek-control-hidden", disableReaderButton.title = texts_default.viewer.disableReader, disableReaderButton.textContent = "off", disableReaderButton.addEventListener("click", () => {
-        this.onDisableReader?.(), this.close();
-      }), this.disableReaderButton = disableReaderButton;
-      let actions = document.createElement("div");
-      actions.className = "ehpeek-actions", actions.append(readDirectionButton, rightTapButton, modeButton, disableReaderButton, closeButton);
-      let pageNumberLabel = document.createElement("div");
-      pageNumberLabel.className = "ehpeek-pageno", this.pageNumberLabel = pageNumberLabel;
-      let toolbar = document.createElement("div");
-      toolbar.className = "ehpeek-progressbar ehpeek-toolbar-hidden", toolbar.addEventListener("click", stopEvent), toolbar.addEventListener("pointerdown", stopEvent), toolbar.addEventListener("wheel", stopEvent), this.toolbar = toolbar;
-      let progressInput = document.createElement("input");
-      progressInput.type = "range", progressInput.className = "ehpeek-progress", progressInput.min = "1", progressInput.step = "1", progressInput.addEventListener("pointerdown", this.onProgressPointerDown), progressInput.addEventListener("input", this.onProgressInput), progressInput.addEventListener("change", this.onProgressCommit), progressInput.addEventListener("pointerup", this.onProgressCommit), progressInput.addEventListener("pointercancel", this.onProgressCommit), this.progressInput = progressInput;
-      let scroller = document.createElement("div");
-      scroller.className = "ehpeek-scroller", scroller.addEventListener("click", this.onScrollerClick), scroller.addEventListener("scroll", this.onScroll, { passive: !0 }), scroller.addEventListener("wheel", this.onWheel, { passive: !1 }), scroller.addEventListener("pointerdown", this.onPointerDown), scroller.tabIndex = -1, this.scroller = scroller;
-      let strip = document.createElement("main");
-      strip.className = "ehpeek-strip", this.strip = strip, scroller.append(strip), topbar.append(actions), toolbar.append(progressInput), overlay.append(topbar, pageNumberLabel, toolbar, scroller), document.body.append(overlay), this.overlay = overlay, scroller.focus({ preventScroll: !0 }), this.updateModeButton(), this.updateReadDirectionButton(), this.updateRightTapButton(), this.updatePageNumber();
+    syncInitialUi() {
+      this.syncReaderControls(), this.updatePageNumber();
     }
     finishClose() {
-      this.closed || (this.closed = !0, this.cancelProgressCommit(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.onKeydown, !0), document.removeEventListener("pointermove", this.onPointerMove, !0), document.removeEventListener("pointerup", this.onPointerUp, !0), document.removeEventListener("pointercancel", this.onPointerUp, !0), this.overlay?.remove(), document.documentElement.style.overflow = this.previousDocumentOverflow, document.body.style.overflow = this.previousBodyOverflow, document.documentElement.style.touchAction = this.previousDocumentTouchAction, document.body.style.touchAction = this.previousBodyTouchAction, this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.cancelScrollFling(), this.cancelPagedAnimation(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null), activeViewer === this && (activeViewer = null));
+      this.closed || (this.closed = !0, this.cancelProgressNavigation(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.gesture.onKeydown, !0), this.gesture.dispose(), this.root.remove(), this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.viewport.stopMotion(), activeReader === this && (activeReader = null));
     }
-    setCurrentPageNumber(pageNumber, scrollIntoView, scrollBehavior = "auto") {
-      let target = clamp(Math.round(pageNumber), 1, this.maxDisplayNumber());
-      target !== this.currentPageNumber && (this.direction = target > this.currentPageNumber ? 1 : -1, this.currentPageNumber = target), this.syncAfterPageChange({ scrollIntoView, scrollBehavior });
+    setCurrentPageNumber(pageNumber, scrollIntoView, scrollMotion = "instant") {
+      this.pagedTargetPageNumber = null;
+      let target = clamp(Math.round(pageNumber), 1, this.maxProgressPageNum());
+      target !== this.currentPageNum && (this.direction = target > this.currentPageNum ? 1 : -1, this.currentPageNum = target), this.syncAfterPageChange({ scrollIntoView, scrollMotion });
     }
     syncAfterPageChange(options) {
-      let token = ++this.syncToken, numbers = this.windowNumbers(), missing = numbers.filter((number) => this.isRealDisplayNumber(number) && !this.loadedSlotFor(number));
-      this.maintainContainers(numbers, []), this.maintainLoadQueue(), this.notifyActivePageChange(), options.scrollIntoView && this.scrollToCurrentPage(options.scrollBehavior), missing.length > 0 && this.loadMissingPages(missing, token);
+      let token = ++this.syncToken, missing = this.viewport.windowPageNums(this.currentPageNum, this.renderWindowSize).filter((number) => this.isRealPageNum(number) && !this.pages.has(number));
+      this.syncViewportWindow(), this.maintainLoadQueue(), this.notifyActivePageChange(), options.scrollIntoView && this.scrollToCurrentPage(options.scrollMotion), missing.length > 0 && this.loadMissingPages(missing, token);
     }
     rebuildForCurrentMode() {
-      this.cancelScrollFling(), this.cancelPagedAnimation(), this.pagedScrollCommitTimer !== null && (window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = null);
-      for (let slot of this.slots)
-        slot.node?.remove(), slot.node = null, slot.frame = null;
-      this.scroller && (this.scroller.scrollLeft = 0, this.scroller.scrollTop = 0), this.syncAfterPageChange({ scrollIntoView: !0 });
+      this.viewport.stopMotion(), this.viewport.resetPosition(), this.syncAfterPageChange({ scrollIntoView: !0 });
     }
-    async loadMissingPages(displayNumbers, token) {
+    async loadMissingPages(pageNums, token) {
       let incoming;
       try {
-        incoming = await this.loadPages?.(displayNumbers);
+        incoming = await this.loadPages?.(pageNums);
       } catch (error) {
         console.error("[ehpeek]", error);
         return;
       }
-      this.closed || token !== this.syncToken || (this.maintainContainers(this.windowNumbers(), incoming ?? []), this.maintainLoadQueue(), this.notifyActivePageChange());
+      this.closed || token !== this.syncToken || (this.addPages(incoming ?? []), this.syncViewportWindow(), this.maintainLoadQueue(), this.notifyActivePageChange());
     }
-    maintainContainers(numbers, incoming) {
-      let oldSlots = new Map(this.slots.map((slot) => [slot.x, slot])), incomingPages = new Map(
-        incoming.map((page) => [page.displayNumber ?? 0, page]).filter(([number]) => number > 0)
-      ), nextSlots = [];
-      for (let number of numbers) {
-        let kind = this.slotKindFor(number), oldSlot = oldSlots.get(number), slot;
-        if (oldSlot && oldSlot.kind === kind ? slot = oldSlot : slot = createSlot(number, kind), kind === "page") {
-          let incomingPage = incomingPages.get(number);
-          incomingPage && this.fillSlotMetadata(slot, incomingPage);
-        } else
-          this.clearSlotMetadata(slot);
-        nextSlots.push(slot);
+    addPages(pages) {
+      for (let [index, page] of pages.entries()) {
+        let pageNum = pageNumForPage(page, index);
+        pageNum > 0 && this.pages.set(pageNum, {
+          ...page,
+          aspectRatio: normalizedAspectRatio(page.aspectRatio, FALLBACK_ASPECT_RATIO2),
+          pageNum
+        });
       }
-      let nextSet = new Set(nextSlots);
-      for (let slot of this.slots)
-        nextSet.has(slot) || this.removeSlot(slot);
-      this.slots = nextSlots, this.slots.forEach((slot, index) => {
-        slot.index = index;
-      }), this.renderContainers(), this.updatePageNumber();
+    }
+    syncViewportWindow() {
+      this.viewport.syncWindow({
+        currentPageNum: this.currentPageNum,
+        windowSize: this.renderWindowSize,
+        totalPages: this.totalPages,
+        pages: this.pageMetaForViewport()
+      }), this.updatePageNumber();
     }
     maintainLoadQueue() {
-      let loadableSlots = this.slots.filter((slot) => slot.kind === "page" && slot.meta), windowSet = new Set(loadableSlots.map((slot) => slot.x));
-      this.imageQueue.sync(loadableSlots, this.currentPageNumber, this.direction, windowSet, this.preloadWindowSize);
+      let targets = this.viewport.requiredImagePageNums().map((pageNum) => this.loadTargetFor(pageNum)).filter((target) => !!target), windowSet = new Set(targets.map((target) => target.pageNum));
+      this.imageQueue.sync(targets, this.currentPageNum, this.direction, windowSet, this.preloadWindowSize);
     }
-    renderContainers() {
-      if (!this.strip)
-        return;
-      let keepNodes = new Set(this.slots.map((slot) => slot.node).filter(Boolean));
-      for (let node of Array.from(this.strip.children))
-        keepNodes.has(node) || node.remove();
-      for (let slot of this.slots)
-        slot.node && !slot.node.isConnected && (slot.node = null, slot.frame = null), this.mountSlot(slot), slot.node?.style.setProperty("order", String(slot.index)), slot.node?.setAttribute("data-ehpeek-index", String(slot.index));
+    pageMetaForViewport() {
+      return new Map(Array.from(this.pages, ([pageNum, page]) => [pageNum, { aspectRatio: page.aspectRatio }]));
     }
-    mountSlot(slot) {
-      if (!this.strip || slot.node) {
-        slot.node && (this.applySlotSize(slot), this.refreshSlot(slot));
-        return;
-      }
-      let section = document.createElement("section");
-      section.className = "ehpeek-page", section.dataset.ehpeekIndex = String(slot.index), section.dataset.ehpeekDisplayNumber = String(slot.x);
-      let frame = document.createElement("div");
-      frame.className = "ehpeek-frame";
-      let placeholder = document.createElement("div");
-      placeholder.className = slot.state === "error" ? "ehpeek-error" : "ehpeek-placeholder", placeholder.classList.toggle("ehpeek-placeholder-end", slot.kind === "end"), placeholder.textContent = this.placeholderTextFor(slot), slot.kind === "end" && placeholder.addEventListener("click", () => this.close()), frame.append(placeholder), section.append(frame), slot.node = section, slot.frame = frame, this.applySlotSize(slot), this.strip.append(section), slot.state === "ready" && slot.imageUrl && this.installImage(slot);
+    loadTargetFor(pageNum) {
+      let page = this.pages.get(pageNum);
+      return page ? { pageNum, page, index: pageNum - 1 } : null;
     }
-    fillSlotMetadata(slot, meta) {
-      slot.meta = { ...meta, aspectRatio: normalizedAspectRatio(meta.aspectRatio), displayNumber: slot.x }, slot.kind = "page", slot.state = "idle", slot.imageUrl = null, slot.width = null, slot.height = null, slot.token += 1, this.refreshSlot(slot);
-    }
-    clearSlotMetadata(slot) {
-      !slot.meta && slot.state === "ready" && !slot.imageUrl || (slot.meta = null, slot.state = "ready", slot.imageUrl = null, slot.width = null, slot.height = null, slot.token += 1, this.refreshSlot(slot));
-    }
-    refreshSlot(slot) {
-      if (!slot.node || !slot.frame)
-        return;
-      if (slot.node.dataset.ehpeekDisplayNumber = String(slot.x), slot.state === "ready" && slot.imageUrl) {
-        this.installImage(slot);
-        return;
-      }
-      let placeholder = document.createElement("div");
-      placeholder.className = slot.state === "error" ? "ehpeek-error" : "ehpeek-placeholder", placeholder.classList.toggle("ehpeek-placeholder-end", slot.kind === "end"), placeholder.textContent = this.placeholderTextFor(slot), slot.kind === "end" && placeholder.addEventListener("click", () => this.close()), slot.frame.replaceChildren(placeholder);
-    }
-    placeholderTextFor(slot) {
-      return slot.state === "error" ? `${texts_default.viewer.failedPrefix} ${slot.x}` : slot.kind === "end" ? texts_default.viewer.end : slot.kind === "blank" ? "" : String(slot.x);
-    }
-    removeSlot(slot) {
-      this.imageQueue.invalidate(slot), slot.node?.remove(), slot.node = null, slot.frame = null;
-    }
-    windowNumbers() {
-      let numbers = [];
-      for (let offset = -this.windowSize; offset <= this.windowSize; offset += 1)
-        numbers.push(this.currentPageNumber + offset);
-      return numbers;
-    }
-    slotFor(displayNumber) {
-      return this.slots.find((slot) => slot.x === displayNumber);
-    }
-    loadedSlotFor(displayNumber) {
-      return this.slots.find(
-        (slot) => slot.kind === "page" && slot.meta !== null && slot.x === displayNumber
-      );
-    }
-    maxDisplayNumber() {
+    maxProgressPageNum() {
       return this.totalPages ? this.totalPages + 1 : Number.MAX_SAFE_INTEGER;
     }
-    isRealDisplayNumber(displayNumber) {
-      return displayNumber >= 1 && (!this.totalPages || displayNumber <= this.totalPages);
+    isRealPageNum(pageNum) {
+      return pageNum >= 1 && (!this.totalPages || pageNum <= this.totalPages);
     }
-    slotKindFor(displayNumber) {
-      return displayNumber < 1 ? "blank" : this.totalPages && displayNumber === this.totalPages + 1 ? "end" : this.totalPages && displayNumber > this.totalPages + 1 ? "blank" : "page";
-    }
-    step(delta) {
-      if (this.mode === "paged") {
+    turnPageBy(delta) {
+      if (state.reader.viewMode.value === "paged") {
         this.animatePagedStep(delta);
         return;
       }
-      this.setCurrentPageNumber(this.currentPageNumber + delta, !0);
+      this.setCurrentPageNumber(this.currentPageNum + delta, !0);
     }
     animatePagedStep(delta) {
-      let target = clamp(Math.round(this.currentPageNumber + delta), 1, this.maxDisplayNumber());
-      if (target === this.currentPageNumber) {
-        this.scrollToCurrentPage("smooth");
+      let base = this.pagedTargetPageNumber ?? this.currentPageNum, target = clamp(Math.round(base + delta), 1, this.maxProgressPageNum());
+      if (target === base) {
+        this.scrollToCurrentPage("animated");
         return;
       }
-      let slot = this.slotFor(target);
-      if (!slot?.node) {
-        this.setCurrentPageNumber(target, !0, "smooth");
+      if (this.viewport.pageOffset(target) === null) {
+        this.pagedTargetPageNumber = null, this.setCurrentPageNumber(target, !0, "animated");
         return;
       }
-      this.direction = target > this.currentPageNumber ? 1 : -1, this.scrollToSlot(slot, "smooth"), this.pagedScrollCommitTimer !== null && window.clearTimeout(this.pagedScrollCommitTimer), this.pagedScrollCommitTimer = window.setTimeout(() => {
-        this.pagedScrollCommitTimer = null, this.setCurrentPageNumber(target, !0);
-      }, this.pagedAnimationCommitDelay());
+      this.direction = target > base ? 1 : -1, this.pagedTargetPageNumber = target, this.viewport.moveToPage(target, "animated", () => {
+        this.pagedTargetPageNumber === target && (this.pagedTargetPageNumber = null, this.setCurrentPageNumber(target, !0));
+      });
     }
-    pagedAnimationCommitDelay() {
-      return PAGED_ANIMATION === "none" ? 0 : PAGED_SMOOTH_SCROLL_MS;
+    scrollToCurrentPage(motion = "instant") {
+      this.viewport.moveToPage(this.currentPageNum, motion);
     }
-    scrollToCurrentPage(behavior = "auto") {
-      let slot = this.slotFor(this.currentPageNumber);
-      slot && this.scrollToSlot(slot, behavior);
-    }
-    scrollToSlot(slot, behavior = "auto") {
-      if (!this.scroller || !slot.node)
-        return;
-      let pageRect = slot.node.getBoundingClientRect(), scrollerRect = this.scroller.getBoundingClientRect(), delta = this.horizontal() ? pageRect.left - scrollerRect.left : pageRect.top - scrollerRect.top;
-      this.addScrollPos(delta, behavior);
-    }
-    async installImage(slot) {
-      if (!slot.frame || !slot.imageUrl)
-        return;
-      let imageUrl = slot.imageUrl, token = slot.token, image = document.createElement("img");
-      image.className = "ehpeek-image", image.alt = `Page ${slot.x}`, image.decoding = "async", image.loading = "eager", image.draggable = !1, image.setAttribute("fetchpriority", slot.x === this.currentPageNumber ? "high" : "low"), image.src = imageUrl, slot.width && slot.height && (image.width = slot.width, image.height = slot.height);
+    async installImage(target, loaded, token) {
+      let imageUrl = loaded.imageUrl, width = positiveNumber(loaded.width), height = positiveNumber(loaded.height), image = this.viewport.createPageImage(target.pageNum, {
+        imageUrl,
+        highPriority: target.pageNum === this.currentPageNum,
+        width,
+        height
+      });
       try {
         await loadImage(image);
       } catch {
         return;
       }
-      !this.closed && slot.token === token && slot.frame && slot.imageUrl === imageUrl && slot.frame.replaceChildren(image);
-    }
-    applySlotSize(slot) {
-      if (!slot.node || !slot.frame)
-        return;
-      let frameWidth = Math.max(1, this.scroller?.clientWidth || window.innerWidth || 1), frameHeight = Math.ceil(frameWidth * aspectRatioFor(slot));
-      slot.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`), slot.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`), slot.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
+      this.closed || this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image);
     }
     updatePageNumber() {
-      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(this.currentPageNumber), !(!this.progressInput || this.progressDragging) && (this.progressInput.max = String(Math.max(1, this.totalPages ? this.totalPages + 1 : this.currentPageNumber)), this.progressInput.value = String(this.currentPageNumber), this.updateProgressFill(this.currentPageNumber)));
+      this.toolbar.setProgress({
+        pageNum: this.currentPageNum,
+        totalPages: this.totalPages,
+        maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
+        keepInputValue: this.progressNavigating
+      });
     }
     notifyActivePageChange() {
-      let page = this.loadedSlotFor(this.currentPageNumber);
-      page && this.onActivePageChange?.(page.meta, page.index);
+      let page = this.pages.get(this.currentPageNum);
+      page && this.onActivePageChange?.(page, this.currentPageNum - 1);
     }
-    pageNumberText(displayNumber) {
-      return this.totalPages && displayNumber === this.totalPages + 1 ? "End" : this.totalPages ? `${displayNumber} / ${this.totalPages}` : String(displayNumber);
+    handleKeyboardArrow(direction) {
+      this.turnPageBy(direction === "left" ? this.leftTapDelta() : this.rightTapDelta());
     }
-    applyScrollFling() {
-      !this.scroller || Math.abs(this.dragVelocityY) < SCROLL_FLING_MIN_VELOCITY || (this.flingVelocityY = -this.dragVelocityY, this.flingLastFrameTime = performance.now(), this.flingFrame = window.requestAnimationFrame(this.onScrollFlingFrame));
+    handleWheel(delta, event) {
+      state.reader.viewMode.value === "paged" && (event.preventDefault(), !this.gesture.dragging() && Math.abs(delta) >= PAGED_WHEEL_THRESHOLD && this.turnPageBy(delta > 0 ? 1 : -1));
     }
-    cancelScrollFling() {
-      this.flingFrame !== null && (window.cancelAnimationFrame(this.flingFrame), this.flingFrame = null), this.flingVelocityY = 0;
+    shouldStartDrag(event) {
+      return state.reader.viewMode.value === "paged" || event.pointerType === "mouse";
+    }
+    handleDragStart(_info, _event) {
+      this.viewport.stopMotion(), this.viewportDrag = {
+        startScroll: this.viewport.startDragPosition()
+      };
+    }
+    handleDragMove(info, event) {
+      let drag = this.viewportDrag;
+      drag && (pointerTypeForEvent(event), info.clientY, this.viewport.scrollTop(), this.viewport.dragPage(drag.startScroll, { dx: info.dx, dy: info.dy }));
+    }
+    handleDragEnd(info, event) {
+      if (pointerTypeForEvent(event), this.viewport.scrollTop(), info.dx, info.dy, this.viewportDrag = null, state.reader.viewMode.value !== "paged") {
+        this.suppressNextClick = !0, this.viewport.moveToTop(this.viewport.scrollTop()), this.viewport.startVerticalFlingFromDragVelocity(info.velocityY, () => this.updateCurrentFromScroll()), this.updateCurrentFromScroll();
+        return;
+      }
+      info.dx >= PAGED_SWIPE_THRESHOLD ? (this.suppressNextClick = !0, this.turnPageBy(this.rightDragDelta())) : info.dx <= -PAGED_SWIPE_THRESHOLD ? (this.suppressNextClick = !0, this.turnPageBy(this.leftDragDelta())) : (this.suppressNextClick = !0, this.scrollToCurrentPage("animated"));
+    }
+    handleNativeScroll() {
+      if (this.gesture.dragging() || state.reader.viewMode.value === "paged")
+        return;
+      let previousScrollTop = this.viewport.scrollTop();
+      this.viewport.moveToTop(previousScrollTop), this.viewport.scrollTop() === previousScrollTop && this.scrollFrame === null && (this.scrollFrame = window.requestAnimationFrame(() => {
+        this.scrollFrame = null, this.updateCurrentFromScroll();
+      }));
     }
     updateCurrentFromScroll() {
-      if (!this.scroller)
+      let next = this.viewport.centerPageNum();
+      next !== null && next !== this.currentPageNum && (this.direction = next > this.currentPageNum ? 1 : -1, this.currentPageNum = next, this.syncAfterPageChange({ scrollIntoView: !1 }));
+    }
+    handleTap(info, event) {
+      if (this.viewportDrag = null, this.suppressNextClick) {
+        this.suppressNextClick = !1, event.preventDefault();
         return;
-      let scrollerRect = this.scroller.getBoundingClientRect(), target = scrollerRect.top + Math.min(80, scrollerRect.height * 0.14);
-      for (let slot of this.slots) {
-        if (!slot.node || slot.kind === "blank")
-          continue;
-        let rect = slot.node.getBoundingClientRect();
-        if (rect.top <= target && rect.bottom > target) {
-          let next = slot.x;
-          next !== this.currentPageNumber && (this.direction = next > this.currentPageNumber ? 1 : -1, this.currentPageNumber = next, this.syncAfterPageChange({ scrollIntoView: !1 }));
-          return;
-        }
       }
-    }
-    updatePageNumberText(displayNumber) {
-      this.pageNumberLabel && (this.pageNumberLabel.textContent = this.pageNumberText(displayNumber)), this.updateProgressFill(displayNumber);
-    }
-    updateProgressFill(displayNumber) {
-      if (!this.progressInput)
+      if (this.handleViewportTap(info))
         return;
-      let min = Number(this.progressInput.min || "1"), max = Number(this.progressInput.max || "1"), value = clamp(displayNumber, min, max), progress = max > min ? (value - min) / (max - min) * 100 : 100;
-      this.progressInput.style.setProperty("--ehpeek-progress-fill", `${progress}%`);
+      if (state.reader.viewMode.value === "scroll") {
+        this.toggleToolbar();
+        return;
+      }
+      let width = this.viewport.viewportWidth(), zone = info.clientX / width;
+      zone >= 1 / 3 && zone <= 2 / 3 ? this.toggleToolbar() : this.turnPageBy(zone < 1 / 3 ? this.leftTapDelta() : this.rightTapDelta());
     }
-    previewProgressPage(displayNumber) {
-      let target = clamp(Math.round(displayNumber), 1, this.maxDisplayNumber());
-      target !== this.currentPageNumber && (this.direction = target > this.currentPageNumber ? 1 : -1, this.currentPageNumber = target), ++this.syncToken, this.maintainContainers(this.windowNumbers(), []), this.scrollToCurrentPage(), this.updatePageNumberText(target);
+    handleViewportTap(point) {
+      return this.viewport.isHitEndPage(point) ? (this.close(), !0) : !1;
     }
-    cancelProgressCommit() {
-      this.progressCommitTimer !== null && (window.clearTimeout(this.progressCommitTimer), this.progressCommitTimer = null);
+    navigateProgressPage(pageNum) {
+      let target = clamp(Math.round(pageNum), 1, this.maxProgressPageNum());
+      target !== this.currentPageNum && (this.direction = target > this.currentPageNum ? 1 : -1, this.currentPageNum = target), ++this.syncToken, this.syncViewportWindow(), this.scrollToCurrentPage(), this.toolbar.setProgress({
+        pageNum: target,
+        totalPages: this.totalPages,
+        maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
+        keepInputValue: !0
+      });
+    }
+    cancelProgressNavigation() {
+      this.progressNavigationTimer !== null && (window.clearTimeout(this.progressNavigationTimer), this.progressNavigationTimer = null);
     }
     setMode(mode) {
-      mode !== this.mode && (this.mode = mode, saveViewMode(mode), this.overlay?.classList.toggle("ehpeek-paged", mode === "paged"), this.updateModeButton(), this.rebuildForCurrentMode());
+      mode !== state.reader.viewMode.value && (state.reader.viewMode.set(mode), this.syncReaderControls(), this.rebuildForCurrentMode());
     }
     toggleReadDirection() {
-      this.readDirection = this.readDirection === "rtl" ? "ltr" : "rtl", saveReadDirection(this.readDirection), this.overlay?.classList.toggle("ehpeek-read-rtl", this.readDirection === "rtl"), this.overlay?.classList.toggle("ehpeek-read-ltr", this.readDirection === "ltr"), this.updateReadDirectionButton();
+      let readDirection = state.reader.readDirection.value === "rtl" ? "ltr" : "rtl";
+      state.reader.readDirection.set(readDirection), this.syncReaderControls(), this.syncViewportWindow(), this.scrollToCurrentPage();
     }
     toggleRightTapAction() {
-      this.rightTapAction = this.rightTapAction === "previous" ? "next" : "previous", saveRightTapAction(this.rightTapAction), this.updateRightTapButton();
+      let rightTapAction = state.reader.rightTapAction.value === "previous" ? "next" : "previous";
+      state.reader.rightTapAction.set(rightTapAction), this.syncReaderControls();
     }
-    updateModeButton() {
-      if (!this.modeButton)
-        return;
-      let paged = this.mode === "paged";
-      this.modeButton.textContent = paged ? "⇔" : "⇕", this.modeButton.title = paged ? texts_default.viewer.scrollMode : texts_default.viewer.pagedMode;
-    }
-    updateReadDirectionButton() {
-      if (!this.readDirectionButton)
-        return;
-      let rtl = this.readDirection === "rtl";
-      this.readDirectionButton.textContent = rtl ? "RL" : "LR", this.readDirectionButton.title = rtl ? texts_default.viewer.readLeftToRight : texts_default.viewer.readRightToLeft;
-    }
-    updateRightTapButton() {
-      if (!this.rightTapButton)
-        return;
-      let previous = this.rightTapAction === "previous";
-      this.rightTapButton.textContent = previous ? "R-" : "R+", this.rightTapButton.title = previous ? texts_default.viewer.rightTapNext : texts_default.viewer.rightTapPrevious;
+    syncReaderControls() {
+      this.root.setMode(state.reader.viewMode.value), this.root.setReadDirection(state.reader.readDirection.value), this.toolbar.setControls({
+        mode: state.reader.viewMode.value,
+        readDirection: state.reader.readDirection.value,
+        rightTapAction: state.reader.rightTapAction.value
+      });
     }
     toggleToolbar() {
-      let hidden = this.toolbar?.classList.toggle("ehpeek-toolbar-hidden") ?? !1;
-      this.overlay?.classList.toggle("ehpeek-toolbar-open", !hidden), this.modeButton?.classList.toggle("ehpeek-control-hidden", hidden), this.readDirectionButton?.classList.toggle("ehpeek-control-hidden", hidden), this.rightTapButton?.classList.toggle("ehpeek-control-hidden", hidden), this.disableReaderButton?.classList.toggle("ehpeek-control-hidden", hidden);
+      this.toolbar.toggle();
     }
     rightTapDelta() {
-      return this.rightTapAction === "previous" ? -1 : 1;
+      return state.reader.rightTapAction.value === "previous" ? -1 : 1;
     }
     leftTapDelta() {
       return -this.rightTapDelta();
     }
-    rightwardDelta() {
-      return this.readDirection === "ltr" ? 1 : -1;
+    rightDragDelta() {
+      return state.reader.readDirection.value === "rtl" ? 1 : -1;
     }
-    leftwardDelta() {
-      return -this.rightwardDelta();
-    }
-    horizontal() {
-      return this.mode === "paged";
-    }
-    addScrollPos(delta, behavior = "auto") {
-      this.scroller && (this.horizontal() ? this.scrollPagedTo(this.scroller.scrollLeft + delta, behavior) : this.setScrollTop(this.scroller.scrollTop + delta));
-    }
-    scrollPagedTo(left, behavior = "auto") {
-      if (this.scroller) {
-        if (this.cancelPagedAnimation(), behavior !== "smooth" || PAGED_ANIMATION === "none") {
-          this.scroller.scrollLeft = left;
-          return;
-        }
-        if (PAGED_ANIMATION === "native") {
-          this.scroller.scrollTo({ left, behavior: "smooth" });
-          return;
-        }
-        this.animatePagedScrollTo(left);
-      }
-    }
-    animatePagedScrollTo(left) {
-      if (!this.scroller)
-        return;
-      let startLeft = this.scroller.scrollLeft, delta = left - startLeft, lastFrameTime = performance.now(), animationTime = 0, step = (time) => {
-        if (!this.scroller) {
-          this.cancelPagedAnimation();
-          return;
-        }
-        let elapsed = clamp(time - lastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
-        lastFrameTime = time, animationTime += elapsed;
-        let progress = clamp(animationTime / PAGED_SMOOTH_SCROLL_MS, 0, 1), eased = 1 - Math.pow(1 - progress, PAGED_SCROLL_EASING_POWER);
-        if (this.scroller.scrollLeft = startLeft + delta * eased, progress >= 1) {
-          this.pagedAnimationFrame = null;
-          return;
-        }
-        this.pagedAnimationFrame = window.requestAnimationFrame(step);
-      };
-      this.pagedAnimationFrame = window.requestAnimationFrame(step);
-    }
-    cancelPagedAnimation() {
-      this.pagedAnimationFrame !== null && (window.cancelAnimationFrame(this.pagedAnimationFrame), this.pagedAnimationFrame = null);
-    }
-    setScrollTop(scrollTop) {
-      this.scroller && (this.scroller.scrollTop = this.clampedScrollTop(scrollTop));
-    }
-    clampedScrollTop(scrollTop) {
-      let bounds = this.scrollBounds();
-      return bounds ? clamp(
-        scrollTop,
-        bounds.min ?? Number.NEGATIVE_INFINITY,
-        bounds.max ?? Number.POSITIVE_INFINITY
-      ) : scrollTop;
-    }
-    scrollBounds() {
-      if (!this.scroller || this.mode !== "scroll")
-        return null;
-      let firstSlot = this.slotFor(1), lastSlot = this.totalPages ? this.slotFor(this.totalPages + 1) : void 0, scrollerRect = this.scroller.getBoundingClientRect(), bounds = {};
-      if (firstSlot?.node) {
-        let firstRect = firstSlot.node.getBoundingClientRect();
-        bounds.min = this.scroller.scrollTop + firstRect.top - scrollerRect.top;
-      }
-      if (lastSlot?.node) {
-        let lastRect = lastSlot.node.getBoundingClientRect(), lastTop = this.scroller.scrollTop + lastRect.top - scrollerRect.top;
-        bounds.max = lastTop + lastRect.height - this.scroller.clientHeight;
-      }
-      return bounds.min === void 0 && bounds.max === void 0 ? null : (bounds.min !== void 0 && bounds.max !== void 0 && (bounds.max = Math.max(bounds.min, bounds.max)), bounds);
+    leftDragDelta() {
+      return -this.rightDragDelta();
     }
   };
   async function loadImage(image) {
@@ -695,515 +1638,27 @@
       }
     }
   }
-  function toPageSlot(page, index) {
-    let x = typeof page.displayNumber == "number" && Number.isFinite(page.displayNumber) ? page.displayNumber : index + 1;
-    return {
-      x,
-      index,
-      kind: "page",
-      meta: { ...page, aspectRatio: normalizedAspectRatio(page.aspectRatio), displayNumber: x },
-      state: "idle",
-      imageUrl: null,
-      width: null,
-      height: null,
-      node: null,
-      frame: null,
-      token: 0
-    };
+  function pageNumForPage(page, index) {
+    let pageNum = page?.pageNum;
+    return typeof pageNum == "number" && Number.isFinite(pageNum) && pageNum > 0 ? pageNum : index + 1;
   }
-  function createSlot(x, kind) {
-    return {
-      x,
-      index: 0,
-      kind,
-      meta: null,
-      state: kind === "page" ? "idle" : "ready",
-      imageUrl: null,
-      width: null,
-      height: null,
-      node: null,
-      frame: null,
-      token: 0
-    };
-  }
-  function aspectRatioFor(slot) {
-    return slot.width && slot.height && slot.width > 0 && slot.height > 0 ? slot.height / slot.width : normalizedAspectRatio(slot.meta?.aspectRatio);
-  }
-  function targetIsToolbar(target) {
-    return target instanceof Element && !!target.closest(".ehpeek-topbar, .ehpeek-progressbar");
-  }
-  function targetSummary(target) {
-    if (!(target instanceof Element))
-      return String(target);
-    let id = target.id ? `#${target.id}` : "", className = typeof target.className == "string" && target.className ? `.${target.className.replace(/\s+/g, ".")}` : "";
-    return `${target.tagName.toLowerCase()}${id}${className}`;
-  }
-  function loadViewMode() {
-    try {
-      return window.localStorage.getItem(VIEW_MODE_KEY) === "paged" ? "paged" : "scroll";
-    } catch {
-      return "scroll";
-    }
-  }
-  function saveViewMode(mode) {
-    try {
-      window.localStorage.setItem(VIEW_MODE_KEY, mode);
-    } catch {
-    }
-  }
-  function loadReadDirection() {
-    try {
-      return window.localStorage.getItem(READ_DIRECTION_KEY) === "ltr" ? "ltr" : "rtl";
-    } catch {
-      return "rtl";
-    }
-  }
-  function saveReadDirection(direction) {
-    try {
-      window.localStorage.setItem(READ_DIRECTION_KEY, direction);
-    } catch {
-    }
-  }
-  function loadRightTapAction() {
-    try {
-      return window.localStorage.getItem(RIGHT_TAP_ACTION_KEY) === "next" ? "next" : "previous";
-    } catch {
-      return "previous";
-    }
-  }
-  function saveRightTapAction(action) {
-    try {
-      window.localStorage.setItem(RIGHT_TAP_ACTION_KEY, action);
-    } catch {
-    }
-  }
-  function normalizedAspectRatio(value) {
-    return value && Number.isFinite(value) && value > 0 ? value : FALLBACK_ASPECT_RATIO;
-  }
-  function positiveNumber(value) {
-    return value && Number.isFinite(value) && value > 0 ? value : null;
-  }
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-  function stopEvent(event) {
-    event.stopPropagation();
-  }
-  function ensureViewerStyle() {
-    if (document.getElementById(STYLE_ID))
-      return;
-    let style = document.createElement("style");
-    style.id = STYLE_ID, style.textContent = `
-    #${VIEWER_ID} {
-      position: fixed;
-      inset: 0;
-      z-index: 2147483647;
-      background: #070707;
-      color: #f3f3f3;
-      font: 13px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    #${VIEWER_ID} * {
-      box-sizing: border-box;
-    }
-
-    .ehpeek-topbar {
-      position: fixed;
-      top: calc(10px + env(safe-area-inset-top, 0px));
-      right: 10px;
-      z-index: 3;
-      display: flex;
-      justify-content: flex-end;
-      pointer-events: none;
-    }
-
-    .ehpeek-actions {
-      display: flex;
-      flex-direction: row;
-      gap: 8px;
-      pointer-events: auto;
-    }
-
-    .ehpeek-button {
-      width: 46px;
-      height: 40px;
-      padding: 0 10px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 6px;
-      background: rgba(35, 35, 35, 0.88);
-      color: #f3f3f3;
-      cursor: pointer;
-      font: 700 16px/1 system-ui, sans-serif;
-    }
-
-    .ehpeek-direction-button {
-      width: 46px;
-      padding: 0 10px;
-      font-size: 15px;
-    }
-
-    .ehpeek-disable-button {
-      width: 46px;
-      padding: 0 10px;
-      font-size: 13px;
-      text-transform: uppercase;
-    }
-
-    .ehpeek-control-hidden {
-      display: none;
-    }
-
-    .ehpeek-pageno {
-      position: fixed;
-      top: calc(62px + env(safe-area-inset-top, 0px));
-      left: 50%;
-      z-index: 3;
-      min-width: 64px;
-      padding: 4px 10px;
-      border-radius: 6px;
-      background: rgba(15, 15, 15, 0.34);
-      color: #f3f3f3;
-      font: 600 14px/1.4 system-ui, sans-serif;
-      white-space: nowrap;
-      text-align: center;
-      transform: translateX(-50%);
-      pointer-events: none;
-    }
-
-    .ehpeek-progressbar {
-      position: fixed;
-      right: max(12px, env(safe-area-inset-right, 0px));
-      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-      left: max(12px, env(safe-area-inset-left, 0px));
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      padding: 0;
-      transition: opacity 160ms ease, transform 160ms ease;
-    }
-
-    .ehpeek-toolbar-hidden {
-      opacity: 0;
-      transform: translateY(calc(100% + 16px));
-      pointer-events: none;
-    }
-
-    .ehpeek-progress {
-      --ehpeek-progress-fill: 0%;
-      width: 100%;
-      height: 48px;
-      margin: 0;
-      padding: 0 12px;
-      accent-color: #f3f3f3;
-      cursor: grab;
-      touch-action: none;
-      user-select: none;
-      -webkit-appearance: none;
-      appearance: none;
-    }
-
-    .ehpeek-progress:active {
-      cursor: grabbing;
-    }
-
-    #${VIEWER_ID}.ehpeek-read-rtl .ehpeek-progress {
-      direction: rtl;
-    }
-
-    #${VIEWER_ID}.ehpeek-read-ltr .ehpeek-progress {
-      direction: ltr;
-    }
-
-    .ehpeek-progress::-webkit-slider-runnable-track {
-      height: 8px;
-      border-radius: 999px;
-      background: linear-gradient(
-        to right,
-        #4da3ff 0 var(--ehpeek-progress-fill),
-        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
-      );
-    }
-
-    #${VIEWER_ID}.ehpeek-read-rtl .ehpeek-progress::-webkit-slider-runnable-track {
-      background: linear-gradient(
-        to left,
-        #4da3ff 0 var(--ehpeek-progress-fill),
-        rgba(255, 255, 255, 0.34) var(--ehpeek-progress-fill) 100%
-      );
-    }
-
-    .ehpeek-progress::-webkit-slider-thumb {
-      width: 30px;
-      height: 30px;
-      margin-top: -11px;
-      border: 2px solid rgba(15, 15, 15, 0.92);
-      border-radius: 50%;
-      background: #f3f3f3;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-      -webkit-appearance: none;
-      appearance: none;
-    }
-
-    .ehpeek-progress::-moz-range-track {
-      height: 8px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.34);
-    }
-
-    .ehpeek-progress::-moz-range-progress {
-      height: 8px;
-      border-radius: 999px;
-      background: #4da3ff;
-    }
-
-    .ehpeek-progress::-moz-range-thumb {
-      width: 30px;
-      height: 30px;
-      border: 2px solid rgba(15, 15, 15, 0.92);
-      border-radius: 50%;
-      background: #f3f3f3;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-    }
-
-    .ehpeek-scroller {
-      width: 100%;
-      height: 100%;
-      overflow: auto;
-      overscroll-behavior: contain;
-      scroll-behavior: auto;
-      touch-action: none;
-      cursor: grab;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-
-    .ehpeek-scroller-dragging {
-      cursor: grabbing;
-      user-select: none;
-    }
-
-    .ehpeek-scroller::-webkit-scrollbar {
-      display: none;
-    }
-
-    .ehpeek-strip {
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      min-height: 100%;
-      padding: 56px 0 72px;
-    }
-
-    .ehpeek-page {
-      display: flex;
-      width: 100%;
-      height: var(--ehpeek-page-height);
-      align-items: flex-start;
-      justify-content: center;
-      padding-bottom: 8px;
-    }
-
-    .ehpeek-frame {
-      display: flex;
-      width: var(--ehpeek-frame-width);
-      height: var(--ehpeek-frame-height);
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-
-    .ehpeek-placeholder,
-    .ehpeek-error {
-      display: flex;
-      width: 100%;
-      height: 100%;
-      align-items: center;
-      justify-content: center;
-      background: #151515;
-      color: rgba(245, 245, 245, 0.72);
-      font-size: clamp(88px, 25vw, 180px);
-      font-weight: 850;
-      line-height: 1;
-      text-align: center;
-    }
-
-    @media (min-width: 760px) {
-      .ehpeek-placeholder {
-        font-size: clamp(72px, 10vw, 140px);
-      }
-    }
-
-    .ehpeek-error {
-      color: #ffb2a7;
-      font-size: 18px;
-      font-weight: 700;
-    }
-
-    .ehpeek-placeholder-end {
-      padding: 24px;
-      direction: ltr;
-      font-size: clamp(24px, 6vw, 42px);
-      font-weight: 700;
-      line-height: 1.3;
-      unicode-bidi: plaintext;
-    }
-
-    .ehpeek-image {
-      display: block;
-      width: var(--ehpeek-frame-width);
-      height: var(--ehpeek-frame-height);
-      object-fit: contain;
-      user-select: none;
-      -webkit-user-drag: none;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged .ehpeek-scroller {
-      overflow: hidden;
-      touch-action: none;
-      user-select: none;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged.ehpeek-read-rtl .ehpeek-scroller {
-      direction: rtl;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged.ehpeek-read-ltr .ehpeek-scroller {
-      direction: ltr;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged .ehpeek-strip {
-      display: flex;
-      flex-direction: row;
-      width: auto;
-      height: 100%;
-      min-height: 0;
-      padding: 0;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged .ehpeek-page {
-      flex: 0 0 100%;
-      width: 100%;
-      height: 100%;
-      align-items: center;
-      padding: 0;
-    }
-
-    #${VIEWER_ID}.ehpeek-paged .ehpeek-frame,
-    #${VIEWER_ID}.ehpeek-paged .ehpeek-image {
-      width: 100%;
-      height: 100%;
-    }
-
-    @media (pointer: coarse) {
-      .ehpeek-button {
-        width: 68px;
-        height: 60px;
-        padding: 0 16px;
-        border-radius: 8px;
-        font-size: 18px;
-      }
-
-      .ehpeek-disable-button {
-        width: 68px;
-        font-size: 15px;
-      }
-
-      .ehpeek-direction-button {
-        width: 68px;
-        padding: 0 16px;
-        font-size: 16px;
-      }
-
-      .ehpeek-pageno {
-        top: calc(72px + env(safe-area-inset-top, 0px));
-      }
-
-      .ehpeek-topbar {
-        top: calc(8px + env(safe-area-inset-top, 0px));
-        right: 8px;
-      }
-
-      .ehpeek-progressbar {
-        right: max(12px, env(safe-area-inset-right, 0px));
-        bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-        left: max(12px, env(safe-area-inset-left, 0px));
-        padding: 0;
-      }
-
-      .ehpeek-progress {
-        height: 72px;
-        padding: 0 19px;
-      }
-
-      .ehpeek-progress::-webkit-slider-thumb {
-        width: 43px;
-        height: 43px;
-        margin-top: -17px;
-      }
-
-      .ehpeek-progress::-moz-range-thumb {
-        width: 43px;
-        height: 43px;
-      }
-    }
-
-    @media (orientation: landscape) {
-      .ehpeek-pageno {
-        top: calc(54px + env(safe-area-inset-top, 0px));
-        right: 10px;
-        left: auto;
-        min-width: 0;
-        max-width: calc(100vw - 20px);
-        text-align: right;
-        transform: none;
-      }
-    }
-
-    @media (orientation: landscape) and (pointer: coarse) {
-      .ehpeek-pageno {
-        top: calc(62px + env(safe-area-inset-top, 0px));
-        right: 8px;
-        max-width: calc(100vw - 16px);
-      }
-    }
-  `, document.head.append(style);
+  function pointerTypeForEvent(event) {
+    return "pointerType" in event ? event.pointerType : "mouse";
   }
 
   // src/main.ts
-  var REQUEST_TIMEOUT_MS = 3e4, PREVIEW_CACHE_LIMIT = 10, READER_ENABLED_KEY = "ehpeek:reader-enabled", LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY = "ehpeek:thumbnail-viewer-enabled", SETTINGS_ROOT_ID = "ehpeek-settings-root", SETTINGS_TRIGGER_ID = "ehpeek-settings-trigger", SETTINGS_MENU_ID = "ehpeek-settings-menu", SETTINGS_READER_ID = "ehpeek-reader-setting", SETTINGS_STYLE_ID = "ehpeek-settings-style", menuCommandId = null;
-  function readerEnabled() {
-    try {
-      let value = window.localStorage.getItem(READER_ENABLED_KEY);
-      return value !== null ? value !== "false" : window.localStorage.getItem(LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY) !== "false";
-    } catch {
-      return !0;
-    }
-  }
-  function setReaderEnabled(enabled) {
-    try {
-      window.localStorage.setItem(READER_ENABLED_KEY, String(enabled)), window.localStorage.removeItem(LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY);
-    } catch {
-    }
-    updateSettingsMenu(), registerUserscriptMenu();
+  var REQUEST_TIMEOUT_MS = 3e4, PREVIEW_CACHE_LIMIT = 10, SETTINGS_ROOT_ID = "ehpeek-settings-root", SETTINGS_TRIGGER_ID = "ehpeek-settings-trigger", SETTINGS_MENU_ID = "ehpeek-settings-menu", SETTINGS_READER_ID = "ehpeek-reader-setting", SETTINGS_STYLE_ID = "ehpeek-settings-style", READER_WINDOW_SIZE = 10, menuCommandId = null;
+  function updateReaderEnabled(enabled) {
+    state.reader.enabled.set(enabled), updateSettingsMenu(), registerUserscriptMenu();
   }
   function toggleReader() {
-    setReaderEnabled(!readerEnabled());
+    updateReaderEnabled(!state.reader.enabled.value);
   }
   function registerUserscriptMenu() {
     typeof GM_registerMenuCommand == "function" && (menuCommandId !== null && typeof GM_unregisterMenuCommand == "function" && (GM_unregisterMenuCommand(menuCommandId), menuCommandId = null), menuCommandId = GM_registerMenuCommand(
       texts_default.settings.openSettings,
       openSettingsMenu
     ));
-  }
-  function clamp2(value, min, max) {
-    return max < min ? min : Math.min(max, Math.max(min, value));
-  }
-  function normalizeUrl(url, baseUrl = window.location.href) {
-    try {
-      return new URL(url, baseUrl).href;
-    } catch {
-      return "";
-    }
   }
   function isImagePageUrl(url) {
     try {
@@ -1244,10 +1699,10 @@
       !url || !isImagePageUrl(url) || seen.has(url) || (seen.add(url), pages.push({
         url,
         aspectRatio: imageAspectRatio(link.querySelector("img")),
-        displayNumber: galleryPageNumber(url)
+        pageNum: galleryPageNumber(url)
       }));
     }
-    return pages.sort((left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER));
+    return pages.sort((left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER));
   }
   function previewPageIndex() {
     let value = Number(new URL(window.location.href).searchParams.get("p") || "0");
@@ -1335,32 +1790,33 @@
     };
   }
   var EhGalleryPageProvider = class {
-    constructor(landingIndex, landingPages, pageSize, maxPreviewIndex) {
+    constructor(landingIndex, landingPages, pageSize, maxPreviewIndex, windowSize) {
       this.landingIndex = landingIndex;
       this.landingPages = landingPages;
       this.pageSize = pageSize;
       this.maxPreviewIndex = maxPreviewIndex;
+      this.windowSize = windowSize;
       this.previewCache = /* @__PURE__ */ new Map();
       this.previewCache.set(landingIndex, landingPages);
     }
-    previewIndexForPage(displayNumber) {
-      let previewIndex = Math.max(0, Math.floor((displayNumber - 1) / this.pageSize));
+    previewIndepageNumForPage(pageNum) {
+      let previewIndex = Math.max(0, Math.floor((pageNum - 1) / this.pageSize));
       return this.maxPreviewIndex === null ? previewIndex : Math.min(previewIndex, this.maxPreviewIndex);
     }
-    async loadDisplayPages(displayNumbers) {
-      let previewIndexes = Array.from(new Set(displayNumbers.map((displayNumber) => this.previewIndexForPage(displayNumber)))).filter(
+    async loadDisplayPages(pageNums) {
+      let previewIndexes = Array.from(new Set(pageNums.map((pageNum) => this.previewIndepageNumForPage(pageNum)))).filter(
         (value) => value >= 0 && (this.maxPreviewIndex === null || value <= this.maxPreviewIndex)
-      ), requested = new Set(displayNumbers), chunks = await Promise.all(previewIndexes.map((index) => this.cachedPreviewPage(index))), byUrl = /* @__PURE__ */ new Map();
+      ), requested = new Set(pageNums), chunks = await Promise.all(previewIndexes.map((index) => this.cachedPreviewPage(index))), byUrl = /* @__PURE__ */ new Map();
       for (let page of chunks.flat())
-        page.displayNumber && requested.has(page.displayNumber) && byUrl.set(page.url, page);
+        page.pageNum && requested.has(page.pageNum) && byUrl.set(page.url, page);
       return Array.from(byUrl.values()).sort(
-        (left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER)
+        (left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER)
       );
     }
-    displayWindowAround(displayNumber) {
+    displayWindowAround(pageNum) {
       let numbers = [];
-      for (let offset = -10; offset <= 10; offset += 1) {
-        let value = displayNumber + offset;
+      for (let offset = -this.windowSize; offset <= this.windowSize; offset += 1) {
+        let value = pageNum + offset;
         value > 0 && numbers.push(value);
       }
       return numbers;
@@ -1383,29 +1839,29 @@
     }
   };
   async function openReader(startPageUrl) {
-    let landingIndex = previewPageIndex(), landingPages = collectGalleryPages(), pageSize = computePreviewPageSize(), maxPreviewIndex = maxPreviewPageIndex(), provider = new EhGalleryPageProvider(landingIndex, landingPages, pageSize, maxPreviewIndex), startUrl = normalizeUrl(startPageUrl), hashPage = peekPageFromHash(), startDisplayNumber = hashPage ?? galleryPageNumber(startUrl), pages = startDisplayNumber ? await provider.loadDisplayPages(provider.displayWindowAround(startDisplayNumber)) : landingPages, startIndex = hashPage !== null ? pages.findIndex((page) => page.displayNumber === hashPage) : pages.findIndex((page) => page.url === startUrl);
-    startIndex < 0 && (startIndex = 0, pages = [{ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) }, ...pages].sort(
-      (left, right) => (left.displayNumber ?? 0) - (right.displayNumber ?? 0)
+    let landingIndex = previewPageIndex(), landingPages = collectGalleryPages(), pageSize = computePreviewPageSize(), maxPreviewIndex = maxPreviewPageIndex(), provider = new EhGalleryPageProvider(landingIndex, landingPages, pageSize, maxPreviewIndex, READER_WINDOW_SIZE), startUrl = normalizeUrl(startPageUrl), hashPage = peekPageFromHash(), startPageNum = hashPage ?? galleryPageNumber(startUrl), pages = startPageNum ? await provider.loadDisplayPages(provider.displayWindowAround(startPageNum)) : landingPages, startIndex = hashPage !== null ? pages.findIndex((page) => page.pageNum === hashPage) : pages.findIndex((page) => page.url === startUrl);
+    startIndex < 0 && (startIndex = 0, pages = [{ url: startUrl, aspectRatio: 1.42, pageNum: galleryPageNumber(startUrl) }, ...pages].sort(
+      (left, right) => (left.pageNum ?? 0) - (right.pageNum ?? 0)
     ), startIndex = pages.findIndex((page) => page.url === startUrl));
-    let lastDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
-    openFullscreenViewer({
+    let lastPageNum = hashPage ?? galleryPageNumber(startUrl);
+    openFullscreenReader({
       pages,
       startIndex,
-      renderWindowSize: 10,
-      preloadWindowSize: 10,
+      renderWindowSize: READER_WINDOW_SIZE,
+      preloadWindowSize: READER_WINDOW_SIZE,
       nearConcurrentLoads: 3,
       farConcurrentLoads: 6,
       totalPages: readShowingRange()?.total,
       loadPage: loadEhImagePage,
-      loadPages: (displayNumbers) => provider.loadDisplayPages(displayNumbers),
+      loadPages: (pageNums) => provider.loadDisplayPages(pageNums),
       onActivePageChange: (page) => {
-        page.displayNumber && (lastDisplayNumber = page.displayNumber), updatePeekLocation(page.displayNumber, pageSize);
+        page.pageNum && (lastPageNum = page.pageNum), updatePeekLocation(page.pageNum, pageSize);
       },
       onExit: () => {
-        let exitIndex = lastDisplayNumber ? provider.previewIndexForPage(lastDisplayNumber) : landingIndex, galleryUrl = previewUrlForIndex(exitIndex);
+        let exitIndex = lastPageNum ? provider.previewIndepageNumForPage(lastPageNum) : landingIndex, galleryUrl = previewUrlForIndex(exitIndex);
         exitIndex === landingIndex ? window.history.replaceState(window.history.state, "", galleryUrl) : window.location.replace(galleryUrl);
       },
-      onDisableReader: () => setReaderEnabled(!1)
+      onDisableReader: () => updateReaderEnabled(!1)
     });
   }
   function reportOpenError(error) {
@@ -1471,13 +1927,13 @@
     let trigger = document.getElementById(SETTINGS_TRIGGER_ID), menu = document.getElementById(SETTINGS_MENU_ID);
     if (!trigger || !menu || menu.hidden)
       return;
-    let gap = 4, edgePadding = 8, triggerRect = trigger.getBoundingClientRect(), menuRect = menu.getBoundingClientRect(), left = clamp2(triggerRect.right - menuRect.width, edgePadding, window.innerWidth - menuRect.width - edgePadding), top = clamp2(triggerRect.bottom + gap, edgePadding, window.innerHeight - menuRect.height - edgePadding);
+    let gap = 4, edgePadding = 8, triggerRect = trigger.getBoundingClientRect(), menuRect = menu.getBoundingClientRect(), left = clamp(triggerRect.right - menuRect.width, edgePadding, window.innerWidth - menuRect.width - edgePadding), top = clamp(triggerRect.bottom + gap, edgePadding, window.innerHeight - menuRect.height - edgePadding);
     menu.style.left = `${left}px`, menu.style.top = `${top}px`;
   }
   function updateSettingsMenu() {
     let trigger = document.getElementById(SETTINGS_TRIGGER_ID), setting = document.getElementById(SETTINGS_READER_ID), menu = document.getElementById(SETTINGS_MENU_ID);
     trigger && (trigger.textContent = texts_default.settings.menuLabel, trigger.setAttribute("aria-expanded", String(menu ? !menu.hidden : !1)), trigger.setAttribute("aria-haspopup", "menu"));
-    let enabled = readerEnabled();
+    let enabled = state.reader.enabled.value;
     setting && (setting.setAttribute("aria-checked", String(enabled)), setting.textContent = enabled ? texts_default.settings.readerOn : texts_default.settings.readerOff, setting.title = enabled ? texts_default.settings.disableReader : texts_default.settings.enableReader), positionSettingsMenu();
   }
   function closeSettingsMenu() {
@@ -1529,7 +1985,7 @@
     }), window.addEventListener("resize", positionSettingsMenu), window.addEventListener("scroll", positionSettingsMenu, !0), updateSettingsMenu();
   }
   function onDocumentClick(event) {
-    if (!readerEnabled())
+    if (!state.reader.enabled.value)
       return;
     let link = findClickedImageLink(event.target);
     link && (event.preventDefault(), event.stopPropagation(), openReader(link.href).catch(reportOpenError));
@@ -1538,9 +1994,9 @@
     let peekPage = peekPageFromHash();
     if (peekPage === null)
       return;
-    let pages = collectGalleryPages(), page = pages.find((item) => item.displayNumber === peekPage) ?? pages[0];
+    let pages = collectGalleryPages(), page = pages.find((item) => item.pageNum === peekPage) ?? pages[0];
     page && await openReader(page.url).catch(reportOpenError);
   }
   registerUserscriptMenu();
-  /^\/g\/\d+\/[^/]+\/?$/i.test(window.location.pathname) && (installSettingsMenu(), document.addEventListener("click", onDocumentClick, !0), readerEnabled() && openReaderFromHash());
+  /^\/g\/\d+\/[^/]+\/?$/i.test(window.location.pathname) && (installSettingsMenu(), document.addEventListener("click", onDocumentClick, !0), state.reader.enabled.value && openReaderFromHash());
 })();
