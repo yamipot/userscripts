@@ -2,9 +2,52 @@ import type { ReaderPage } from "./Reader";
 import { BETTER_PAGE_BAR_CLASS } from "./BetterPageBar";
 import * as eh from "../eh";
 import { state } from "../state";
+import texts from "../texts.json";
 import { clamp, requestText } from "../utils";
 
 const PREVIEW_CACHE_LIMIT = 10;
+const CONTINUE_READING_STYLE_ID = "ehpeek-continue-reading-style";
+const CONTINUE_READING_STYLE = `
+.ehpeek-continue-reading {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: rgba(18, 18, 18, 0.82);
+  color: #f5f5f5;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: center;
+  font: 700 13px/1.15 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ehpeek-continue-reading:hover {
+  background: rgba(32, 32, 32, 0.9);
+}
+
+.ehpeek-continue-reading-page {
+  display: block;
+  margin-top: 1px;
+  opacity: 0.72;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .ehpeek-continue-reading {
+    padding: 5px 8px;
+    font-size: 14px;
+  }
+
+  .ehpeek-continue-reading-page {
+    font-size: 12px;
+  }
+}
+`;
 
 let galleryThumbEnhancementErrorHandler: ((error: unknown) => void) | null = null;
 let galleryThumbEnhancementClickInstalled = false;
@@ -152,6 +195,34 @@ export async function navigateGalleryPreview(url: string, historyMode: "push" | 
   }
 }
 
+type ContinueReadingButtonInfo = {
+  label: string;
+  detail: string;
+};
+
+export function installContinueReadingButton(info: ContinueReadingButtonInfo, onClick: () => void): void {
+  document.querySelector(".ehpeek-continue-reading")?.remove();
+  ensureContinueReadingStyle();
+
+  const detail = document.createElement("span");
+  const button = document.createElement("button");
+
+  button.type = "button";
+  button.className = "ehpeek-continue-reading";
+  button.title = info.label;
+  button.textContent = info.label;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onClick();
+  });
+
+  detail.className = "ehpeek-continue-reading-page";
+  detail.textContent = info.detail;
+  button.append(detail);
+  mountContinueReadingButton(button);
+}
+
 function onPageBarClick(event: MouseEvent): void {
   if (!enhanceGalleryThumbsEnabled()) {
     return;
@@ -177,6 +248,28 @@ function onPageBarClick(event: MouseEvent): void {
   }
 
   void navigateGalleryPreview(url, "push").catch((error) => galleryThumbEnhancementErrorHandler?.(error));
+}
+
+function ensureContinueReadingStyle(): void {
+  if (document.getElementById(CONTINUE_READING_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = CONTINUE_READING_STYLE_ID;
+  style.textContent = CONTINUE_READING_STYLE;
+  document.head.append(style);
+}
+
+function mountContinueReadingButton(button: HTMLButtonElement): void {
+  const viewerOptions = document.querySelector<HTMLElement>("#gd5");
+
+  if (viewerOptions) {
+    viewerOptions.append(button);
+    return;
+  }
+
+  document.body.append(button);
 }
 
 function installGalleryPageBar(): void {

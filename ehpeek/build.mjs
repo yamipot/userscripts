@@ -22,6 +22,8 @@ const metadata = [
   "// @match        *://exhentai.org/*",
   "// @grant        GM_getValue",
   "// @grant        GM_setValue",
+  "// @grant        GM_deleteValue",
+  "// @grant        GM_listValues",
   "// @grant        GM_registerMenuCommand",
   "// @grant        GM_unregisterMenuCommand",
   "// @run-at       document-end",

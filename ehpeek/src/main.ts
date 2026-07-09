@@ -3,6 +3,7 @@ import { SettingsMenu } from "./components/SettingsMenu";
 import {
   enhanceGalleryThumbsEnabled,
   GalleryPageProvider,
+  installContinueReadingButton,
   installGalleryThumbEnhancement,
   navigateGalleryPreview,
   toggleEnhanceGalleryThumbs,
@@ -11,6 +12,7 @@ import { installSearchPageSwipeNavigation } from "./components/EnhanceSearchPage
 import * as eh from "./eh";
 import texts from "./texts.json";
 import { state } from "./state";
+import { loadReaderHistory, ReaderHistorySession } from "./history";
 import { normalizeUrl } from "./utils";
 
 const READER_WINDOW_SIZE = 10;
@@ -62,8 +64,14 @@ function settingsMenuState() {
   };
 }
 
-async function openReader(startPageUrl: string): Promise<void> {
+async function openReader(startPageUrl: string, preferredPageNum?: number): Promise<void> {
   if (!state.reader.enabled.value) {
+    return;
+  }
+
+  const pageType = eh.extractPageType();
+
+  if (pageType.type !== "gallery") {
     return;
   }
 
@@ -71,6 +79,7 @@ async function openReader(startPageUrl: string): Promise<void> {
   const landingPages = eh.collectGalleryPages();
   const pageSize = eh.computePreviewPageSize();
   const maxPreviewIndex = eh.maxPreviewPageIndex();
+  const totalPages = eh.readShowingRange()?.total;
   const provider = new GalleryPageProvider(
     landingIndex,
     landingPages,
@@ -80,7 +89,7 @@ async function openReader(startPageUrl: string): Promise<void> {
     eh.pullPreviewPage,
   );
   const startUrl = normalizeUrl(startPageUrl);
-  const hashPage = eh.peekPageFromHash();
+  const hashPage = preferredPageNum ?? eh.peekPageFromHash();
 
   const startPageNum = hashPage ?? eh.galleryPageNumber(startUrl);
   let pages = startPageNum ? await provider.loadDisplayPages(provider.displayWindowAround(startPageNum)) : landingPages;
@@ -96,8 +105,15 @@ async function openReader(startPageUrl: string): Promise<void> {
   }
 
   let lastPageNum = hashPage ?? eh.galleryPageNumber(startUrl);
+  const historySession = new ReaderHistorySession({
+    galleryId: pageType.galleryId,
+    token: pageType.token,
+    galleryUrl: eh.previewUrlForIndex(landingIndex),
+    totalPages,
+  });
 
   if (!state.reader.enabled.value) {
+    historySession.dispose();
     return;
   }
 
@@ -108,7 +124,7 @@ async function openReader(startPageUrl: string): Promise<void> {
     preloadWindowSize: READER_WINDOW_SIZE,
     nearConcurrentLoads: 3,
     farConcurrentLoads: 6,
-    totalPages: eh.readShowingRange()?.total,
+    totalPages,
     loadPage: eh.loadEhImagePage,
     loadPages: (pageNums) => provider.loadDisplayPages(pageNums),
     onActivePageChange: (page) => {
@@ -119,9 +135,12 @@ async function openReader(startPageUrl: string): Promise<void> {
         }
       }
 
+      historySession.update(page.pageNum, totalPages);
       eh.updatePeekLocation(page.pageNum, pageSize, maxPreviewIndex);
     },
     onExit: () => {
+      historySession.dispose();
+      installContinueReading();
       const exitIndex = lastPageNum ? provider.previewIndexForPage(lastPageNum) : landingIndex;
       const galleryUrl = eh.previewUrlForIndex(exitIndex);
 
@@ -141,7 +160,10 @@ async function openReader(startPageUrl: string): Promise<void> {
         window.location.replace(galleryUrl);
       }
     },
-    onDisableReader: () => updateReaderEnabled(false),
+    onDisableReader: () => {
+      historySession.dispose();
+      updateReaderEnabled(false);
+    },
   });
 }
 
@@ -211,10 +233,35 @@ installSettingsMenu();
 
 if (pageType.type === "gallery") {
   installGalleryThumbEnhancement(reportOpenError);
+  installContinueReading();
   document.addEventListener("click", onDocumentClick, true);
   if (state.reader.enabled.value && pageType.peekPage !== null) {
     void openReaderFromHash();
   }
 } else if (pageType.type === "search" && state.search.enhance.value) {
   installSearchPageSwipeNavigation(pageType);
+}
+
+function installContinueReading(): void {
+  if (pageType.type !== "gallery" || !state.reader.enabled.value) {
+    return;
+  }
+
+  const record = loadReaderHistory(pageType.galleryId, pageType.token);
+  const pageNum = record?.pageNum && record.pageNum > 0 ? record.pageNum : 1;
+  const totalPages = record?.totalPages ?? eh.readShowingRange()?.total;
+  const detail = record && totalPages ? `${pageNum}/${totalPages}` : totalPages ? `${totalPages} ${texts.reader.pages}` : String(pageNum);
+
+  installContinueReadingButton({
+    label: record ? texts.reader.continueReading : texts.reader.startReading,
+    detail,
+  }, () => {
+    const page = eh.collectGalleryPages()[0];
+
+    if (!page) {
+      return;
+    }
+
+    void openReader(page.url, pageNum).catch(reportOpenError);
+  });
 }
