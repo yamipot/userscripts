@@ -69,6 +69,18 @@ export class PointerDrag {
     return this.drag !== null;
   }
 
+  cancel(): void {
+    if (!this.drag) {
+      return;
+    }
+
+    this.target.releasePointerCapture?.(this.drag.pointerId);
+    this.drag = null;
+    this.target.classList.remove("ehpeek-dragging");
+    this.removePointerListeners();
+    this.removeMouseListeners();
+  }
+
   private onClick = (event: MouseEvent): void => {
     if (!this.shouldSuppressClickEvent(event)) {
       return;

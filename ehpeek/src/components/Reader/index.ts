@@ -11,6 +11,7 @@ import { PagesGesture, type GestureDragEnd, type GestureDragMove, type GestureDr
 import { PagesViewport } from "./Viewport";
 import { ReaderRoot } from "./Root";
 import { Toolbar } from "./Toolbar";
+import { ZoomOverlay, type ZoomOverlayImage } from "./ZoomOverlay";
 
 const DEFAULT_WINDOW_SIZE = 10;
 const DEFAULT_NEAR_CONCURRENT_LOADS = 3;
@@ -220,6 +221,7 @@ class FullscreenReader {
   private readonly gesture: PagesGesture;
   private readonly toolbar: Toolbar;
   private readonly pages = new Map<number, ReaderPage>();
+  private readonly loadedImages = new Map<number, ZoomOverlayImage>();
   private currentPageNum: number;
   private direction: Direction = 1;
   private readonly totalPages: number | undefined;
@@ -231,6 +233,7 @@ class FullscreenReader {
   private readonly onActivePageChange: ((page: ReaderPage, index: number) => void) | undefined;
   private readonly onDisableReader: (() => void) | undefined;
   private readonly viewport: PagesViewport;
+  private readonly zoomOverlay: ZoomOverlay;
   private scrollFrame: number | null = null;
   private resizeFrame: number | null = null;
   private progressNavigationTimer: number | null = null;
@@ -268,6 +271,7 @@ class FullscreenReader {
       closed: () => this.closed,
       totalPages: () => this.totalPages,
     });
+    this.zoomOverlay = new ZoomOverlay();
     this.toolbar = new Toolbar(
       {
         onReadDirectionClick: () => this.toggleReadDirection(),
@@ -284,16 +288,19 @@ class FullscreenReader {
       },
       (open) => this.root.setToolbarOpen(open),
     );
-    this.root = new ReaderRoot([...this.toolbar.elements, this.viewport.element]);
+    this.root = new ReaderRoot([...this.toolbar.elements, this.viewport.element, this.zoomOverlay.element]);
     this.gesture = new PagesGesture(this.viewport.scrollerElement(), {
       onTap: (info, event) => this.handleTap(info, event),
-      onKeyboardClose: () => this.close(),
+      onKeyboardClose: () => this.handleKeyboardClose(),
       onKeyboardArrow: (direction) => this.handleKeyboardArrow(direction),
       onWheel: (delta, event) => this.handleWheel(delta, event),
       shouldStartDrag: (event) => this.shouldStartDrag(event),
       onDragStart: (info, event) => this.handleDragStart(info, event),
       onDragMove: (info, event) => this.handleDragMove(info, event),
       onDragEnd: (info, event) => this.handleDragEnd(info, event),
+      onPinchStart: (info) => this.handlePinchStart(info),
+      onPinchMove: (info) => this.zoomOverlay.movePinch({ centerX: info.clientX, centerY: info.clientY, scale: info.scale }),
+      onPinchEnd: () => this.zoomOverlay.endPinch(),
       onNativeScroll: () => this.handleNativeScroll(),
     });
     this.imageQueue = new TwoTierImageQueue(
@@ -561,6 +568,7 @@ class FullscreenReader {
     }
 
     if (!this.closed) {
+      this.loadedImages.set(target.pageNum, { pageNum: target.pageNum, imageUrl, width, height });
       this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image);
     }
   }
@@ -583,10 +591,19 @@ class FullscreenReader {
   }
 
   private handleKeyboardArrow(direction: "left" | "right"): void {
+    if (this.zoomOverlay.active()) {
+      return;
+    }
+
     this.turnPageBy(direction === "left" ? this.leftTapDelta() : this.rightTapDelta());
   }
 
   private handleWheel(delta: number, event: WheelEvent): void {
+    if (this.zoomOverlay.active()) {
+      event.preventDefault();
+      return;
+    }
+
     if (state.reader.viewMode.value !== "paged") {
       return;
     }
@@ -603,10 +620,19 @@ class FullscreenReader {
   }
 
   private shouldStartDrag(event: PointerEvent): boolean {
+    if (this.zoomOverlay.active()) {
+      return true;
+    }
+
     return state.reader.viewMode.value === "paged" || event.pointerType === "mouse";
   }
 
   private handleDragStart(_info: GestureDragStart, _event: PointerEvent | MouseEvent): void {
+    if (this.zoomOverlay.active()) {
+      this.zoomOverlay.startDrag();
+      return;
+    }
+
     this.viewport.stopMotion();
     this.viewportDrag = {
       startScroll: this.viewport.startDragPosition(),
@@ -614,6 +640,11 @@ class FullscreenReader {
   }
 
   private handleDragMove(info: GestureDragMove, event: PointerEvent | MouseEvent): void {
+    if (this.zoomOverlay.active()) {
+      this.zoomOverlay.moveDrag(info);
+      return;
+    }
+
     const drag = this.viewportDrag;
 
     if (!drag) {
@@ -629,6 +660,10 @@ class FullscreenReader {
   }
 
   private handleDragEnd(info: GestureDragEnd, event: PointerEvent | MouseEvent): void {
+    if (this.zoomOverlay.active()) {
+      return;
+    }
+
     debugLog("drag end", {
       pointerType: pointerTypeForEvent(event),
       scrollTop: this.viewport.scrollTop(),
@@ -654,6 +689,10 @@ class FullscreenReader {
   }
 
   private handleNativeScroll(): void {
+    if (this.zoomOverlay.active()) {
+      return;
+    }
+
     if (this.gesture.dragging() || state.reader.viewMode.value === "paged") {
       return;
     }
@@ -688,6 +727,11 @@ class FullscreenReader {
   private handleTap(info: GestureTap, event: PointerEvent | MouseEvent): void {
     this.viewportDrag = null;
 
+    if (this.zoomOverlay.active()) {
+      event.preventDefault();
+      return;
+    }
+
     if (this.handleViewportTap(info)) {
       return;
     }
@@ -714,6 +758,34 @@ class FullscreenReader {
     }
 
     return false;
+  }
+
+  private handleKeyboardClose(): void {
+    if (this.zoomOverlay.active()) {
+      this.zoomOverlay.close();
+      return;
+    }
+
+    this.close();
+  }
+
+  private handlePinchStart(info: { clientX: number; clientY: number }): boolean {
+    const image = this.loadedImages.get(this.currentPageNum);
+
+    if (!image) {
+      return false;
+    }
+
+    this.viewport.stopMotion();
+    this.viewportDrag = null;
+
+    if (this.zoomOverlay.active()) {
+      this.zoomOverlay.startPinch({ centerX: info.clientX, centerY: info.clientY });
+      return true;
+    }
+
+    this.zoomOverlay.start(image, { centerX: info.clientX, centerY: info.clientY });
+    return true;
   }
 
   private readonly onProgressPointerDown = (event: PointerEvent): void => {
