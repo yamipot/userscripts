@@ -12,6 +12,9 @@ export type PointerDragMove = PointerDragStart & {
 
 export type PointerDragEnd = PointerDragMove;
 
+const SUPPRESS_CLICK_MAX_AGE_MS = 500;
+const SUPPRESS_CLICK_DISTANCE_PX = 24;
+
 export class PointerDrag {
   private mousePointerId = -1;
   private drag: {
@@ -23,7 +26,13 @@ export class PointerDrag {
     lastMoveTime: number;
     velocityY: number;
   } | null = null;
-  private suppressNextClick = false;
+  private suppressedClick:
+    | {
+        clientX: number;
+        clientY: number;
+        until: number;
+      }
+    | null = null;
 
   constructor(
     private readonly target: HTMLElement,
@@ -61,11 +70,11 @@ export class PointerDrag {
   }
 
   private onClick = (event: MouseEvent): void => {
-    if (!this.suppressNextClick) {
+    if (!this.shouldSuppressClickEvent(event)) {
       return;
     }
 
-    this.suppressNextClick = false;
+    this.suppressedClick = null;
     event.preventDefault();
     event.stopPropagation();
     this.handlers.onSuppressClick?.(event);
@@ -215,10 +224,37 @@ export class PointerDrag {
     const suppressClick = this.handlers.shouldSuppressClick?.(info) ?? (Math.abs(info.dx) > 8 || Math.abs(info.dy) > 8);
 
     if (suppressClick) {
-      this.suppressNextClick = true;
+      this.suppressedClick = {
+        clientX,
+        clientY,
+        until: performance.now() + SUPPRESS_CLICK_MAX_AGE_MS,
+      };
     }
 
     this.handlers.onEnd?.(info, event);
+  }
+
+  private shouldSuppressClickEvent(event: MouseEvent): boolean {
+    const suppressedClick = this.suppressedClick;
+
+    if (!suppressedClick) {
+      return false;
+    }
+
+    if (performance.now() > suppressedClick.until) {
+      this.suppressedClick = null;
+      return false;
+    }
+
+    const closeToDragEnd =
+      Math.abs(event.clientX - suppressedClick.clientX) <= SUPPRESS_CLICK_DISTANCE_PX &&
+      Math.abs(event.clientY - suppressedClick.clientY) <= SUPPRESS_CLICK_DISTANCE_PX;
+
+    if (!closeToDragEnd) {
+      this.suppressedClick = null;
+    }
+
+    return closeToDragEnd;
   }
 
   private addPointerListeners(): void {

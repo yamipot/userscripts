@@ -2,6 +2,8 @@ import { debugLog, targetSummary } from "../../utils";
 import { PointerDrag, type PointerDragEnd, type PointerDragMove, type PointerDragStart } from "../common/pointerDrag";
 
 const TAP_MOVE_THRESHOLD = 8;
+const SUPPRESS_CLICK_MAX_AGE_MS = 500;
+const SUPPRESS_CLICK_DISTANCE_PX = 24;
 
 export type GesturePoint = {
   clientX: number;
@@ -38,7 +40,13 @@ export class PagesGesture {
     lastClientY: number;
     moved: boolean;
   } | null = null;
-  private suppressNextClick = false;
+  private suppressedClick:
+    | {
+        clientX: number;
+        clientY: number;
+        until: number;
+      }
+    | null = null;
 
   constructor(
     private readonly target: HTMLElement,
@@ -163,8 +171,8 @@ export class PagesGesture {
   }
 
   private onClick = (event: MouseEvent): void => {
-    if (this.suppressNextClick) {
-      this.suppressNextClick = false;
+    if (this.shouldSuppressClickEvent(event)) {
+      this.suppressedClick = null;
       event.preventDefault();
       return;
     }
@@ -246,7 +254,11 @@ export class PagesGesture {
       return;
     }
 
-    this.suppressNextClick = true;
+    this.suppressedClick = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      until: performance.now() + SUPPRESS_CLICK_MAX_AGE_MS,
+    };
     this.handlers.onTap(
       {
         pointerId: event.pointerId,
@@ -284,5 +296,28 @@ export class PagesGesture {
     tap: NonNullable<PagesGesture["passiveTap"]>,
   ): boolean {
     return event.pointerId === tap.pointerId && event.pointerType === tap.pointerType;
+  }
+
+  private shouldSuppressClickEvent(event: MouseEvent): boolean {
+    const suppressedClick = this.suppressedClick;
+
+    if (!suppressedClick) {
+      return false;
+    }
+
+    if (performance.now() > suppressedClick.until) {
+      this.suppressedClick = null;
+      return false;
+    }
+
+    const closeToTap =
+      Math.abs(event.clientX - suppressedClick.clientX) <= SUPPRESS_CLICK_DISTANCE_PX &&
+      Math.abs(event.clientY - suppressedClick.clientY) <= SUPPRESS_CLICK_DISTANCE_PX;
+
+    if (!closeToTap) {
+      this.suppressedClick = null;
+    }
+
+    return closeToTap;
   }
 }

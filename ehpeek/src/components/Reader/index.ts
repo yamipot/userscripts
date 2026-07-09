@@ -236,7 +236,6 @@ class FullscreenReader {
   private progressNavigationTimer: number | null = null;
   private pendingProgressNavigationPageNum: number | null = null;
   private progressNavigating = false;
-  private suppressNextClick = false;
   private viewportDrag: ViewportDragState | null = null;
   private pagedTargetPageNumber: number | null = null;
   private syncToken = 0;
@@ -639,7 +638,6 @@ class FullscreenReader {
     this.viewportDrag = null;
 
     if (state.reader.viewMode.value !== "paged") {
-      this.suppressNextClick = true;
       this.viewport.moveToTop(this.viewport.scrollTop());
       this.viewport.startVerticalFlingFromDragVelocity(info.velocityY, () => this.updateCurrentFromScroll());
       this.updateCurrentFromScroll();
@@ -647,13 +645,10 @@ class FullscreenReader {
     }
 
     if (info.dx >= PAGED_SWIPE_THRESHOLD) {
-      this.suppressNextClick = true;
       this.turnPageBy(this.rightDragDelta());
     } else if (info.dx <= -PAGED_SWIPE_THRESHOLD) {
-      this.suppressNextClick = true;
       this.turnPageBy(this.leftDragDelta());
     } else {
-      this.suppressNextClick = true;
       this.scrollToCurrentPage("animated");
     }
   }
@@ -692,12 +687,6 @@ class FullscreenReader {
 
   private handleTap(info: GestureTap, event: PointerEvent | MouseEvent): void {
     this.viewportDrag = null;
-
-    if (this.suppressNextClick) {
-      this.suppressNextClick = false;
-      event.preventDefault();
-      return;
-    }
 
     if (this.handleViewportTap(info)) {
       return;
