@@ -21,6 +21,7 @@ let installed = false;
 let overlayElement: HTMLDivElement | null = null;
 let indicatorElement: HTMLDivElement | null = null;
 let swipeState: SwipeState | null = null;
+let searchNavigationLoading = false;
 
 type SwipeState = {
   horizontal: boolean;
@@ -33,7 +34,7 @@ export function installSearchPageSwipeNavigation(pageType: Extract<PageType, { t
     return;
   }
 
-  const resultList = document.querySelector<HTMLElement>(".itg");
+  const resultList = eh.searchResultList();
 
   if (!resultList?.parentElement) {
     return;
@@ -41,6 +42,11 @@ export function installSearchPageSwipeNavigation(pageType: Extract<PageType, { t
 
   installed = true;
   ensureSearchSwipeStyle();
+  installResultListEnhancement(resultList);
+  document.addEventListener("click", onSearchNavigationClick, true);
+}
+
+function installResultListEnhancement(resultList: HTMLElement): void {
   overlayElement = installResultListOverlay(resultList);
   new PointerDrag(overlayElement, {
     onStart: () => {
@@ -67,29 +73,30 @@ export function installSearchPageSwipeNavigation(pageType: Extract<PageType, { t
 
 function installResultListOverlay(resultList: HTMLElement): HTMLDivElement {
   let overlay!: HTMLDivElement;
+  const existingWrapper = resultList.parentElement?.classList.contains(SEARCH_SWIPE_WRAPPER_CLASS)
+    ? (resultList.parentElement as HTMLDivElement)
+    : null;
+  const wrapper = existingWrapper ?? (<div className={SEARCH_SWIPE_WRAPPER_CLASS} /> as HTMLDivElement);
 
-  const wrapper = (
-    <div className={SEARCH_SWIPE_WRAPPER_CLASS}>
+  wrapper.querySelectorAll<HTMLElement>(`:scope > .${SEARCH_SWIPE_OVERLAY_CLASS}`).forEach((item) => item.remove());
+  overlay = (
+    <div className={SEARCH_SWIPE_OVERLAY_CLASS} aria-hidden="true">
       <div
-        className={SEARCH_SWIPE_OVERLAY_CLASS}
+        className={SEARCH_SWIPE_INDICATOR_CLASS}
         aria-hidden="true"
         ref={(node: HTMLElement) => {
-          overlay = node as HTMLDivElement;
+          indicatorElement = node as HTMLDivElement;
         }}
-      >
-        <div
-          className={SEARCH_SWIPE_INDICATOR_CLASS}
-          aria-hidden="true"
-          ref={(node: HTMLElement) => {
-            indicatorElement = node as HTMLDivElement;
-          }}
-        />
-      </div>
+      />
     </div>
   ) as HTMLDivElement;
 
-  resultList.before(wrapper);
-  wrapper.append(resultList);
+  if (!existingWrapper) {
+    resultList.before(wrapper);
+    wrapper.append(resultList);
+  }
+
+  wrapper.append(overlay);
   return overlay;
 }
 
@@ -101,6 +108,18 @@ function onOverlayClick(event: MouseEvent): void {
   event.preventDefault();
   event.stopPropagation();
   forwardClickThroughOverlay(event.clientX, event.clientY);
+}
+
+function onSearchNavigationClick(event: MouseEvent): void {
+  const link = eh.findSearchNavigationLink(event.target);
+
+  if (!link) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  void navigateSearchPage(link.href);
 }
 
 function forwardClickThroughOverlay(clientX: number, clientY: number): void {
@@ -213,7 +232,28 @@ function navigateBySwipe(info: PointerDragEnd, event: Event): void {
   if (url) {
     swipeState.suppressClick = true;
     event.preventDefault();
-    window.location.href = url;
+    void navigateSearchPage(url);
+  }
+}
+
+async function navigateSearchPage(url: string): Promise<void> {
+  if (searchNavigationLoading) {
+    return;
+  }
+
+  searchNavigationLoading = true;
+  overlayElement?.setAttribute("aria-busy", "true");
+
+  try {
+    const resultList = await eh.replaceSearchPageContentFromUrl(url);
+    window.history.pushState(window.history.state, "", url);
+    installResultListEnhancement(resultList);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  } catch (error) {
+    console.error("[ehpeek]", error);
+  } finally {
+    searchNavigationLoading = false;
+    overlayElement?.removeAttribute("aria-busy");
   }
 }
 

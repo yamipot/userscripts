@@ -82,6 +82,43 @@ export function searchPageNavigation(root: ParentNode = document): { previousUrl
   return previousUrl || nextUrl ? { previousUrl, nextUrl } : null;
 }
 
+export function searchResultList(root: ParentNode = document): HTMLElement | null {
+  return root.querySelector<HTMLElement>(".itg");
+}
+
+export function searchNavigationBars(root: ParentNode = document): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(".searchnav"));
+}
+
+export function findSearchNavigationLink(target: EventTarget | null): HTMLAnchorElement | null {
+  const link =
+    target instanceof Element
+      ? target.closest<HTMLAnchorElement>(
+          ".searchnav a[id$='first'][href], .searchnav a[id$='prev'][href], .searchnav a[id$='next'][href], .searchnav a[id$='last'][href]",
+        )
+      : null;
+
+  return link instanceof HTMLAnchorElement ? link : null;
+}
+
+export function replaceSearchPageContent(doc: Document): HTMLElement | null {
+  const currentList = searchResultList();
+  const incomingList = searchResultList(doc);
+
+  if (!currentList || !incomingList) {
+    return null;
+  }
+
+  replaceFirstElement("#rangebar", doc);
+  replaceFirstElement(".searchtext", doc);
+  replaceSearchRangeScript(doc);
+  replaceSearchNavigationBars(doc);
+
+  const importedList = document.importNode(incomingList, true);
+  currentList.replaceWith(importedList);
+  return importedList;
+}
+
 export function maxPreviewPageIndex(root: ParentNode = document, baseUrl = window.location.href): number | null {
   const indexes = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href*='?p='], a[href*='&p=']"))
     .map((link) => {
@@ -257,6 +294,39 @@ function replaceFirstElement(selector: string, doc: Document): void {
   }
 
   current.replaceWith(document.importNode(incoming, true));
+}
+
+function replaceSearchNavigationBars(doc: Document): void {
+  const currentBars = searchNavigationBars();
+  const incomingBars = searchNavigationBars(doc);
+  const count = Math.min(currentBars.length, incomingBars.length);
+
+  for (let index = 0; index < count; index += 1) {
+    currentBars[index].replaceWith(document.importNode(incomingBars[index], true));
+  }
+}
+
+function replaceSearchRangeScript(doc: Document): void {
+  const incomingScript = Array.from(doc.querySelectorAll<HTMLScriptElement>("script")).find((item) =>
+    item.textContent?.includes("build_rangebar()"),
+  );
+
+  if (!incomingScript) {
+    return;
+  }
+
+  const currentScript = Array.from(document.querySelectorAll<HTMLScriptElement>("script")).find((item) =>
+    item.textContent?.includes("build_rangebar()"),
+  );
+  const script = document.createElement("script");
+  script.type = incomingScript.type || "text/javascript";
+  script.textContent = incomingScript.textContent;
+
+  if (currentScript) {
+    currentScript.replaceWith(script);
+  } else {
+    searchNavigationBars()[0]?.before(script);
+  }
 }
 
 function ensureGalleryStyle(): void {

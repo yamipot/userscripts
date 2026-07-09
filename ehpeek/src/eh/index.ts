@@ -185,6 +185,26 @@ export function searchPageNavigation(root: ParentNode = document): { previousUrl
   return dom.searchPageNavigation(root);
 }
 
+export function searchResultList(root: ParentNode = document): HTMLElement | null {
+  return dom.searchResultList(root);
+}
+
+export function findSearchNavigationLink(target: EventTarget | null): HTMLAnchorElement | null {
+  return dom.findSearchNavigationLink(target);
+}
+
+export async function replaceSearchPageContentFromUrl(url: string): Promise<HTMLElement> {
+  const html = await requestText(url);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const list = dom.replaceSearchPageContent(doc);
+
+  if (!list) {
+    throw new Error(texts.errors.searchPageContentNotFound);
+  }
+
+  return list;
+}
+
 export function computePreviewPageSize(root: ParentNode = document): number {
   const range = readShowingRange(root);
 
