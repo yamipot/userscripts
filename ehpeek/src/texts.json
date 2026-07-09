@@ -1,6 +1,6 @@
 {
   "description": "A mobile-optimized E-H/ExH viewer",
-  "viewer": {
+  "reader": {
     "close": "Close",
     "scrollMode": "Switch to scroll mode",
     "pagedMode": "Switch to page-flip mode",
@@ -9,6 +9,7 @@
     "rightTapPrevious": "Right tap goes to previous page",
     "rightTapNext": "Right tap goes to next page",
     "disableReader": "Disable Ehpeek Reader",
+    "endPage": "End",
     "end": "End of gallery. Tap to exit.",
     "failedPrefix": "Failed"
   },

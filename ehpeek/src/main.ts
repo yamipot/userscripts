@@ -1,52 +1,27 @@
-import { openFullscreenViewer, type LoadedViewerPage, type ViewerPage } from "./viewer";
+import { openFullscreenReader, type LoadedReaderPage, type ReaderPage } from "./components/reader/reader";
 import texts from "./texts.json";
+import { state } from "./state";
+import { clamp, normalizeUrl } from "./utils";
 
 const REQUEST_TIMEOUT_MS = 30000;
 const PREVIEW_CACHE_LIMIT = 10;
-const READER_ENABLED_KEY = "ehpeek:reader-enabled";
-const LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY = "ehpeek:thumbnail-viewer-enabled";
 const SETTINGS_ROOT_ID = "ehpeek-settings-root";
 const SETTINGS_TRIGGER_ID = "ehpeek-settings-trigger";
 const SETTINGS_MENU_ID = "ehpeek-settings-menu";
 const SETTINGS_READER_ID = "ehpeek-reader-setting";
 const SETTINGS_STYLE_ID = "ehpeek-settings-style";
-
-declare const GM_registerMenuCommand:
-  | undefined
-  | ((caption: string, commandFunc: () => void, accessKey?: string) => number | string);
-declare const GM_unregisterMenuCommand: undefined | ((menuCmdId: number | string) => void);
+const READER_WINDOW_SIZE = 10;
 
 let menuCommandId: number | string | null = null;
 
-function readerEnabled(): boolean {
-  try {
-    const value = window.localStorage.getItem(READER_ENABLED_KEY);
-
-    if (value !== null) {
-      return value !== "false";
-    }
-
-    const legacyValue = window.localStorage.getItem(LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY);
-    return legacyValue !== "false";
-  } catch {
-    return true;
-  }
-}
-
-function setReaderEnabled(enabled: boolean): void {
-  try {
-    window.localStorage.setItem(READER_ENABLED_KEY, String(enabled));
-    window.localStorage.removeItem(LEGACY_THUMBNAIL_VIEWER_ENABLED_KEY);
-  } catch {
-    // Ignore storage failures (private mode, disabled storage, etc.).
-  }
-
+function updateReaderEnabled(enabled: boolean): void {
+  state.reader.enabled.set(enabled);
   updateSettingsMenu();
   registerUserscriptMenu();
 }
 
 function toggleReader(): void {
-  setReaderEnabled(!readerEnabled());
+  updateReaderEnabled(!state.reader.enabled.value);
 }
 
 function registerUserscriptMenu(): void {
@@ -63,22 +38,6 @@ function registerUserscriptMenu(): void {
     texts.settings.openSettings,
     openSettingsMenu,
   );
-}
-
-function clamp(value: number, min: number, max: number): number {
-  if (max < min) {
-    return min;
-  }
-
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizeUrl(url: string, baseUrl = window.location.href): string {
-  try {
-    return new URL(url, baseUrl).href;
-  } catch {
-    return "";
-  }
 }
 
 function isImagePageUrl(url: string): boolean {
@@ -150,12 +109,12 @@ function updatePeekLocation(pageNumber: number | undefined, pageSize: number): v
   window.history.replaceState(window.history.state, "", url.href);
 }
 
-function collectGalleryPages(root: ParentNode = document, baseUrl = window.location.href): ViewerPage[] {
+function collectGalleryPages(root: ParentNode = document, baseUrl = window.location.href): ReaderPage[] {
   const links = Array.from(
     root.querySelectorAll<HTMLAnchorElement>("#gdt a[href], .gdtm a[href], .gdtl a[href], a[href*='/s/']"),
   );
   const seen = new Set<string>();
-  const pages: ViewerPage[] = [];
+  const pages: ReaderPage[] = [];
 
   for (const link of links) {
     const url = normalizeUrl(link.getAttribute("href") || "", baseUrl);
@@ -168,11 +127,11 @@ function collectGalleryPages(root: ParentNode = document, baseUrl = window.locat
     pages.push({
       url,
       aspectRatio: imageAspectRatio(link.querySelector("img")),
-      displayNumber: galleryPageNumber(url),
+      pageNum: galleryPageNumber(url),
     });
   }
 
-  return pages.sort((left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER));
+  return pages.sort((left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER));
 }
 
 function previewPageIndex(): number {
@@ -264,7 +223,7 @@ function previewPageIndexForGalleryPage(galleryPage: number, pageSize: number): 
 
 // Collect the image pages of a single preview page. `landingIndex`/`landingPages` capture the
 // preview page shown in the document at open time, since the URL's `p` is rewritten while reading.
-async function collectPreviewPage(index: number, landingIndex: number, landingPages: ViewerPage[]): Promise<ViewerPage[]> {
+async function collectPreviewPage(index: number, landingIndex: number, landingPages: ReaderPage[]): Promise<ReaderPage[]> {
   if (index === landingIndex) {
     return landingPages;
   }
@@ -316,7 +275,7 @@ function numericAttribute(element: Element | null, attribute: string): number | 
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-async function loadEhImagePage(page: ViewerPage): Promise<LoadedViewerPage> {
+async function loadEhImagePage(page: ReaderPage): Promise<LoadedReaderPage> {
   const html = await requestText(page.url);
   const doc = new DOMParser().parseFromString(html, "text/html");
   const image = doc.querySelector<HTMLImageElement>("img#img");
@@ -338,46 +297,47 @@ async function loadEhImagePage(page: ViewerPage): Promise<LoadedViewerPage> {
 }
 
 class EhGalleryPageProvider {
-  private readonly previewCache = new Map<number, ViewerPage[]>();
+  private readonly previewCache = new Map<number, ReaderPage[]>();
 
   constructor(
     private readonly landingIndex: number,
-    private readonly landingPages: ViewerPage[],
+    private readonly landingPages: ReaderPage[],
     private readonly pageSize: number,
     private readonly maxPreviewIndex: number | null,
+    private readonly windowSize: number,
   ) {
     this.previewCache.set(landingIndex, landingPages);
   }
 
-  previewIndexForPage(displayNumber: number): number {
-    const previewIndex = Math.max(0, Math.floor((displayNumber - 1) / this.pageSize));
+  previewIndepageNumForPage(pageNum: number): number {
+    const previewIndex = Math.max(0, Math.floor((pageNum - 1) / this.pageSize));
     return this.maxPreviewIndex === null ? previewIndex : Math.min(previewIndex, this.maxPreviewIndex);
   }
 
-  async loadDisplayPages(displayNumbers: number[]): Promise<ViewerPage[]> {
-    const previewIndexes = Array.from(new Set(displayNumbers.map((displayNumber) => this.previewIndexForPage(displayNumber)))).filter(
+  async loadDisplayPages(pageNums: number[]): Promise<ReaderPage[]> {
+    const previewIndexes = Array.from(new Set(pageNums.map((pageNum) => this.previewIndepageNumForPage(pageNum)))).filter(
       (value) => value >= 0 && (this.maxPreviewIndex === null || value <= this.maxPreviewIndex),
     );
-    const requested = new Set(displayNumbers);
+    const requested = new Set(pageNums);
     const chunks = await Promise.all(previewIndexes.map((index) => this.cachedPreviewPage(index)));
-    const byUrl = new Map<string, ViewerPage>();
+    const byUrl = new Map<string, ReaderPage>();
 
     for (const page of chunks.flat()) {
-      if (page.displayNumber && requested.has(page.displayNumber)) {
+      if (page.pageNum && requested.has(page.pageNum)) {
         byUrl.set(page.url, page);
       }
     }
 
     return Array.from(byUrl.values()).sort(
-      (left, right) => (left.displayNumber ?? Number.MAX_SAFE_INTEGER) - (right.displayNumber ?? Number.MAX_SAFE_INTEGER),
+      (left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER),
     );
   }
 
-  displayWindowAround(displayNumber: number): number[] {
+  displayWindowAround(pageNum: number): number[] {
     const numbers: number[] = [];
 
-    for (let offset = -10; offset <= 10; offset += 1) {
-      const value = displayNumber + offset;
+    for (let offset = -this.windowSize; offset <= this.windowSize; offset += 1) {
+      const value = pageNum + offset;
 
       if (value > 0) {
         numbers.push(value);
@@ -387,7 +347,7 @@ class EhGalleryPageProvider {
     return numbers;
   }
 
-  private async cachedPreviewPage(index: number): Promise<ViewerPage[]> {
+  private async cachedPreviewPage(index: number): Promise<ReaderPage[]> {
     const boundedIndex = this.maxPreviewIndex === null ? index : Math.min(index, this.maxPreviewIndex);
 
     if (boundedIndex < 0) {
@@ -424,44 +384,44 @@ async function openReader(startPageUrl: string): Promise<void> {
   const landingPages = collectGalleryPages();
   const pageSize = computePreviewPageSize();
   const maxPreviewIndex = maxPreviewPageIndex();
-  const provider = new EhGalleryPageProvider(landingIndex, landingPages, pageSize, maxPreviewIndex);
+  const provider = new EhGalleryPageProvider(landingIndex, landingPages, pageSize, maxPreviewIndex, READER_WINDOW_SIZE);
   const startUrl = normalizeUrl(startPageUrl);
   const hashPage = peekPageFromHash();
 
-  const startDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
-  let pages = startDisplayNumber ? await provider.loadDisplayPages(provider.displayWindowAround(startDisplayNumber)) : landingPages;
+  const startPageNum = hashPage ?? galleryPageNumber(startUrl);
+  let pages = startPageNum ? await provider.loadDisplayPages(provider.displayWindowAround(startPageNum)) : landingPages;
   let startIndex =
-    hashPage !== null ? pages.findIndex((page) => page.displayNumber === hashPage) : pages.findIndex((page) => page.url === startUrl);
+    hashPage !== null ? pages.findIndex((page) => page.pageNum === hashPage) : pages.findIndex((page) => page.url === startUrl);
 
   if (startIndex < 0) {
     startIndex = 0;
-    pages = [{ url: startUrl, aspectRatio: 1.42, displayNumber: galleryPageNumber(startUrl) }, ...pages].sort(
-      (left, right) => (left.displayNumber ?? 0) - (right.displayNumber ?? 0),
+    pages = [{ url: startUrl, aspectRatio: 1.42, pageNum: galleryPageNumber(startUrl) }, ...pages].sort(
+      (left, right) => (left.pageNum ?? 0) - (right.pageNum ?? 0),
     );
     startIndex = pages.findIndex((page) => page.url === startUrl);
   }
 
-  let lastDisplayNumber = hashPage ?? galleryPageNumber(startUrl);
+  let lastPageNum = hashPage ?? galleryPageNumber(startUrl);
 
-  openFullscreenViewer({
+  openFullscreenReader({
     pages,
     startIndex,
-    renderWindowSize: 10,
-    preloadWindowSize: 10,
+    renderWindowSize: READER_WINDOW_SIZE,
+    preloadWindowSize: READER_WINDOW_SIZE,
     nearConcurrentLoads: 3,
     farConcurrentLoads: 6,
     totalPages: readShowingRange()?.total,
     loadPage: loadEhImagePage,
-    loadPages: (displayNumbers) => provider.loadDisplayPages(displayNumbers),
+    loadPages: (pageNums) => provider.loadDisplayPages(pageNums),
     onActivePageChange: (page) => {
-      if (page.displayNumber) {
-        lastDisplayNumber = page.displayNumber;
+      if (page.pageNum) {
+        lastPageNum = page.pageNum;
       }
 
-      updatePeekLocation(page.displayNumber, pageSize);
+      updatePeekLocation(page.pageNum, pageSize);
     },
     onExit: () => {
-      const exitIndex = lastDisplayNumber ? provider.previewIndexForPage(lastDisplayNumber) : landingIndex;
+      const exitIndex = lastPageNum ? provider.previewIndepageNumForPage(lastPageNum) : landingIndex;
       const galleryUrl = previewUrlForIndex(exitIndex);
 
       // If the page underneath already shows this preview page, keep it (just fix the URL);
@@ -472,7 +432,7 @@ async function openReader(startPageUrl: string): Promise<void> {
         window.location.replace(galleryUrl);
       }
     },
-    onDisableReader: () => setReaderEnabled(false),
+    onDisableReader: () => updateReaderEnabled(false),
   });
 }
 
@@ -572,7 +532,7 @@ function updateSettingsMenu(): void {
     trigger.setAttribute("aria-haspopup", "menu");
   }
 
-  const enabled = readerEnabled();
+  const enabled = state.reader.enabled.value;
 
   if (setting) {
     setting.setAttribute("aria-checked", String(enabled));
@@ -708,7 +668,7 @@ function installSettingsMenu(): void {
 }
 
 function onDocumentClick(event: MouseEvent): void {
-  if (!readerEnabled()) {
+  if (!state.reader.enabled.value) {
     return;
   }
 
@@ -731,7 +691,7 @@ async function openReaderFromHash(): Promise<void> {
   }
 
   const pages = collectGalleryPages();
-  const page = pages.find((item) => item.displayNumber === peekPage) ?? pages[0];
+  const page = pages.find((item) => item.pageNum === peekPage) ?? pages[0];
 
   if (page) {
     await openReader(page.url).catch(reportOpenError);
@@ -743,7 +703,7 @@ registerUserscriptMenu();
 if (/^\/g\/\d+\/[^/]+\/?$/i.test(window.location.pathname)) {
   installSettingsMenu();
   document.addEventListener("click", onDocumentClick, true);
-  if (readerEnabled()) {
+  if (state.reader.enabled.value) {
     void openReaderFromHash();
   }
 }

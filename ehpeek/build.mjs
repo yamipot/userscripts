@@ -20,6 +20,8 @@ const metadata = [
   `// @description  ${texts.description}`,
   "// @match        *://e-hentai.org/*",
   "// @match        *://exhentai.org/*",
+  "// @grant        GM_getValue",
+  "// @grant        GM_setValue",
   "// @grant        GM_registerMenuCommand",
   "// @grant        GM_unregisterMenuCommand",
   "// @run-at       document-end",
@@ -36,7 +38,12 @@ await build({
   bundle: true,
   format: "iife",
   target: "es2020",
+  jsxFactory: "h",
+  jsxFragment: "Fragment",
   charset: "utf8",
+  loader: {
+    ".css": "text",
+  },
   minifySyntax: !debugBuild,
   sourcemap: releaseBuild ? false : "linked",
   banner: {

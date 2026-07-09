@@ -1,5 +1,8 @@
+import { clamp } from "../utils";
+
 type ScrollAnimationMode = "none" | "native" | "raf";
 export type ScrollAxis = "x" | "y";
+export type ScrollMotion = "instant" | "animated";
 
 const SCROLL_ANIMATION_MODE: ScrollAnimationMode = "raf";
 const SCROLL_ANIMATION_MS = 180;
@@ -15,10 +18,10 @@ export class ScrollAnimator {
 
   constructor(private readonly axis: ScrollAxis) {}
 
-  scrollTo(scroller: HTMLElement, target: number, behavior: ScrollBehavior = "auto", onComplete?: () => void): void {
+  scrollTo(scroller: HTMLElement, target: number, motion: ScrollMotion = "instant", onComplete?: () => void): void {
     this.cancel();
 
-    if (behavior !== "smooth" || SCROLL_ANIMATION_MODE === "none") {
+    if (motion !== "animated" || SCROLL_ANIMATION_MODE === "none") {
       this.setScrollPosition(scroller, target);
       onComplete?.();
       return;
@@ -141,8 +144,4 @@ export class ScrollFlingAnimator {
 
     this.velocityY = 0;
   }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
