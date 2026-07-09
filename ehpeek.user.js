@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260709.1605
+// @version      260709.1641
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -137,9 +137,9 @@
       this.handlers = handlers;
       this.mousePointerId = -1;
       this.drag = null;
-      this.suppressNextClick = !1;
+      this.suppressedClick = null;
       this.onClick = (event) => {
-        this.suppressNextClick && (this.suppressNextClick = !1, event.preventDefault(), event.stopPropagation(), this.handlers.onSuppressClick?.(event));
+        this.shouldSuppressClickEvent(event) && (this.suppressedClick = null, event.preventDefault(), event.stopPropagation(), this.handlers.onSuppressClick?.(event));
       };
       this.onDragStart = (event) => {
         event.preventDefault();
@@ -217,7 +217,20 @@
         dy: clientY - drag.startClientY,
         velocityY: drag.velocityY
       };
-      (this.handlers.shouldSuppressClick?.(info) ?? (Math.abs(info.dx) > 8 || Math.abs(info.dy) > 8)) && (this.suppressNextClick = !0), this.handlers.onEnd?.(info, event);
+      (this.handlers.shouldSuppressClick?.(info) ?? (Math.abs(info.dx) > 8 || Math.abs(info.dy) > 8)) && (this.suppressedClick = {
+        clientX,
+        clientY,
+        until: performance.now() + 500
+      }), this.handlers.onEnd?.(info, event);
+    }
+    shouldSuppressClickEvent(event) {
+      let suppressedClick = this.suppressedClick;
+      if (!suppressedClick)
+        return !1;
+      if (performance.now() > suppressedClick.until)
+        return this.suppressedClick = null, !1;
+      let closeToDragEnd = Math.abs(event.clientX - suppressedClick.clientX) <= 24 && Math.abs(event.clientY - suppressedClick.clientY) <= 24;
+      return closeToDragEnd || (this.suppressedClick = null), closeToDragEnd;
     }
     addPointerListeners() {
       this.target.addEventListener("pointermove", this.onPointerMove), this.target.addEventListener("pointerup", this.onPointerUp), this.target.addEventListener("pointercancel", this.onPointerCancel);
@@ -241,7 +254,6 @@
       this.pinchPointers = /* @__PURE__ */ new Map();
       this.pinch = null;
       this.passiveTap = null;
-      this.suppressNextClick = !1;
       this.onKeydown = (event) => {
         if (!this.shouldIgnoreKeyboardEvent(event)) {
           if (event.key === "Escape") {
@@ -311,22 +323,6 @@
         }
         this.handlers.onDragEnd(info, event);
       };
-      this.onClick = (event) => {
-        if (this.suppressNextClick) {
-          this.suppressNextClick = !1, event.preventDefault();
-          return;
-        }
-        this.handlers.onTap(
-          {
-            pointerId: null,
-            clientX: event.clientX,
-            clientY: event.clientY,
-            dx: 0,
-            dy: 0
-          },
-          event
-        );
-      };
       this.onWheel = (event) => {
         let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
         this.handlers.onWheel(delta, event);
@@ -346,10 +342,10 @@
         onMove: this.onDragMove,
         onEnd: this.onDragEnd,
         shouldSuppressClick: () => !0
-      }), target.addEventListener("pointerdown", this.onPinchPointerDown, !0), target.addEventListener("pointerup", this.onPinchPointerRelease, !0), target.addEventListener("pointercancel", this.onPinchPointerRelease, !0), target.addEventListener("click", this.onClick), target.addEventListener("scroll", this.onScroll), target.addEventListener("wheel", this.onWheel);
+      }), target.addEventListener("pointerdown", this.onPinchPointerDown, !0), target.addEventListener("pointerup", this.onPinchPointerRelease, !0), target.addEventListener("pointercancel", this.onPinchPointerRelease, !0), target.addEventListener("scroll", this.onScroll), target.addEventListener("wheel", this.onWheel);
     }
     dispose() {
-      this.pointerDrag.dispose(), this.clearPinch(), this.passiveTap = null, this.target.classList.remove("ehpeek-scroller-dragging"), this.removePassiveTapListeners(), this.target.removeEventListener("pointerdown", this.onPinchPointerDown, !0), this.target.removeEventListener("pointerup", this.onPinchPointerRelease, !0), this.target.removeEventListener("pointercancel", this.onPinchPointerRelease, !0), this.target.removeEventListener("click", this.onClick), this.target.removeEventListener("scroll", this.onScroll), this.target.removeEventListener("wheel", this.onWheel);
+      this.pointerDrag.dispose(), this.clearPinch(), this.passiveTap = null, this.target.classList.remove("ehpeek-scroller-dragging"), this.removePassiveTapListeners(), this.target.removeEventListener("pointerdown", this.onPinchPointerDown, !0), this.target.removeEventListener("pointerup", this.onPinchPointerRelease, !0), this.target.removeEventListener("pointercancel", this.onPinchPointerRelease, !0), this.target.removeEventListener("scroll", this.onScroll), this.target.removeEventListener("wheel", this.onWheel);
     }
     dragging() {
       return this.pointerDrag.dragging();
@@ -380,7 +376,7 @@
       if (!tap || !this.matchesPassiveTapPointer(event, tap) || (this.passiveTap = null, this.removePassiveTapListeners(), event.type === "pointercancel"))
         return;
       let dx = event.clientX - tap.startClientX, dy = event.clientY - tap.startClientY;
-      tap.moved || Math.abs(dx) >= TAP_MOVE_THRESHOLD || Math.abs(dy) >= TAP_MOVE_THRESHOLD || (this.suppressNextClick = !0, this.handlers.onTap(
+      tap.moved || Math.abs(dx) >= TAP_MOVE_THRESHOLD || Math.abs(dy) >= TAP_MOVE_THRESHOLD || this.handlers.onTap(
         {
           pointerId: event.pointerId,
           clientX: event.clientX,
@@ -389,7 +385,7 @@
           dy
         },
         event
-      ));
+      );
     }
     addPassiveTapListeners() {
       document.addEventListener("pointermove", this.onPassiveTapMove, !0), document.addEventListener("pointerup", this.onPassiveTapEnd, !0), document.addEventListener("pointercancel", this.onPassiveTapEnd, !0);
@@ -641,11 +637,15 @@
       return null;
     }
     isHitEndPage(point) {
+      let pageNum = this.pageNumAtPoint(point);
+      return (pageNum === null ? void 0 : this.slotFor(pageNum))?.kind === "end";
+    }
+    pageNumAtPoint(point) {
       let element = document.elementFromPoint(point.clientX, point.clientY), pageNode = element instanceof Element ? element.closest(".ehpeek-page") : null;
       if (!pageNode)
-        return !1;
+        return null;
       let pageNum = Number(pageNode.dataset.ehpeekPageNum || "");
-      return (Number.isFinite(pageNum) ? this.slotFor(pageNum) : void 0)?.kind === "end";
+      return Number.isFinite(pageNum) ? pageNum : null;
     }
     startVerticalFlingFromDragVelocity(dragVelocityY, onStop) {
       this.flingAnimator.start({
@@ -1388,7 +1388,7 @@
   };
 
   // src/components/Reader/index.ts
-  var DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, FALLBACK_ASPECT_RATIO2 = 1.42, TwoTierImageQueue = class {
+  var DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, DOUBLE_TAP_MS = 340, DOUBLE_TAP_DISTANCE = 36, TAP_CANCEL_DISTANCE = 8, FALLBACK_ASPECT_RATIO2 = 1.42, TwoTierImageQueue = class {
     constructor(loadTarget, markLoading, onLoaded, onError, nearConcurrentLoads, farConcurrentLoads) {
       this.loadTarget = loadTarget;
       this.markLoading = markLoading;
@@ -1471,9 +1471,10 @@
       this.scrollFrame = null;
       this.resizeFrame = null;
       this.progressNavigationTimer = null;
+      this.tapTimer = null;
+      this.pendingTap = null;
       this.pendingProgressNavigationPageNum = null;
       this.progressNavigating = !1;
-      this.suppressNextClick = !1;
       this.viewportDrag = null;
       this.pagedTargetPageNumber = null;
       this.syncToken = 0;
@@ -1579,7 +1580,7 @@
       this.syncReaderControls(), this.updatePageNumber();
     }
     finishClose() {
-      this.closed || (this.closed = !0, this.cancelProgressNavigation(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.gesture.onKeydown, !0), this.gesture.dispose(), this.root.remove(), this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.viewport.stopMotion(), activeReader === this && (activeReader = null));
+      this.closed || (this.closed = !0, this.cancelProgressNavigation(), this.cancelPendingTap(), this.imageQueue.dispose(), window.removeEventListener("resize", this.onResize), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("keydown", this.gesture.onKeydown, !0), this.gesture.dispose(), this.root.remove(), this.scrollFrame !== null && window.cancelAnimationFrame(this.scrollFrame), this.resizeFrame !== null && window.cancelAnimationFrame(this.resizeFrame), this.viewport.stopMotion(), activeReader === this && (activeReader = null));
     }
     setCurrentPageNumber(pageNumber, scrollIntoView, scrollMotion = "instant") {
       this.pagedTargetPageNumber = null;
@@ -1716,18 +1717,16 @@
         return;
       }
       let drag = this.viewportDrag;
-      drag && (pointerTypeForEvent(event), info.clientY, this.viewport.scrollTop(), this.viewport.dragPage(drag.startScroll, { dx: info.dx, dy: info.dy }));
+      drag && ((Math.abs(info.dx) >= TAP_CANCEL_DISTANCE || Math.abs(info.dy) >= TAP_CANCEL_DISTANCE) && this.cancelPendingTap(), pointerTypeForEvent(event), info.clientY, this.viewport.scrollTop(), this.viewport.dragPage(drag.startScroll, { dx: info.dx, dy: info.dy }));
     }
     handleDragEnd(info, event) {
-      if (this.zoomOverlay.active()) {
-        this.suppressNextClick = !0;
-        return;
+      if (!this.zoomOverlay.active()) {
+        if (pointerTypeForEvent(event), this.viewport.scrollTop(), info.dx, info.dy, this.viewportDrag = null, state.reader.viewMode.value !== "paged") {
+          this.viewport.moveToTop(this.viewport.scrollTop()), this.viewport.startVerticalFlingFromDragVelocity(info.velocityY, () => this.updateCurrentFromScroll()), this.updateCurrentFromScroll();
+          return;
+        }
+        info.dx >= PAGED_SWIPE_THRESHOLD ? this.turnPageBy(this.rightDragDelta()) : info.dx <= -PAGED_SWIPE_THRESHOLD ? this.turnPageBy(this.leftDragDelta()) : this.scrollToCurrentPage("animated");
       }
-      if (pointerTypeForEvent(event), this.viewport.scrollTop(), info.dx, info.dy, this.viewportDrag = null, state.reader.viewMode.value !== "paged") {
-        this.suppressNextClick = !0, this.viewport.moveToTop(this.viewport.scrollTop()), this.viewport.startVerticalFlingFromDragVelocity(info.velocityY, () => this.updateCurrentFromScroll()), this.updateCurrentFromScroll();
-        return;
-      }
-      info.dx >= PAGED_SWIPE_THRESHOLD ? (this.suppressNextClick = !0, this.turnPageBy(this.rightDragDelta())) : info.dx <= -PAGED_SWIPE_THRESHOLD ? (this.suppressNextClick = !0, this.turnPageBy(this.leftDragDelta())) : (this.suppressNextClick = !0, this.scrollToCurrentPage("animated"));
     }
     handleNativeScroll() {
       if (this.zoomOverlay.active() || this.gesture.dragging() || state.reader.viewMode.value === "paged")
@@ -1742,12 +1741,11 @@
       next !== null && next !== this.currentPageNum && (this.direction = next > this.currentPageNum ? 1 : -1, this.currentPageNum = next, this.syncAfterPageChange({ scrollIntoView: !1 }));
     }
     handleTap(info, event) {
-      if (this.viewportDrag = null, this.zoomOverlay.active()) {
+      this.viewportDrag = null, !this.consumeDoubleTap(info, event) && this.queueSingleTap(info, event);
+    }
+    runSingleTap(info, event) {
+      if (this.zoomOverlay.active()) {
         event.preventDefault();
-        return;
-      }
-      if (this.suppressNextClick) {
-        this.suppressNextClick = !1, event.preventDefault();
         return;
       }
       if (this.handleViewportTap(info))
@@ -1770,8 +1768,37 @@
       this.close();
     }
     handlePinchStart(info) {
-      let image = this.loadedImages.get(this.currentPageNum);
-      return image ? (this.viewport.stopMotion(), this.viewportDrag = null, this.zoomOverlay.active() ? (this.zoomOverlay.startPinch({ centerX: info.clientX, centerY: info.clientY }), !0) : (this.zoomOverlay.start(image, { centerX: info.clientX, centerY: info.clientY }), !0)) : !1;
+      if (this.cancelPendingTap(), this.viewport.stopMotion(), this.viewportDrag = null, this.zoomOverlay.active())
+        return this.zoomOverlay.startPinch({ centerX: info.clientX, centerY: info.clientY }), !0;
+      let image = this.imageAtPoint(info);
+      return image ? (this.zoomOverlay.start(image, { centerX: info.clientX, centerY: info.clientY }), !0) : !1;
+    }
+    toggleZoomAtPoint(point) {
+      if (this.zoomOverlay.active())
+        return this.zoomOverlay.close(), !0;
+      let image = this.imageAtPoint(point);
+      return image ? (this.viewport.stopMotion(), this.viewportDrag = null, this.zoomOverlay.start(image, { centerX: point.clientX, centerY: point.clientY }), this.zoomOverlay.movePinch({ centerX: point.clientX, centerY: point.clientY, scale: 2 }), this.zoomOverlay.endPinch(), !0) : !1;
+    }
+    imageAtPoint(point) {
+      let pageNum = this.viewport.pageNumAtPoint(point);
+      return pageNum === null ? null : this.loadedImages.get(pageNum) ?? null;
+    }
+    consumeDoubleTap(info, event) {
+      let now = event.timeStamp || performance.now(), pending = this.pendingTap, nativeDoubleClick = (event instanceof MouseEvent ? event.detail : 0) >= 2, nearPendingTap = pending ? now - pending.time <= DOUBLE_TAP_MS && Math.hypot(info.clientX - pending.info.clientX, info.clientY - pending.info.clientY) <= DOUBLE_TAP_DISTANCE : !1;
+      return !nativeDoubleClick && !nearPendingTap ? !1 : (this.cancelPendingTap(), this.toggleZoomAtPoint(info) ? (event.preventDefault(), !0) : !1);
+    }
+    queueSingleTap(info, event) {
+      this.cancelPendingTap(), this.pendingTap = {
+        info,
+        event,
+        time: event.timeStamp || performance.now()
+      }, this.tapTimer = window.setTimeout(() => {
+        let pending = this.pendingTap;
+        this.pendingTap = null, this.tapTimer = null, pending && this.runSingleTap(pending.info, pending.event);
+      }, DOUBLE_TAP_MS);
+    }
+    cancelPendingTap() {
+      this.tapTimer !== null && (window.clearTimeout(this.tapTimer), this.tapTimer = null), this.pendingTap = null;
     }
     navigateProgressPage(pageNum) {
       let target = clamp(Math.round(pageNum), 1, this.maxProgressPageNum());
