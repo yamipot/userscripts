@@ -6,7 +6,7 @@ import {
   normalizedAspectRatio,
   positiveNumber,
 } from "../../utils";
-import type { ScrollMotion } from "../animation";
+import type { ScrollMotion } from "../common/animation";
 import { PagesGesture, type GestureDragEnd, type GestureDragMove, type GestureDragStart, type GestureTap } from "./Gesture";
 import { PagesViewport } from "./Viewport";
 import { ReaderRoot } from "./Root";

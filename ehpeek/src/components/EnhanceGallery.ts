@@ -7,14 +7,21 @@ import { clamp, requestText } from "../utils";
 const PREVIEW_CACHE_LIMIT = 10;
 
 let galleryThumbEnhancementErrorHandler: ((error: unknown) => void) | null = null;
-let galleryThumbEnhancementInstalled = false;
+let galleryThumbEnhancementClickInstalled = false;
 
 export function enhanceGalleryThumbsEnabled(): boolean {
   return state.gallery.enhanceThumbs.value;
 }
 
 export function toggleEnhanceGalleryThumbs(): void {
-  state.gallery.enhanceThumbs.set(!enhanceGalleryThumbsEnabled());
+  const enabled = !enhanceGalleryThumbsEnabled();
+  state.gallery.enhanceThumbs.set(enabled);
+
+  if (enabled) {
+    installGalleryPageBar();
+  } else {
+    eh.restoreGalleryPageBar();
+  }
 }
 
 export class GalleryPageProvider {
@@ -102,13 +109,16 @@ export class GalleryPageProvider {
 
 export function installGalleryThumbEnhancement(onError: (error: unknown) => void): void {
   galleryThumbEnhancementErrorHandler = onError;
-  eh.replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
 
-  if (galleryThumbEnhancementInstalled) {
+  if (enhanceGalleryThumbsEnabled()) {
+    installGalleryPageBar();
+  }
+
+  if (galleryThumbEnhancementClickInstalled) {
     return;
   }
 
-  galleryThumbEnhancementInstalled = true;
+  galleryThumbEnhancementClickInstalled = true;
   document.addEventListener("click", onPageBarClick, true);
 }
 
@@ -143,6 +153,10 @@ export async function navigateGalleryPreview(url: string, historyMode: "push" | 
 }
 
 function onPageBarClick(event: MouseEvent): void {
+  if (!enhanceGalleryThumbsEnabled()) {
+    return;
+  }
+
   if (!(event.target instanceof Element)) {
     return;
   }
@@ -162,12 +176,11 @@ function onPageBarClick(event: MouseEvent): void {
     return;
   }
 
-  if (!enhanceGalleryThumbsEnabled()) {
-    window.location.href = url;
-    return;
-  }
-
   void navigateGalleryPreview(url, "push").catch((error) => galleryThumbEnhancementErrorHandler?.(error));
+}
+
+function installGalleryPageBar(): void {
+  eh.replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
 }
 
 function pageBarUrl(item: HTMLElement): string | null {

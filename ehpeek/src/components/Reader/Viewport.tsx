@@ -2,7 +2,7 @@ import { h } from "../../jsx";
 import type { ReadDirection, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { clamp, normalizedAspectRatio } from "../../utils";
-import { ScrollAnimator, ScrollFlingAnimator, type ScrollMotion } from "../animation";
+import { ScrollAnimator, ScrollFlingAnimator, type ScrollMotion } from "../common/animation";
 
 const FALLBACK_ASPECT_RATIO = 1.42;
 

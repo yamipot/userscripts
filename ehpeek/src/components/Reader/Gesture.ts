@@ -1,4 +1,5 @@
 import { debugLog, targetSummary } from "../../utils";
+import { PointerDrag, type PointerDragEnd, type PointerDragMove, type PointerDragStart } from "../common/pointerDrag";
 
 const TAP_MOVE_THRESHOLD = 8;
 
@@ -27,16 +28,7 @@ export type GestureTap = GesturePoint & {
 };
 
 export class PagesGesture {
-  private mouseDragPointerId = -1;
-  private drag: {
-    pointerId: number;
-    pointerType: string;
-    startClientX: number;
-    startClientY: number;
-    lastClientY: number;
-    lastMoveTime: number;
-    velocityY: number;
-  } | null = null;
+  private readonly pointerDrag: PointerDrag;
   private passiveTap: {
     pointerId: number;
     pointerType: string;
@@ -62,33 +54,30 @@ export class PagesGesture {
       onNativeScroll: () => void;
     },
   ) {
+    this.pointerDrag = new PointerDrag(target, {
+      shouldStart: this.shouldStartDrag,
+      onStart: this.onDragStart,
+      onMove: this.onDragMove,
+      onEnd: this.onDragEnd,
+      shouldSuppressClick: () => true,
+    });
     target.addEventListener("click", this.onClick);
     target.addEventListener("scroll", this.onScroll);
     target.addEventListener("wheel", this.onWheel);
-    target.addEventListener("pointerdown", this.onPointerDown);
-    target.addEventListener("mousedown", this.onMouseDown);
-    target.addEventListener("dragstart", this.onDragStartEvent);
   }
 
   dispose(): void {
-    if (this.drag) {
-      this.target.releasePointerCapture?.(this.drag.pointerId);
-      this.drag = null;
-    }
-
+    this.pointerDrag.dispose();
     this.passiveTap = null;
     this.target.classList.remove("ehpeek-scroller-dragging");
-    this.removePointerListeners();
+    this.removePassiveTapListeners();
     this.target.removeEventListener("click", this.onClick);
     this.target.removeEventListener("scroll", this.onScroll);
     this.target.removeEventListener("wheel", this.onWheel);
-    this.target.removeEventListener("pointerdown", this.onPointerDown);
-    this.target.removeEventListener("mousedown", this.onMouseDown);
-    this.target.removeEventListener("dragstart", this.onDragStartEvent);
   }
 
   dragging(): boolean {
-    return this.drag !== null;
+    return this.pointerDrag.dragging();
   }
 
   onKeydown = (event: KeyboardEvent): void => {
@@ -112,6 +101,51 @@ export class PagesGesture {
       event.preventDefault();
       this.handlers.onKeyboardArrow("right");
     }
+  };
+
+  private shouldStartDrag = (event: PointerEvent | MouseEvent): boolean => {
+    if (!(event instanceof PointerEvent)) {
+      return false;
+    }
+
+    debugLog("pointerdown", {
+      pointerType: event.pointerType,
+      button: event.button,
+      buttons: event.buttons,
+      target: targetSummary(event.target),
+    });
+
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      debugLog("pointerdown ignored: mouse buttons", { button: event.button, buttons: event.buttons });
+      return false;
+    }
+
+    if (!this.handlers.shouldStartDrag(event)) {
+      this.beginPassiveTap(event);
+      return false;
+    }
+
+    return true;
+  };
+
+  private onDragStart = (info: PointerDragStart, event: PointerEvent | MouseEvent): void => {
+    this.target.classList.add("ehpeek-scroller-dragging");
+    this.handlers.onDragStart(info, event);
+  };
+
+  private onDragMove = (info: PointerDragMove, event: PointerEvent | MouseEvent): void => {
+    this.handlers.onDragMove(info, event);
+  };
+
+  private onDragEnd = (info: PointerDragEnd, event: PointerEvent | MouseEvent): void => {
+    this.target.classList.remove("ehpeek-scroller-dragging");
+
+    if (Math.abs(info.dx) < TAP_MOVE_THRESHOLD && Math.abs(info.dy) < TAP_MOVE_THRESHOLD) {
+      this.handlers.onTap(info, event);
+      return;
+    }
+
+    this.handlers.onDragEnd(info, event);
   };
 
   private shouldIgnoreKeyboardEvent(event: KeyboardEvent): boolean {
@@ -152,176 +186,9 @@ export class PagesGesture {
     this.handlers.onWheel(delta, event);
   };
 
-  private onDragStartEvent = (event: DragEvent): void => {
-    event.preventDefault();
-  };
-
-  private onMouseDown = (event: MouseEvent): void => {
-    if (event.button !== 0) {
-      return;
-    }
-
-    if (this.drag?.pointerType === "mouse") {
-      // Some userscript/browser combinations start the drag with PointerEvent
-      // but deliver movement through MouseEvent with a different id.
-      this.addMouseListeners();
-      return;
-    }
-
-    if (typeof PointerEvent !== "undefined" || this.drag) {
-      return;
-    }
-
-    const synthetic = this.mouseEventToPointerLike(event, "pointerdown");
-
-    if (!this.handlers.shouldStartDrag(synthetic)) {
-      return;
-    }
-
-    event.preventDefault();
-    this.startDragFromPoint(this.mouseDragPointerId, "mouse", event.clientX, event.clientY, event.timeStamp, event);
-    this.addMouseListeners();
-  };
-
-  private onMouseMove = (event: MouseEvent): void => {
-    if (!this.drag || this.drag.pointerType !== "mouse") {
-      return;
-    }
-
-    this.updateDrag(event.clientX, event.clientY, event.timeStamp, event);
-    event.preventDefault();
-  };
-
-  private onMouseUp = (event: MouseEvent): void => {
-    if (!this.drag || this.drag.pointerType !== "mouse") {
-      return;
-    }
-
-    this.finishDrag(event.clientX, event.clientY, event);
-    this.removeMouseListeners();
-  };
-
-  private onPointerDown = (event: PointerEvent): void => {
-    debugLog("pointerdown", {
-      pointerType: event.pointerType,
-      button: event.button,
-      buttons: event.buttons,
-      target: targetSummary(event.target),
-    });
-
-    if (event.pointerType === "mouse" && event.button !== 0) {
-      debugLog("pointerdown ignored: mouse buttons", { button: event.button, buttons: event.buttons });
-      return;
-    }
-
-    if (!this.handlers.shouldStartDrag(event)) {
-      this.beginPassiveTap(event);
-      return;
-    }
-
-    event.preventDefault();
-    this.startDragFromPoint(event.pointerId, event.pointerType, event.clientX, event.clientY, event.timeStamp, event);
-
-    if (event.pointerType === "mouse") {
-      this.addMouseListeners();
-    }
-  };
-
-  private startDragFromPoint(
-    pointerId: number,
-    pointerType: string,
-    clientX: number,
-    clientY: number,
-    timeStamp: number,
-    event: PointerEvent | MouseEvent,
-  ): void {
-    this.drag = {
-      pointerId,
-      pointerType,
-      startClientX: clientX,
-      startClientY: clientY,
-      lastClientY: clientY,
-      lastMoveTime: timeStamp,
-      velocityY: 0,
-    };
-
-    this.beginDrag(pointerId);
-    this.handlers.onDragStart(
-      {
-        pointerId,
-        clientX,
-        clientY,
-      },
-      event,
-    );
-  }
-
-  private onPointerMove = (event: PointerEvent): void => {
-    const drag = this.drag;
-
-    if (!drag) {
-      this.trackPassiveTap(event);
-      return;
-    }
-
-    if (!this.matchesDragPointer(event, drag)) {
-      debugLog("pointermove ignored", {
-        pointerId: event.pointerId,
-        dragPointerId: drag?.pointerId ?? null,
-        pointerType: event.pointerType,
-        dragging: Boolean(drag),
-      });
-      return;
-    }
-
-    this.updateDrag(event.clientX, event.clientY, event.timeStamp, event);
-    event.preventDefault();
-  };
-
-  private onPointerUp = (event: PointerEvent): void => {
-    const drag = this.drag;
-
-    if (!drag) {
-      this.endPassiveTap(event);
-      return;
-    }
-
-    if (!this.matchesDragPointer(event, drag)) {
-      debugLog("pointerup ignored", {
-        pointerId: event.pointerId,
-        dragPointerId: drag?.pointerId ?? null,
-        pointerType: event.pointerType,
-        dragging: Boolean(drag),
-      });
-      return;
-    }
-
-    this.finishDrag(event.clientX, event.clientY, event);
-  };
-
   private onScroll = (): void => {
     this.handlers.onNativeScroll();
   };
-
-  private matchesDragPointer(event: PointerEvent, drag: NonNullable<PagesGesture["drag"]>): boolean {
-    if (event.pointerId === drag.pointerId) {
-      return true;
-    }
-
-    return (
-      drag.pointerType === "mouse" &&
-      event.pointerType === "mouse" &&
-      (event.type === "pointerup" || event.type === "pointercancel" || (event.buttons & 1) === 1)
-    );
-  }
-
-  private beginDrag(pointerId: number): void {
-    this.target.classList.add("ehpeek-scroller-dragging");
-    if (pointerId !== this.mouseDragPointerId) {
-      this.target.setPointerCapture?.(pointerId);
-    }
-    this.addPointerListeners();
-  }
 
   private beginPassiveTap(event: PointerEvent): void {
     if (event.pointerType === "mouse") {
@@ -337,7 +204,7 @@ export class PagesGesture {
       lastClientY: event.clientY,
       moved: false,
     };
-    this.addPointerListeners();
+    this.addPassiveTapListeners();
   }
 
   private trackPassiveTap(event: PointerEvent): void {
@@ -366,7 +233,7 @@ export class PagesGesture {
     }
 
     this.passiveTap = null;
-    this.removePointerListeners();
+    this.removePassiveTapListeners();
 
     if (event.type === "pointercancel") {
       return;
@@ -392,112 +259,25 @@ export class PagesGesture {
     );
   }
 
-  private addPointerListeners(): void {
-    document.addEventListener("pointermove", this.onPointerMove, true);
-    document.addEventListener("pointerup", this.onPointerUp, true);
-    document.addEventListener("pointercancel", this.onPointerUp, true);
+  private addPassiveTapListeners(): void {
+    document.addEventListener("pointermove", this.onPassiveTapMove, true);
+    document.addEventListener("pointerup", this.onPassiveTapEnd, true);
+    document.addEventListener("pointercancel", this.onPassiveTapEnd, true);
   }
 
-  private endDrag(pointerId: number): void {
-    if (pointerId !== this.mouseDragPointerId) {
-      this.target.releasePointerCapture?.(pointerId);
-    }
-    this.target.classList.remove("ehpeek-scroller-dragging");
-    this.removePointerListeners();
+  private removePassiveTapListeners(): void {
+    document.removeEventListener("pointermove", this.onPassiveTapMove, true);
+    document.removeEventListener("pointerup", this.onPassiveTapEnd, true);
+    document.removeEventListener("pointercancel", this.onPassiveTapEnd, true);
   }
 
-  private updateDrag(clientX: number, clientY: number, timeStamp: number, event: PointerEvent | MouseEvent): void {
-    const drag = this.drag;
+  private onPassiveTapMove = (event: PointerEvent): void => {
+    this.trackPassiveTap(event);
+  };
 
-    if (!drag) {
-      return;
-    }
-
-    const elapsed = Math.max(1, timeStamp - drag.lastMoveTime);
-    drag.velocityY = (clientY - drag.lastClientY) / elapsed;
-    drag.lastClientY = clientY;
-    drag.lastMoveTime = timeStamp;
-
-    this.handlers.onDragMove(
-      {
-        pointerId: drag.pointerId,
-        clientX,
-        clientY,
-        dx: clientX - drag.startClientX,
-        dy: clientY - drag.startClientY,
-        velocityY: drag.velocityY,
-      },
-      event,
-    );
-  }
-
-  private finishDrag(clientX: number, clientY: number, event: PointerEvent | MouseEvent): void {
-    const drag = this.drag;
-
-    if (!drag) {
-      return;
-    }
-
-    this.drag = null;
-    this.endDrag(drag.pointerId);
-
-    const dx = clientX - drag.startClientX;
-    const dy = clientY - drag.startClientY;
-
-    if (Math.abs(dx) < TAP_MOVE_THRESHOLD && Math.abs(dy) < TAP_MOVE_THRESHOLD) {
-      this.suppressNextClick = true;
-      this.handlers.onTap(
-        {
-          pointerId: drag.pointerId,
-          clientX,
-          clientY,
-          dx,
-          dy,
-        },
-        event,
-      );
-      return;
-    }
-
-    this.handlers.onDragEnd(
-      {
-        pointerId: drag.pointerId,
-        clientX,
-        clientY,
-        dx,
-        dy,
-        velocityY: drag.velocityY,
-      },
-      event,
-    );
-  }
-
-  private mouseEventToPointerLike(event: MouseEvent, type: string): PointerEvent {
-    return {
-      ...event,
-      type,
-      pointerId: this.mouseDragPointerId,
-      pointerType: "mouse",
-      isPrimary: true,
-    } as PointerEvent;
-  }
-
-  private removePointerListeners(): void {
-    document.removeEventListener("pointermove", this.onPointerMove, true);
-    document.removeEventListener("pointerup", this.onPointerUp, true);
-    document.removeEventListener("pointercancel", this.onPointerUp, true);
-    this.removeMouseListeners();
-  }
-
-  private addMouseListeners(): void {
-    document.addEventListener("mousemove", this.onMouseMove, true);
-    document.addEventListener("mouseup", this.onMouseUp, true);
-  }
-
-  private removeMouseListeners(): void {
-    document.removeEventListener("mousemove", this.onMouseMove, true);
-    document.removeEventListener("mouseup", this.onMouseUp, true);
-  }
+  private onPassiveTapEnd = (event: PointerEvent): void => {
+    this.endPassiveTap(event);
+  };
 
   private matchesPassiveTapPointer(
     event: PointerEvent,

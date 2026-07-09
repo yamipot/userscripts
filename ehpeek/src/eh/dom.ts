@@ -1,4 +1,4 @@
-import { createBetterPageBar } from "../components/BetterPageBar";
+import { BETTER_PAGE_BAR_WINDOW_INDEX_ATTR, createBetterPageBar } from "../components/BetterPageBar";
 import betterPageBarCss from "../components/BetterPageBar.css";
 import type { ReaderPage } from "../components/Reader";
 import type { SettingsMenu } from "../components/SettingsMenu";
@@ -131,6 +131,16 @@ export function replaceGalleryPageBar(options: {
   }
 }
 
+export function restoreGalleryPageBar(): void {
+  document.querySelectorAll<HTMLElement>(`.${BETTER_PAGE_BAR_TOP_CLASS}, .${BETTER_PAGE_BAR_BOTTOM_CLASS}`).forEach((item) => {
+    item.remove();
+  });
+
+  document.querySelectorAll<HTMLElement>(".ptt, .ptb").forEach((item) => {
+    item.hidden = false;
+  });
+}
+
 export function snapshotPreview(): PreviewSnapshot {
   return {
     description: document.querySelector(".gpc")?.cloneNode(true) ?? null,
@@ -215,8 +225,10 @@ function replaceGalleryPageBarAt(
 ): void {
   const className = top ? BETTER_PAGE_BAR_TOP_CLASS : BETTER_PAGE_BAR_BOTTOM_CLASS;
   const existing = document.querySelector<HTMLElement>(`.${className}`);
+  const initialWindowIndex = existing ? Number(existing.getAttribute(BETTER_PAGE_BAR_WINDOW_INDEX_ATTR) || "") : undefined;
   const pageBar = createBetterPageBar({
     currentIndex: options.currentIndex,
+    initialWindowIndex: Number.isFinite(initialWindowIndex) ? initialWindowIndex : undefined,
     maxIndex: options.maxIndex,
     top,
     urlForIndex: options.previewUrlForIndex,

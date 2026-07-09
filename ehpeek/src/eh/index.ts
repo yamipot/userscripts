@@ -243,6 +243,10 @@ export function replaceGalleryPageBar(currentIndex: number, maxIndex: number | n
   });
 }
 
+export function restoreGalleryPageBar(): void {
+  dom.restoreGalleryPageBar();
+}
+
 export function snapshotPreview(): PreviewSnapshot {
   return dom.snapshotPreview();
 }

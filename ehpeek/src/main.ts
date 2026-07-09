@@ -107,7 +107,9 @@ async function openReader(startPageUrl: string): Promise<void> {
     onActivePageChange: (page) => {
       if (page.pageNum) {
         lastPageNum = page.pageNum;
-        eh.replaceGalleryPageBar(provider.previewIndexForPage(page.pageNum), maxPreviewIndex);
+        if (enhanceGalleryThumbsEnabled()) {
+          eh.replaceGalleryPageBar(provider.previewIndexForPage(page.pageNum), maxPreviewIndex);
+        }
       }
 
       eh.updatePeekLocation(page.pageNum, pageSize, maxPreviewIndex);
@@ -115,9 +117,9 @@ async function openReader(startPageUrl: string): Promise<void> {
     onExit: () => {
       const exitIndex = lastPageNum ? provider.previewIndexForPage(lastPageNum) : landingIndex;
       const galleryUrl = eh.previewUrlForIndex(exitIndex);
-      eh.replaceGalleryPageBar(exitIndex, maxPreviewIndex);
 
       if (enhanceGalleryThumbsEnabled()) {
+        eh.replaceGalleryPageBar(exitIndex, maxPreviewIndex);
         void navigateGalleryPreview(galleryUrl, "replace").catch(() => {
           window.location.replace(galleryUrl);
         });

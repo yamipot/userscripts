@@ -1,12 +1,23 @@
 import { h } from "../jsx";
 import { clamp } from "../utils";
+import { PointerDrag } from "./common/pointerDrag";
 
 export const BETTER_PAGE_BAR_CLASS = "ehpeek-better-page-bar";
 export const BETTER_PAGE_BAR_TOP_CLASS = "ehpeek-better-page-bar-top";
 export const BETTER_PAGE_BAR_BOTTOM_CLASS = "ehpeek-better-page-bar-bottom";
+export const BETTER_PAGE_BAR_WINDOW_INDEX_ATTR = "data-ehpeek-window-index";
+
+const DRAG_PIXEL_STEP = 18;
+
+type PageBarSlot =
+  | {
+      type: "page";
+      pageIndex: number;
+    };
 
 export type BetterPageBarOptions = {
   currentIndex: number;
+  initialWindowIndex?: number;
   maxIndex: number | null;
   top: boolean;
   urlForIndex: (index: number) => string;
@@ -14,27 +25,55 @@ export type BetterPageBarOptions = {
 
 export class BetterPageBar {
   readonly element: HTMLTableElement;
+  private readonly currentIndex: number;
+  private readonly maxIndex: number;
+  private readonly urlForIndex: (index: number) => string;
+  private windowIndex: number;
+  private dragStartWindowIndex = 0;
 
   constructor(options: BetterPageBarOptions) {
     const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
     const currentIndex = clamp(options.currentIndex, 0, maxIndex);
+    this.currentIndex = currentIndex;
+    this.maxIndex = maxIndex;
+    this.urlForIndex = options.urlForIndex;
+    this.windowIndex = clamp(options.initialWindowIndex ?? currentIndex, 0, maxIndex);
 
     this.element = (
       <table className={`${BETTER_PAGE_BAR_CLASS} ${options.top ? BETTER_PAGE_BAR_TOP_CLASS : BETTER_PAGE_BAR_BOTTOM_CLASS}`}>
-        <tbody>
-          <tr>
-            {this.linkCell("<", Math.max(0, currentIndex - 1), currentIndex === 0, options.urlForIndex)}
-            {pageIndexes(currentIndex, maxIndex).map((pageIndex) =>
-              pageIndex === null ? this.jumpCell() : this.linkCell(String(pageIndex + 1), pageIndex, pageIndex === currentIndex, options.urlForIndex),
-            )}
-            {this.linkCell(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex, options.urlForIndex)}
-          </tr>
-        </tbody>
+        <tbody />
       </table>
     ) as HTMLTableElement;
+    this.render();
+    this.installDrag();
   }
 
-  private linkCell(text: string, pageIndex: number, current: boolean, urlForIndex: (index: number) => string): HTMLTableCellElement {
+  private render(): void {
+    const body = this.element.tBodies[0] ?? this.element.createTBody();
+    const slots = pageSlots(this.windowIndex, this.currentIndex, this.maxIndex);
+    const firstSlotIndex = slots[0]?.pageIndex ?? this.currentIndex;
+    const lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? this.currentIndex;
+    const currentBeforeWindow = this.currentIndex < firstSlotIndex;
+    const currentAfterWindow = this.currentIndex > lastSlotIndex;
+    const row = (
+      <tr>
+        {this.linkCell("<<", 0, this.currentIndex === 0)}
+        {currentBeforeWindow ? this.linkCell(String(this.currentIndex + 1), this.currentIndex, true) : this.emptyCell()}
+        {this.linkCell("<", Math.max(0, this.currentIndex - 1), this.currentIndex === 0)}
+        {slots.map((slot) =>
+          this.linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === this.currentIndex),
+        )}
+        {this.linkCell(">", Math.min(this.maxIndex, this.currentIndex + 1), this.currentIndex === this.maxIndex)}
+        {currentAfterWindow ? this.linkCell(String(this.currentIndex + 1), this.currentIndex, true) : this.emptyCell()}
+        {this.linkCell(">>", this.maxIndex, this.currentIndex === this.maxIndex)}
+      </tr>
+    ) as HTMLTableRowElement;
+
+    body.replaceChildren(row);
+    this.element.setAttribute(BETTER_PAGE_BAR_WINDOW_INDEX_ATTR, String(this.windowIndex));
+  }
+
+  private linkCell(text: string, pageIndex: number, current: boolean): HTMLTableCellElement {
     if (current) {
       return (
         <td className="ptds">
@@ -45,21 +84,50 @@ export class BetterPageBar {
 
     return (
       <td>
-        <a href={urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
+        <a href={this.urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
           {text}
         </a>
       </td>
     ) as HTMLTableCellElement;
   }
 
-  private jumpCell(): HTMLTableCellElement {
+  private emptyCell(): HTMLTableCellElement {
     return (
-      <td>
-        <button type="button" data-page-jump="true">
-          ...
-        </button>
+      <td className="ehpeek-better-page-bar-empty">
+        <span />
       </td>
     ) as HTMLTableCellElement;
+  }
+
+  private installDrag(): void {
+    new PointerDrag(this.element, {
+      shouldStart: () => this.draggable(),
+      onStart: () => {
+        this.dragStartWindowIndex = this.windowIndex;
+        this.element.classList.add("ehpeek-better-page-bar-dragging");
+      },
+      onMove: (info) => {
+        if (Math.abs(info.dx) < Math.abs(info.dy)) {
+          return;
+        }
+
+        const nextIndex = clamp(this.dragStartWindowIndex - acceleratedPageOffset(info.dx), 0, this.maxIndex);
+
+        if (nextIndex === this.windowIndex) {
+          return;
+        }
+
+        this.windowIndex = nextIndex;
+        this.render();
+      },
+      onEnd: () => {
+        this.element.classList.remove("ehpeek-better-page-bar-dragging");
+      },
+    });
+  }
+
+  private draggable(): boolean {
+    return this.maxIndex + 1 > 7;
   }
 }
 
@@ -67,25 +135,29 @@ export function createBetterPageBar(options: BetterPageBarOptions): HTMLTableEle
   return new BetterPageBar(options).element;
 }
 
-function pageIndexes(currentIndex: number, maxIndex: number): Array<number | null> {
-  const indexes = new Set<number>([0, maxIndex]);
-
-  for (let index = currentIndex - 2; index <= currentIndex + 2; index += 1) {
-    if (index >= 0 && index <= maxIndex) {
-      indexes.add(index);
-    }
+function pageSlots(windowIndex: number, currentIndex: number, maxIndex: number): PageBarSlot[] {
+  if (maxIndex + 1 <= 7) {
+    return range(0, maxIndex).map((pageIndex) => ({ type: "page", pageIndex }));
   }
 
-  const sorted = Array.from(indexes).sort((left, right) => left - right);
-  const output: Array<number | null> = [];
+  const windowStart = clamp(windowIndex - 3, 0, maxIndex - 6);
+  return range(windowStart, windowStart + 6).map((pageIndex) => ({ type: "page", pageIndex }));
+}
 
-  for (let index = 0; index < sorted.length; index += 1) {
-    if (index > 0 && sorted[index] - sorted[index - 1] > 1) {
-      output.push(null);
-    }
+function range(start: number, end: number): number[] {
+  const output: number[] = [];
 
-    output.push(sorted[index]);
+  for (let index = start; index <= end; index += 1) {
+    output.push(index);
   }
 
   return output;
+}
+
+function acceleratedPageOffset(dx: number): number {
+  const distance = Math.abs(dx);
+  const direction = dx > 0 ? 1 : -1;
+  const pages = Math.floor((distance / DRAG_PIXEL_STEP) ** 1.35);
+
+  return direction * pages;
 }
