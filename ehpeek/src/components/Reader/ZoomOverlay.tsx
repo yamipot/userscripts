@@ -26,9 +26,51 @@ export type ZoomDragMove = {
   dy: number;
 };
 
+function zoomOverlayDom() {
+  let image!: HTMLImageElement;
+  const element = (
+    <div className="ehpeek-zoom-overlay" hidden>
+      <img
+        className="ehpeek-zoom-image"
+        ref={(node: HTMLImageElement) => {
+          image = node;
+        }}
+      />
+    </div>
+  ) as HTMLElement;
+
+  return {
+    element,
+    rect() {
+      return element.getBoundingClientRect();
+    },
+    setImage(source: ZoomOverlayImage) {
+      image.src = source.imageUrl;
+      image.alt = `Page ${source.pageNum}`;
+
+      if (source.width && source.height) {
+        image.width = source.width;
+        image.height = source.height;
+      } else {
+        image.removeAttribute("width");
+        image.removeAttribute("height");
+      }
+    },
+    setOpen(open: boolean) {
+      element.hidden = !open;
+    },
+    setTransform(offsetX: number, offsetY: number, scale: number) {
+      image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
+    },
+    clearImage() {
+      image.removeAttribute("src");
+    },
+  };
+}
+
 export class ZoomOverlay {
   readonly element: HTMLElement;
-  private image!: HTMLImageElement;
+  private readonly dom = zoomOverlayDom();
   private activeImage: ZoomOverlayImage | null = null;
   private scale = 1;
   private requestedScale = 1;
@@ -43,11 +85,7 @@ export class ZoomOverlay {
   private dragStartOffsetY = 0;
 
   constructor() {
-    this.element = (
-      <div className="ehpeek-zoom-overlay" hidden>
-        <img className="ehpeek-zoom-image" ref={(node: HTMLImageElement) => (this.image = node)} />
-      </div>
-    ) as HTMLElement;
+    this.element = this.dom.element;
   }
 
   active(): boolean {
@@ -60,18 +98,8 @@ export class ZoomOverlay {
     this.requestedScale = 1;
     this.offsetX = 0;
     this.offsetY = 0;
-    this.image.src = image.imageUrl;
-    this.image.alt = `Page ${image.pageNum}`;
-
-    if (image.width && image.height) {
-      this.image.width = image.width;
-      this.image.height = image.height;
-    } else {
-      this.image.removeAttribute("width");
-      this.image.removeAttribute("height");
-    }
-
-    this.element.hidden = false;
+    this.dom.setImage(image);
+    this.dom.setOpen(true);
     this.startPinch(pinch);
     this.render();
   }
@@ -92,7 +120,7 @@ export class ZoomOverlay {
     this.requestedScale = this.pinchStartScale * pinch.scale;
     this.scale = clamp(this.requestedScale, MIN_SCALE, MAX_SCALE);
 
-    const rect = this.element.getBoundingClientRect();
+    const rect = this.dom.rect();
     const viewportCenterX = rect.left + rect.width / 2;
     const viewportCenterY = rect.top + rect.height / 2;
     const ratio = this.scale / this.pinchStartScale;
@@ -127,11 +155,11 @@ export class ZoomOverlay {
 
   close(): void {
     this.activeImage = null;
-    this.element.hidden = true;
-    this.image.removeAttribute("src");
+    this.dom.setOpen(false);
+    this.dom.clearImage();
   }
 
   private render(): void {
-    this.image.style.transform = `translate3d(${this.offsetX}px, ${this.offsetY}px, 0) scale(${this.scale})`;
+    this.dom.setTransform(this.offsetX, this.offsetY, this.scale);
   }
 }

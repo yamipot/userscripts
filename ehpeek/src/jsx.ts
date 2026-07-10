@@ -34,8 +34,10 @@ function applyProps(node: HTMLElement, props: Props): void {
       continue;
     }
 
-    if (value === true) {
-      node.setAttribute(name, "");
+    if (typeof value === "boolean") {
+      if (value) {
+        node.setAttribute(name, "");
+      }
       continue;
     }
 

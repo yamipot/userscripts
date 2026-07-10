@@ -47,7 +47,7 @@ export function installEnhanceSearchGrids(pageType: Extract<PageType, { type: "s
 }
 
 function installResultListEnhancement(resultList: HTMLElement): void {
-  overlayElement = installResultListOverlay(resultList);
+  overlayElement = installResultListOverlayDom(resultList);
   new PointerDrag(overlayElement, {
     onStart: () => {
       swipeState = { horizontal: false, cancelled: false, suppressClick: false };
@@ -71,7 +71,7 @@ function installResultListEnhancement(resultList: HTMLElement): void {
   overlayElement.addEventListener("click", onOverlayClick);
 }
 
-function installResultListOverlay(resultList: HTMLElement): HTMLDivElement {
+function installResultListOverlayDom(resultList: HTMLElement): HTMLDivElement {
   let overlay!: HTMLDivElement;
   const existingWrapper = resultList.parentElement?.classList.contains(SEARCH_SWIPE_WRAPPER_CLASS)
     ? (resultList.parentElement as HTMLDivElement)

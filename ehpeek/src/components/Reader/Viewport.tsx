@@ -54,10 +54,36 @@ type PageSlot = {
   token: number;
 };
 
+function pagesViewportDom() {
+  let scroller!: HTMLElement;
+  let strip!: HTMLElement;
+  const element = (
+    <div
+      className="ehpeek-scroller"
+      tabIndex={-1}
+      ref={(node: HTMLElement) => (scroller = node)}
+    >
+      <main className="ehpeek-strip" ref={(node: HTMLElement) => (strip = node)} />
+    </div>
+  ) as HTMLElement;
+
+  return { element, scroller, strip };
+}
+
+function slotViewDom(): SlotView {
+  let frame!: HTMLElement;
+  const node = (
+    <section className="ehpeek-page">
+      <div className="ehpeek-frame" ref={(element: HTMLElement) => (frame = element)} />
+    </section>
+  ) as HTMLElement;
+
+  return { node, frame };
+}
+
 export class PagesViewport {
   readonly element: HTMLElement;
-  private scroller!: HTMLElement;
-  private strip!: HTMLElement;
+  private readonly dom: ReturnType<typeof pagesViewportDom>;
   private slots: PageSlot[] = [];
   private readonly horizontalAnimator = new ScrollAnimator("x");
   private readonly flingAnimator = new ScrollFlingAnimator();
@@ -70,19 +96,12 @@ export class PagesViewport {
       totalPages: () => number | undefined;
     },
   ) {
-    this.element = (
-      <div
-        className="ehpeek-scroller"
-        tabIndex={-1}
-        ref={(node: HTMLElement) => (this.scroller = node)}
-      >
-        <main className="ehpeek-strip" ref={(node: HTMLElement) => (this.strip = node)} />
-      </div>
-    ) as HTMLElement;
+    this.dom = pagesViewportDom();
+    this.element = this.dom.element;
   }
 
   scrollerElement(): HTMLElement {
-    return this.scroller;
+    return this.dom.scroller;
   }
 
   syncWindow(options: PagesViewportWindowOptions): void {
@@ -123,8 +142,8 @@ export class PagesViewport {
   }
 
   resetPosition(): void {
-    this.scroller.scrollLeft = 0;
-    this.scroller.scrollTop = 0;
+    this.dom.scroller.scrollLeft = 0;
+    this.dom.scroller.scrollTop = 0;
   }
 
   stopMotion(): void {
@@ -228,25 +247,25 @@ export class PagesViewport {
 
   moveBy(delta: number, motion: ScrollMotion = "instant", onComplete?: () => void): void {
     if (this.options.mode() === "paged") {
-      this.horizontalAnimator.scrollTo(this.scroller, this.scroller.scrollLeft + delta, motion, onComplete);
+      this.horizontalAnimator.scrollTo(this.dom.scroller, this.dom.scroller.scrollLeft + delta, motion, onComplete);
       return;
     }
 
-    this.moveToTop(this.scroller.scrollTop + delta);
+    this.moveToTop(this.dom.scroller.scrollTop + delta);
     onComplete?.();
   }
 
   moveToTop(scrollTop: number): void {
-    this.scroller.scrollTop = this.clampedTop(scrollTop, this.verticalScrollBounds());
+    this.dom.scroller.scrollTop = this.clampedTop(scrollTop, this.verticalScrollBounds());
   }
 
   startDragPosition(): number {
-    return this.options.mode() === "paged" ? this.scroller.scrollLeft : this.scroller.scrollTop;
+    return this.options.mode() === "paged" ? this.dom.scroller.scrollLeft : this.dom.scroller.scrollTop;
   }
 
   dragPage(startPosition: number, delta: { dx: number; dy: number }): void {
     if (this.options.mode() === "paged") {
-      this.scroller.scrollLeft = startPosition - delta.dx;
+      this.dom.scroller.scrollLeft = startPosition - delta.dx;
       return;
     }
 
@@ -254,15 +273,15 @@ export class PagesViewport {
   }
 
   scrollTop(): number {
-    return this.scroller.scrollTop;
+    return this.dom.scroller.scrollTop;
   }
 
   viewportWidth(): number {
-    return this.scroller.clientWidth || window.innerWidth || 1;
+    return this.dom.scroller.clientWidth || window.innerWidth || 1;
   }
 
   viewportHeight(): number {
-    return this.scroller.clientHeight;
+    return this.dom.scroller.clientHeight;
   }
 
   pageOffset(pageNum: number): number | null {
@@ -305,7 +324,7 @@ export class PagesViewport {
 
   startVerticalFlingFromDragVelocity(dragVelocityY: number, onStop: () => void): void {
     this.flingAnimator.start({
-      scroller: this.scroller,
+      scroller: this.dom.scroller,
       initialVelocityY: -dragVelocityY,
       setScrollTop: (scrollTop) => this.moveToTop(scrollTop),
       canRun: () => !this.options.closed() && this.options.mode() === "scroll",
@@ -331,16 +350,16 @@ export class PagesViewport {
 
   private verticalScrollBoundsForViews(firstView: SlotView | null | undefined, lastView: SlotView | null | undefined): VerticalScrollBounds | null {
     const bounds: VerticalScrollBounds = {};
-    const scrollerRect = this.scroller.getBoundingClientRect();
+    const scrollerRect = this.dom.scroller.getBoundingClientRect();
 
     if (firstView) {
       const firstRect = firstView.node.getBoundingClientRect();
-      bounds.min = this.scroller.scrollTop + firstRect.top - scrollerRect.top;
+      bounds.min = this.dom.scroller.scrollTop + firstRect.top - scrollerRect.top;
     }
 
     if (lastView) {
       const lastRect = lastView.node.getBoundingClientRect();
-      const lastTop = this.scroller.scrollTop + lastRect.top - scrollerRect.top;
+      const lastTop = this.dom.scroller.scrollTop + lastRect.top - scrollerRect.top;
       bounds.max = lastTop + lastRect.height - this.viewportHeight();
     }
 
@@ -384,7 +403,7 @@ export class PagesViewport {
   }
 
   private slotContainsViewportTarget(view: SlotView): boolean {
-    const scrollerRect = this.scroller.getBoundingClientRect();
+    const scrollerRect = this.dom.scroller.getBoundingClientRect();
     const target = scrollerRect.top + Math.min(80, scrollerRect.height * 0.14);
     const rect = view.node.getBoundingClientRect();
     return rect.top <= target && rect.bottom > target;
@@ -392,12 +411,12 @@ export class PagesViewport {
 
   private slotOffsetFromViewport(view: SlotView, mode: ViewMode): number {
     const pageRect = view.node.getBoundingClientRect();
-    const scrollerRect = this.scroller.getBoundingClientRect();
+    const scrollerRect = this.dom.scroller.getBoundingClientRect();
     return mode === "paged" ? pageRect.left - scrollerRect.left : pageRect.top - scrollerRect.top;
   }
 
   private removeStaleSlotNodes(keepNodes: Set<HTMLElement | null>): void {
-    for (const node of Array.from(this.strip.children)) {
+    for (const node of Array.from(this.dom.strip.children)) {
       if (!keepNodes.has(node as HTMLElement)) {
         node.remove();
       }
@@ -405,18 +424,11 @@ export class PagesViewport {
   }
 
   private appendSlotView(view: SlotView): void {
-    this.strip.append(view.node);
+    this.dom.strip.append(view.node);
   }
 
-  private createSlotView(index: number, pageNum: number): SlotView {
-    let frame!: HTMLElement;
-    const node = (
-      <section className="ehpeek-page">
-        <div className="ehpeek-frame" ref={(element: HTMLElement) => (frame = element)} />
-      </section>
-    ) as HTMLElement;
-
-    const view = { node, frame };
+  private createSlotViewDom(index: number, pageNum: number): SlotView {
+    const view = slotViewDom();
     this.setSlotOrder(view, index, index + 1);
     this.setSlotPageNum(view, pageNum);
 
@@ -530,7 +542,7 @@ export class PagesViewport {
 
   private mountSlot(slot: PageSlot): void {
     if (!slot.view) {
-      slot.view = this.createSlotView(slot.index, slot.pageNum);
+      slot.view = this.createSlotViewDom(slot.index, slot.pageNum);
       this.appendSlotView(slot.view);
     }
 

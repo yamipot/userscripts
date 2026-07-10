@@ -24,8 +24,80 @@ export type ScrollPageBarOptions = {
   urlForIndex: (index: number) => string;
 };
 
+function scrollPageBarDom(top: boolean) {
+  const body = <tbody /> as HTMLTableSectionElement;
+  const element = (
+    <table className={`${SCROLL_PAGE_BAR_CLASS} ${top ? SCROLL_PAGE_BAR_TOP_CLASS : SCROLL_PAGE_BAR_BOTTOM_CLASS}`}>
+      {body}
+    </table>
+  ) as HTMLTableElement;
+
+  return {
+    element,
+    render(row: HTMLTableRowElement, windowIndex: number) {
+      body.replaceChildren(row);
+      element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex));
+    },
+    setDragging(dragging: boolean) {
+      element.classList.toggle("ehpeek-scroll-page-bar-dragging", dragging);
+    },
+  };
+}
+
+function pageBarRowDom(options: {
+  currentAfterWindow: boolean;
+  currentBeforeWindow: boolean;
+  currentIndex: number;
+  maxIndex: number;
+  slots: Array<PageBarSlot | null>;
+  urlForIndex: (index: number) => string;
+}): HTMLTableRowElement {
+  const { currentAfterWindow, currentBeforeWindow, currentIndex, maxIndex, slots, urlForIndex } = options;
+
+  return (
+    <tr>
+      {pageBarLinkCellDom("<<", 0, currentIndex === 0, urlForIndex)}
+      {currentBeforeWindow ? pageBarLinkCellDom(String(currentIndex + 1), currentIndex, true, urlForIndex) : pageBarEmptyCellDom()}
+      {pageBarLinkCellDom("<", Math.max(0, currentIndex - 1), currentIndex === 0, urlForIndex)}
+      {slots.map((slot) =>
+        slot ? pageBarLinkCellDom(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex, urlForIndex) : pageBarEmptyCellDom(),
+      )}
+      {pageBarLinkCellDom(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex, urlForIndex)}
+      {currentAfterWindow ? pageBarLinkCellDom(String(currentIndex + 1), currentIndex, true, urlForIndex) : pageBarEmptyCellDom()}
+      {pageBarLinkCellDom(">>", maxIndex, currentIndex === maxIndex, urlForIndex)}
+    </tr>
+  ) as HTMLTableRowElement;
+}
+
+function pageBarLinkCellDom(text: string, pageIndex: number, current: boolean, urlForIndex: (index: number) => string): HTMLTableCellElement {
+  if (current) {
+    return (
+      <td className="ptds">
+        <span>{text}</span>
+      </td>
+    ) as HTMLTableCellElement;
+  }
+
+  return (
+    <td>
+      <a href={urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
+        {text}
+      </a>
+    </td>
+  ) as HTMLTableCellElement;
+}
+
+function pageBarEmptyCellDom(): HTMLTableCellElement {
+  return (
+    <td className="ehpeek-scroll-page-bar-empty">
+      <span />
+    </td>
+  ) as HTMLTableCellElement;
+}
+
 export class ScrollPageBar {
   readonly element: HTMLTableElement;
+  private readonly dom: ReturnType<typeof scrollPageBarDom>;
   private readonly currentIndex: number;
   private readonly maxIndex: number;
   private readonly urlForIndex: (index: number) => string;
@@ -39,65 +111,28 @@ export class ScrollPageBar {
     this.maxIndex = maxIndex;
     this.urlForIndex = options.urlForIndex;
     this.windowIndex = clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex);
-
-    this.element = (
-      <table className={`${SCROLL_PAGE_BAR_CLASS} ${options.top ? SCROLL_PAGE_BAR_TOP_CLASS : SCROLL_PAGE_BAR_BOTTOM_CLASS}`}>
-        <tbody />
-      </table>
-    ) as HTMLTableElement;
+    this.dom = scrollPageBarDom(options.top);
+    this.element = this.dom.element;
     this.render();
     this.installDrag();
   }
 
   private render(): void {
-    const body = this.element.tBodies[0] ?? this.element.createTBody();
     const slots = pageSlots(this.windowIndex, this.currentIndex, this.maxIndex);
     const firstSlotIndex = slots[0]?.pageIndex ?? this.currentIndex;
     const lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? this.currentIndex;
     const currentBeforeWindow = this.currentIndex < firstSlotIndex;
     const currentAfterWindow = this.currentIndex > lastSlotIndex;
-    const row = (
-      <tr>
-        {this.linkCell("<<", 0, this.currentIndex === 0)}
-        {currentBeforeWindow ? this.linkCell(String(this.currentIndex + 1), this.currentIndex, true) : this.emptyCell()}
-        {this.linkCell("<", Math.max(0, this.currentIndex - 1), this.currentIndex === 0)}
-        {slots.map((slot) =>
-          slot ? this.linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === this.currentIndex) : this.emptyCell(),
-        )}
-        {this.linkCell(">", Math.min(this.maxIndex, this.currentIndex + 1), this.currentIndex === this.maxIndex)}
-        {currentAfterWindow ? this.linkCell(String(this.currentIndex + 1), this.currentIndex, true) : this.emptyCell()}
-        {this.linkCell(">>", this.maxIndex, this.currentIndex === this.maxIndex)}
-      </tr>
-    ) as HTMLTableRowElement;
+    const row = pageBarRowDom({
+      currentAfterWindow,
+      currentBeforeWindow,
+      currentIndex: this.currentIndex,
+      maxIndex: this.maxIndex,
+      slots,
+      urlForIndex: this.urlForIndex,
+    });
 
-    body.replaceChildren(row);
-    this.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(this.windowIndex));
-  }
-
-  private linkCell(text: string, pageIndex: number, current: boolean): HTMLTableCellElement {
-    if (current) {
-      return (
-        <td className="ptds">
-          <span>{text}</span>
-        </td>
-      ) as HTMLTableCellElement;
-    }
-
-    return (
-      <td>
-        <a href={this.urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
-          {text}
-        </a>
-      </td>
-    ) as HTMLTableCellElement;
-  }
-
-  private emptyCell(): HTMLTableCellElement {
-    return (
-      <td className="ehpeek-scroll-page-bar-empty">
-        <span />
-      </td>
-    ) as HTMLTableCellElement;
+    this.dom.render(row, this.windowIndex);
   }
 
   private installDrag(): void {
@@ -105,7 +140,7 @@ export class ScrollPageBar {
       shouldStart: () => this.draggable(),
       onStart: () => {
         this.dragStartWindowIndex = this.windowIndex;
-        this.element.classList.add("ehpeek-scroll-page-bar-dragging");
+        this.dom.setDragging(true);
       },
       onMove: (info) => {
         if (Math.abs(info.dx) < Math.abs(info.dy)) {
@@ -123,7 +158,7 @@ export class ScrollPageBar {
         this.render();
       },
       onEnd: () => {
-        this.element.classList.remove("ehpeek-scroll-page-bar-dragging");
+        this.dom.setDragging(false);
       },
     });
   }

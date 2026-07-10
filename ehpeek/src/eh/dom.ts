@@ -428,11 +428,11 @@ export function readGalleryInfo(): GalleryInfo {
     titleSub: textOf("#gj"),
     category: textOf("#gdc"),
     categoryClassName: readGalleryCategoryClassName(),
-    cover: coverUrl ? createGalleryCoverImage(coverUrl) : null,
+    cover: coverUrl ? createGalleryCoverImageDom(coverUrl) : null,
     summary,
-    actions: readGalleryActions(),
-    rating: readGalleryRating(),
-    tagGroups: readGalleryTagGroups(),
+    actions: readGalleryActionsDom(),
+    rating: readGalleryRatingDom(),
+    tagGroups: readGalleryTagGroupsDom(),
   };
 }
 
@@ -541,7 +541,7 @@ function readGalleryCategoryClassName(): string {
     .join(" ");
 }
 
-function readGalleryRating(): HTMLElement | null {
+function readGalleryRatingDom(): HTMLElement | null {
   const element =
     document.querySelector<HTMLElement>("#gdr") ??
     document.querySelector<HTMLElement>("#rating") ??
@@ -563,7 +563,7 @@ function readGalleryRating(): HTMLElement | null {
   return wrapper;
 }
 
-function readGalleryActions(): HTMLElement[] {
+function readGalleryActionsDom(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']"))
     .map((item) => {
       const clone = item.cloneNode(true) as HTMLElement;
@@ -574,7 +574,7 @@ function readGalleryActions(): HTMLElement[] {
     .slice(0, 6);
 }
 
-function readGalleryTagGroups(): GalleryTagGroup[] {
+function readGalleryTagGroupsDom(): GalleryTagGroup[] {
   const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#taglist tr"));
 
   if (rows.length > 0) {
@@ -582,7 +582,7 @@ function readGalleryTagGroups(): GalleryTagGroup[] {
       .map((row) => {
         const namespace = row.querySelector(".tc, td:first-child")?.textContent?.trim().replace(/:$/, "") || "tag";
         const tags = Array.from(row.querySelectorAll<HTMLAnchorElement>("a"))
-          .map(cloneGalleryTag)
+          .map(cloneGalleryTagDom)
           .filter(Boolean)
           .slice(0, 30);
 
@@ -594,7 +594,7 @@ function readGalleryTagGroups(): GalleryTagGroup[] {
   const groups = new Map<string, HTMLElement[]>();
 
   for (const tag of Array.from(document.querySelectorAll<HTMLAnchorElement>("#taglist a")).slice(0, 60)) {
-    const clone = cloneGalleryTag(tag);
+    const clone = cloneGalleryTagDom(tag);
     const tags = groups.get("tag") ?? [];
     tags.push(clone);
     groups.set("tag", tags);
@@ -603,7 +603,7 @@ function readGalleryTagGroups(): GalleryTagGroup[] {
   return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
 }
 
-function cloneGalleryTag(tag: HTMLAnchorElement): HTMLElement {
+function cloneGalleryTagDom(tag: HTMLAnchorElement): HTMLElement {
   const clone = tag.cloneNode(true) as HTMLElement;
   clone.removeAttribute("id");
   return clone;
@@ -635,7 +635,7 @@ function textOf(selector: string): string {
   return document.querySelector(selector)?.textContent?.trim() ?? "";
 }
 
-function createGalleryCoverImage(imageUrl: string): HTMLImageElement {
+function createGalleryCoverImageDom(imageUrl: string): HTMLImageElement {
   const image = document.createElement("img");
   image.src = imageUrl;
   image.alt = "";

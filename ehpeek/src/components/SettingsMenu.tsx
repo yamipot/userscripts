@@ -11,17 +11,156 @@ export type SettingsMenuState = {
   touchUiEnabled: boolean;
 };
 
+function settingsMenuDom(
+  triggerTagName: "a" | "button",
+  handlers: {
+    onApplyClick: (event: MouseEvent) => void;
+    onCloseClick: (event: MouseEvent) => void;
+    onEnhanceSearchClick: (event: MouseEvent) => void;
+    onEnhanceThumbsClick: (event: MouseEvent) => void;
+    onReaderClick: (event: MouseEvent) => void;
+    onTouchUiClick: (event: MouseEvent) => void;
+    onTriggerClick: (event: MouseEvent) => void;
+  },
+) {
+  let trigger!: HTMLElement;
+  let readerSetting!: HTMLButtonElement;
+  let enhanceSearchGridsSetting!: HTMLButtonElement;
+  let enhanceThumbsGridsSetting!: HTMLButtonElement;
+  let touchUiSetting!: HTMLButtonElement;
+  let applyButton!: HTMLButtonElement;
+  let closeButton!: HTMLButtonElement;
+
+  const switchItemDom = (
+    onClick: (event: MouseEvent) => void,
+    assign: (node: HTMLButtonElement) => void,
+  ) => (
+    <button
+      type="button"
+      className="ehpeek-settings-item"
+      role="switch"
+      onClick={onClick}
+      ref={(node: HTMLElement) => assign(node as HTMLButtonElement)}
+    />
+  );
+
+  const actionButtonDom = (
+    className: string,
+    onClick: (event: MouseEvent) => void,
+    assign: (node: HTMLButtonElement) => void,
+  ) => (
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+      ref={(node: HTMLElement) => assign(node as HTMLButtonElement)}
+    />
+  );
+
+  const root = triggerTagName === "a"
+    ? (
+      <div className="ehpeek-settings-root">
+        <a
+          className="ehpeek-settings-trigger"
+          href="#"
+          onClick={handlers.onTriggerClick}
+          ref={(node: HTMLElement) => {
+            trigger = node;
+          }}
+        />
+      </div>
+    ) as HTMLElement
+    : (
+      <span className="ehpeek-settings-root">
+        <button
+          type="button"
+          className="ehpeek-settings-trigger"
+          onClick={handlers.onTriggerClick}
+          ref={(node: HTMLElement) => {
+            trigger = node;
+          }}
+        />
+      </span>
+    ) as HTMLElement;
+  const menu = (
+    <div className="ehpeek-settings-menu" hidden>
+      {switchItemDom(handlers.onReaderClick, (node) => {
+        readerSetting = node;
+      })}
+      {switchItemDom(handlers.onEnhanceSearchClick, (node) => {
+        enhanceSearchGridsSetting = node;
+      })}
+      {switchItemDom(handlers.onEnhanceThumbsClick, (node) => {
+        enhanceThumbsGridsSetting = node;
+      })}
+      {switchItemDom(handlers.onTouchUiClick, (node) => {
+        touchUiSetting = node;
+      })}
+      <div className="ehpeek-settings-actions">
+        {actionButtonDom("ehpeek-settings-apply", handlers.onApplyClick, (node) => {
+          applyButton = node;
+        })}
+        {actionButtonDom("ehpeek-settings-close", handlers.onCloseClick, (node) => {
+          closeButton = node;
+        })}
+      </div>
+    </div>
+  ) as HTMLElement;
+
+  const updateSwitch = (button: HTMLButtonElement, checked: boolean, label: string) => {
+    button.setAttribute("aria-checked", String(checked));
+    button.textContent = label;
+    button.removeAttribute("title");
+  };
+
+  return {
+    root,
+    contains(target: Element) {
+      return root.contains(target) || menu.contains(target);
+    },
+    isOpen() {
+      return !menu.hidden;
+    },
+    mount(parent: Element) {
+      parent.append(root);
+      document.body.append(menu);
+    },
+    position() {
+      if (menu.hidden) {
+        return;
+      }
+
+      menu.style.top = "24px";
+      menu.style.right = "24px";
+      menu.style.left = "";
+    },
+    setOpen(open: boolean) {
+      menu.hidden = !open;
+      trigger.setAttribute("aria-expanded", String(open));
+      trigger.setAttribute("aria-haspopup", "menu");
+    },
+    update(draft: SettingsMenuState, labels: {
+      apply: string;
+      close: string;
+      enhanceSearch: string;
+      enhanceThumbs: string;
+      reader: string;
+      touchUi: string;
+    }) {
+      trigger.textContent = texts.settings.menuLabel;
+      updateSwitch(readerSetting, draft.readerEnabled, labels.reader);
+      updateSwitch(enhanceSearchGridsSetting, draft.enhanceSearchGridsEnabled, labels.enhanceSearch);
+      updateSwitch(enhanceThumbsGridsSetting, draft.enhanceThumbsGridsEnabled, labels.enhanceThumbs);
+      updateSwitch(touchUiSetting, draft.touchUiEnabled, labels.touchUi);
+      applyButton.textContent = labels.apply;
+      closeButton.textContent = labels.close;
+    },
+  };
+}
+
 export class SettingsMenu {
   readonly root: HTMLElement;
-  private readonly trigger: HTMLElement;
-  private readonly menu: HTMLElement;
-  private readonly readerSetting: HTMLButtonElement;
-  private readonly enhanceThumbsGridsSetting: HTMLButtonElement;
-  private readonly enhanceSearchGridsSetting: HTMLButtonElement;
-  private readonly touchUiSetting: HTMLButtonElement;
-  private readonly actionRow: HTMLElement;
-  private readonly applyButton: HTMLButtonElement;
-  private readonly closeButton: HTMLButtonElement;
+  private readonly dom: ReturnType<typeof settingsMenuDom>;
   private draft: SettingsMenuState;
 
   constructor(
@@ -32,175 +171,93 @@ export class SettingsMenu {
     },
   ) {
     this.draft = { ...this.state() };
-    this.root = triggerTagName === "a"
-      ? (<div className="ehpeek-settings-root" /> as HTMLElement)
-      : (<span className="ehpeek-settings-root" /> as HTMLElement);
-    this.trigger = this.createTrigger(triggerTagName);
-    this.menu = <div className="ehpeek-settings-menu" hidden /> as HTMLElement;
-    this.readerSetting = this.createSwitchButton(() => {
-      this.draft.readerEnabled = !this.draft.readerEnabled;
-      this.update();
+    this.dom = settingsMenuDom(triggerTagName, {
+      onApplyClick: (event) => {
+        event.stopPropagation();
+        this.apply();
+      },
+      onCloseClick: (event) => {
+        event.stopPropagation();
+        this.close();
+      },
+      onEnhanceSearchClick: (event) => {
+        event.stopPropagation();
+        this.draft.enhanceSearchGridsEnabled = !this.draft.enhanceSearchGridsEnabled;
+        this.update();
+      },
+      onEnhanceThumbsClick: (event) => {
+        event.stopPropagation();
+        this.draft.enhanceThumbsGridsEnabled = !this.draft.enhanceThumbsGridsEnabled;
+        this.update();
+      },
+      onReaderClick: (event) => {
+        event.stopPropagation();
+        this.draft.readerEnabled = !this.draft.readerEnabled;
+        this.update();
+      },
+      onTouchUiClick: (event) => {
+        event.stopPropagation();
+        this.draft.touchUiEnabled = !this.draft.touchUiEnabled;
+        this.update();
+      },
+      onTriggerClick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.toggle();
+      },
     });
-    this.enhanceThumbsGridsSetting = this.createSwitchButton(() => {
-      this.draft.enhanceThumbsGridsEnabled = !this.draft.enhanceThumbsGridsEnabled;
-      this.update();
-    });
-    this.enhanceSearchGridsSetting = this.createSwitchButton(() => {
-      this.draft.enhanceSearchGridsEnabled = !this.draft.enhanceSearchGridsEnabled;
-      this.update();
-    });
-    this.touchUiSetting = this.createSwitchButton(() => {
-      this.draft.touchUiEnabled = !this.draft.touchUiEnabled;
-      this.update();
-    });
-    this.applyButton = (
-      <button
-        type="button"
-        className="ehpeek-settings-apply"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          this.apply();
-        }}
-      />
-    ) as HTMLButtonElement;
-    this.closeButton = (
-      <button
-        type="button"
-        className="ehpeek-settings-close"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          this.close();
-        }}
-      />
-    ) as HTMLButtonElement;
-    this.actionRow = <div className="ehpeek-settings-actions" /> as HTMLElement;
-    this.actionRow.append(this.applyButton, this.closeButton);
-
-    this.menu.append(
-      this.readerSetting,
-      this.enhanceSearchGridsSetting,
-      this.enhanceThumbsGridsSetting,
-      this.touchUiSetting,
-      this.actionRow,
-    );
-    this.root.append(this.trigger);
+    this.root = this.dom.root;
     this.update();
   }
 
   mount(parent: Element): void {
     ensureSettingsStyle();
-    parent.append(this.root);
-    document.body.append(this.menu);
+    this.dom.mount(parent);
     this.bindGlobalEvents();
     this.update();
   }
 
   open(): void {
     this.resetDraft();
-    this.menu.hidden = false;
+    this.dom.setOpen(true);
     this.update();
-    this.position();
+    this.dom.position();
   }
 
   close(): void {
-    if (this.menu.hidden) {
+    if (!this.dom.isOpen()) {
       return;
     }
 
-    this.menu.hidden = true;
+    this.dom.setOpen(false);
     this.resetDraft();
     this.update();
   }
 
   update(): void {
-    const current = this.state();
+    this.dom.update(this.draft, {
+      apply: texts.settings.apply,
+      close: texts.settings.close,
+      enhanceSearch: this.draft.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
+      enhanceThumbs: this.draft.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
+      reader: this.draft.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
+      touchUi: this.draft.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
+    });
 
-    this.trigger.textContent = texts.settings.menuLabel;
-    this.trigger.setAttribute("aria-expanded", String(!this.menu.hidden));
-    this.trigger.setAttribute("aria-haspopup", "menu");
-
-    this.updateSwitch(
-      this.readerSetting,
-      this.draft.readerEnabled,
-      this.draft.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
-    );
-    this.updateSwitch(
-      this.enhanceSearchGridsSetting,
-      this.draft.enhanceSearchGridsEnabled,
-      this.draft.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
-    );
-    this.updateSwitch(
-      this.enhanceThumbsGridsSetting,
-      this.draft.enhanceThumbsGridsEnabled,
-      this.draft.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
-    );
-    this.updateSwitch(
-      this.touchUiSetting,
-      this.draft.touchUiEnabled,
-      this.draft.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
-    );
-    this.applyButton.textContent = texts.settings.apply;
-    this.applyButton.disabled = !settingsChanged(current, this.draft);
-    this.closeButton.textContent = texts.settings.close;
-
-    this.position();
-  }
-
-  private createTrigger(tagName: "a" | "button"): HTMLElement {
-    const onClick = (event: MouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.toggle();
-    };
-
-    return tagName === "a"
-      ? (<a className="ehpeek-settings-trigger" href="#" onClick={onClick} /> as HTMLAnchorElement)
-      : (<button type="button" className="ehpeek-settings-trigger" onClick={onClick} /> as HTMLButtonElement);
-  }
-
-  private createSwitchButton(onClick: () => void): HTMLButtonElement {
-    const button = (
-      <button
-        type="button"
-        className="ehpeek-settings-item"
-        role="switch"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          onClick();
-        }}
-      />
-    ) as HTMLButtonElement;
-
-    return button;
-  }
-
-  private updateSwitch(button: HTMLButtonElement, checked: boolean, label: string): void {
-    button.setAttribute("aria-checked", String(checked));
-    button.textContent = label;
-    button.removeAttribute("title");
+    this.dom.position();
   }
 
   private toggle(): void {
-    if (this.menu.hidden) {
+    if (!this.dom.isOpen()) {
       this.resetDraft();
     }
 
-    this.menu.hidden = !this.menu.hidden;
+    this.dom.setOpen(!this.dom.isOpen());
     this.update();
 
-    if (!this.menu.hidden) {
-      this.position();
+    if (this.dom.isOpen()) {
+      this.dom.position();
     }
-  }
-
-  private position(): void {
-    if (this.menu.hidden) {
-      return;
-    }
-
-    this.menu.style.top = "24px";
-    this.menu.style.right = "24px";
-    this.menu.style.left = "";
   }
 
   private resetDraft(): void {
@@ -208,19 +265,12 @@ export class SettingsMenu {
   }
 
   private apply(): void {
-    const current = this.state();
-
-    if (!settingsChanged(current, this.draft)) {
-      this.close();
-      return;
-    }
-
     this.handlers.onApply({ ...this.draft });
   }
 
   private bindGlobalEvents(): void {
     document.addEventListener("click", (event) => {
-      if (event.target instanceof Element && (this.root.contains(event.target) || this.menu.contains(event.target))) {
+      if (event.target instanceof Element && this.dom.contains(event.target)) {
         return;
       }
 
@@ -231,18 +281,9 @@ export class SettingsMenu {
         this.close();
       }
     });
-    window.addEventListener("resize", () => this.position());
-    window.addEventListener("scroll", () => this.position(), true);
+    window.addEventListener("resize", () => this.dom.position());
+    window.addEventListener("scroll", () => this.dom.position(), true);
   }
-}
-
-function settingsChanged(left: SettingsMenuState, right: SettingsMenuState): boolean {
-  return (
-    left.readerEnabled !== right.readerEnabled ||
-    left.enhanceThumbsGridsEnabled !== right.enhanceThumbsGridsEnabled ||
-    left.enhanceSearchGridsEnabled !== right.enhanceSearchGridsEnabled ||
-    left.touchUiEnabled !== right.touchUiEnabled
-  );
 }
 
 function ensureSettingsStyle(): void {

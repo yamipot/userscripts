@@ -16,18 +16,162 @@ export type PageProgress = {
   keepInputValue?: boolean;
 };
 
+function toolbarDom(handlers: {
+  onReadDirectionClick: () => void;
+  onRightTapClick: () => void;
+  onModeClick: () => void;
+  onCloseClick: () => void;
+  onDisableReaderClick: () => void;
+  onProgressPointerDown: (event: PointerEvent) => void;
+  onProgressInput: () => void;
+  onProgressCommit: () => void;
+}) {
+  let toolbar!: HTMLElement;
+  let modeButton!: HTMLButtonElement;
+  let readDirectionButton!: HTMLButtonElement;
+  let rightTapButton!: HTMLButtonElement;
+  let pageNumberLabel!: HTMLElement;
+  let progressInput!: HTMLInputElement;
+  let disableReaderButton!: HTMLButtonElement;
+
+  const topbar = (
+    <div className="ehpeek-topbar" onClick={stopEvent} onPointerDown={stopEvent} onWheel={stopEvent}>
+      <div className="ehpeek-actions">
+        <button
+          type="button"
+          className="ehpeek-button ehpeek-direction-button ehpeek-control-hidden"
+          ref={(node: HTMLButtonElement) => {
+            readDirectionButton = node;
+          }}
+          onClick={handlers.onReadDirectionClick}
+        />
+        <button
+          type="button"
+          className="ehpeek-button ehpeek-direction-button ehpeek-control-hidden"
+          ref={(node: HTMLButtonElement) => {
+            rightTapButton = node;
+          }}
+          onClick={handlers.onRightTapClick}
+        />
+        <button
+          type="button"
+          className="ehpeek-button ehpeek-control-hidden"
+          ref={(node: HTMLButtonElement) => {
+            modeButton = node;
+          }}
+          onClick={handlers.onModeClick}
+        />
+        <button
+          type="button"
+          className="ehpeek-button ehpeek-disable-button ehpeek-control-hidden"
+          title={texts.reader.disableReader}
+          ref={(node: HTMLButtonElement) => {
+            disableReaderButton = node;
+          }}
+          onClick={handlers.onDisableReaderClick}
+        >
+          off
+        </button>
+        <button type="button" className="ehpeek-button" title={texts.reader.close} onClick={handlers.onCloseClick}>
+          X
+        </button>
+      </div>
+    </div>
+  ) as HTMLElement;
+  const pageNumber = (
+    <div
+      className="ehpeek-pageno"
+      ref={(node: HTMLElement) => {
+        pageNumberLabel = node;
+      }}
+    />
+  ) as HTMLElement;
+  const progress = (
+    <div
+      className="ehpeek-progressbar ehpeek-toolbar-hidden"
+      ref={(node: HTMLElement) => {
+        toolbar = node;
+      }}
+      onClick={stopEvent}
+      onPointerDown={stopEvent}
+      onWheel={stopEvent}
+    >
+      <input
+        type="range"
+        className="ehpeek-progress"
+        min="1"
+        step="1"
+        ref={(node: HTMLInputElement) => {
+          progressInput = node;
+        }}
+        onPointerDown={handlers.onProgressPointerDown}
+        onInput={handlers.onProgressInput}
+        onChange={handlers.onProgressCommit}
+        onPointerUp={handlers.onProgressCommit}
+        onPointerCancel={handlers.onProgressCommit}
+      />
+    </div>
+  ) as HTMLElement;
+
+  const setControlHidden = (hidden: boolean) => {
+    modeButton.classList.toggle("ehpeek-control-hidden", hidden);
+    readDirectionButton.classList.toggle("ehpeek-control-hidden", hidden);
+    rightTapButton.classList.toggle("ehpeek-control-hidden", hidden);
+    disableReaderButton.classList.toggle("ehpeek-control-hidden", hidden);
+  };
+
+  return {
+    elements: [topbar, pageNumber, progress],
+    progressRange() {
+      return {
+        min: Number(progressInput.min || "1"),
+        max: Number(progressInput.max || "1"),
+      };
+    },
+    progressValue() {
+      return Number(progressInput.value || "");
+    },
+    setModeButton(mode: ViewMode) {
+      const paged = mode === "paged";
+      modeButton.textContent = paged ? "⇔" : "⇕";
+      modeButton.title = paged ? texts.reader.scrollMode : texts.reader.pagedMode;
+    },
+    setReadDirectionButton(direction: ReadDirection) {
+      const rtl = direction === "rtl";
+      readDirectionButton.textContent = rtl ? "RL" : "LR";
+      readDirectionButton.title = rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft;
+    },
+    setRightTapButton(action: RightTapAction) {
+      const previous = action === "previous";
+      rightTapButton.textContent = previous ? "R-" : "R+";
+      rightTapButton.title = previous ? texts.reader.rightTapNext : texts.reader.rightTapPrevious;
+    },
+    setPageNumber(text: string) {
+      pageNumberLabel.textContent = text;
+    },
+    setProgressMax(max: number) {
+      progressInput.max = String(Math.max(1, max));
+    },
+    setProgressValue(value: number) {
+      progressInput.value = String(value);
+    },
+    setProgressFill(fillPercent: number) {
+      progressInput.style.setProperty("--ehpeek-progress-fill", `${fillPercent}%`);
+    },
+    toggleToolbar(): boolean {
+      const hidden = toolbar.classList.toggle("ehpeek-toolbar-hidden");
+      setControlHidden(hidden);
+      return !hidden;
+    },
+  };
+}
+
 export class Toolbar {
   readonly elements: HTMLElement[];
-  private toolbar!: HTMLElement;
-  private modeButton!: HTMLButtonElement;
-  private readDirectionButton!: HTMLButtonElement;
-  private rightTapButton!: HTMLButtonElement;
-  private pageNumberLabel!: HTMLElement;
-  private progressInput!: HTMLInputElement;
-  private disableReaderButton!: HTMLButtonElement;
+  private readonly dom: ReturnType<typeof toolbarDom>;
 
   constructor(
-    private readonly handlers: {
+    handlers: {
       onReadDirectionClick: () => void;
       onRightTapClick: () => void;
       onModeClick: () => void;
@@ -39,127 +183,39 @@ export class Toolbar {
     },
     private readonly onToolbarOpenChange: (open: boolean) => void,
   ) {
-    const topbar = (
-      <div className="ehpeek-topbar" onClick={stopEvent} onPointerDown={stopEvent} onWheel={stopEvent}>
-        <div className="ehpeek-actions">
-          <button
-            type="button"
-            className="ehpeek-button ehpeek-direction-button ehpeek-control-hidden"
-            ref={(node: HTMLButtonElement) => (this.readDirectionButton = node)}
-            onClick={handlers.onReadDirectionClick}
-          />
-          <button
-            type="button"
-            className="ehpeek-button ehpeek-direction-button ehpeek-control-hidden"
-            ref={(node: HTMLButtonElement) => (this.rightTapButton = node)}
-            onClick={handlers.onRightTapClick}
-          />
-          <button
-            type="button"
-            className="ehpeek-button ehpeek-control-hidden"
-            ref={(node: HTMLButtonElement) => (this.modeButton = node)}
-            onClick={handlers.onModeClick}
-          />
-          <button
-            type="button"
-            className="ehpeek-button ehpeek-disable-button ehpeek-control-hidden"
-            title={texts.reader.disableReader}
-            ref={(node: HTMLButtonElement) => (this.disableReaderButton = node)}
-            onClick={handlers.onDisableReaderClick}
-          >
-            off
-          </button>
-          <button type="button" className="ehpeek-button" title={texts.reader.close} onClick={handlers.onCloseClick}>
-            X
-          </button>
-        </div>
-      </div>
-    ) as HTMLElement;
-    const pageNumber = <div className="ehpeek-pageno" ref={(node: HTMLElement) => (this.pageNumberLabel = node)} /> as HTMLElement;
-    const progress = (
-      <div
-        className="ehpeek-progressbar ehpeek-toolbar-hidden"
-        ref={(node: HTMLElement) => (this.toolbar = node)}
-        onClick={stopEvent}
-        onPointerDown={stopEvent}
-        onWheel={stopEvent}
-      >
-        <input
-          type="range"
-          className="ehpeek-progress"
-          min="1"
-          step="1"
-          ref={(node: HTMLInputElement) => (this.progressInput = node)}
-          onPointerDown={handlers.onProgressPointerDown}
-          onInput={handlers.onProgressInput}
-          onChange={handlers.onProgressCommit}
-          onPointerUp={handlers.onProgressCommit}
-          onPointerCancel={handlers.onProgressCommit}
-        />
-      </div>
-    ) as HTMLElement;
-
-    this.elements = [topbar, pageNumber, progress];
+    this.dom = toolbarDom(handlers);
+    this.elements = this.dom.elements;
   }
 
   setControls(controls: ReaderControls): void {
-    this.setModeButton(controls.mode);
-    this.setReadDirectionButton(controls.readDirection);
-    this.setRightTapButton(controls.rightTapAction);
+    this.dom.setModeButton(controls.mode);
+    this.dom.setReadDirectionButton(controls.readDirection);
+    this.dom.setRightTapButton(controls.rightTapAction);
   }
 
   setProgress(progress: PageProgress): void {
-    this.pageNumberLabel.textContent = this.pageNumberText(progress.pageNum, progress.totalPages);
-    this.progressInput.max = String(Math.max(1, progress.maxProgressPageNum));
+    this.dom.setPageNumber(this.pageNumberText(progress.pageNum, progress.totalPages));
+    this.dom.setProgressMax(progress.maxProgressPageNum);
 
     if (!progress.keepInputValue) {
-      this.progressInput.value = String(progress.pageNum);
+      this.dom.setProgressValue(progress.pageNum);
     }
 
     this.setProgressFill(this.progressFillPercent(progress.pageNum));
   }
 
   progressValue(): number {
-    return Number(this.progressInput.value || "");
+    return this.dom.progressValue();
   }
 
   toggle(): boolean {
-    const hidden = this.toolbar.classList.toggle("ehpeek-toolbar-hidden");
-    this.modeButton.classList.toggle("ehpeek-control-hidden", hidden);
-    this.readDirectionButton.classList.toggle("ehpeek-control-hidden", hidden);
-    this.rightTapButton.classList.toggle("ehpeek-control-hidden", hidden);
-    this.disableReaderButton.classList.toggle("ehpeek-control-hidden", hidden);
-    this.onToolbarOpenChange(!hidden);
-    return hidden;
-  }
-
-  private setModeButton(mode: ViewMode): void {
-    const paged = mode === "paged";
-    this.modeButton.textContent = paged ? "⇔" : "⇕";
-    this.modeButton.title = paged ? texts.reader.scrollMode : texts.reader.pagedMode;
-  }
-
-  private setReadDirectionButton(direction: ReadDirection): void {
-    const rtl = direction === "rtl";
-    this.readDirectionButton.textContent = rtl ? "RL" : "LR";
-    this.readDirectionButton.title = rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft;
-  }
-
-  private setRightTapButton(action: RightTapAction): void {
-    const previous = action === "previous";
-    this.rightTapButton.textContent = previous ? "R-" : "R+";
-    this.rightTapButton.title = previous ? texts.reader.rightTapNext : texts.reader.rightTapPrevious;
-  }
-
-  private progressRange(): { min: number; max: number } {
-    return {
-      min: Number(this.progressInput.min || "1"),
-      max: Number(this.progressInput.max || "1"),
-    };
+    const open = this.dom.toggleToolbar();
+    this.onToolbarOpenChange(open);
+    return !open;
   }
 
   private setProgressFill(fillPercent: number): void {
-    this.progressInput.style.setProperty("--ehpeek-progress-fill", `${fillPercent}%`);
+    this.dom.setProgressFill(fillPercent);
   }
 
   private pageNumberText(pageNum: number, totalPages: number | undefined): string {
@@ -171,7 +227,7 @@ export class Toolbar {
   }
 
   private progressFillPercent(pageNum: number): number {
-    const { min, max } = this.progressRange();
+    const { min, max } = this.dom.progressRange();
     const value = Math.min(max, Math.max(min, pageNum));
     return max > min ? ((value - min) / (max - min)) * 100 : 100;
   }

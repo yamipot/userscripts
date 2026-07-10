@@ -4,6 +4,82 @@ import touchTopBarCss from "./TouchTopBar.css";
 
 const STYLE_ID = "ehpeek-touch-top-bar-style";
 
+function touchTopBarDom(info: eh.TouchTopBarInfo) {
+  const menu = touchTopBarMenuDom(info.navItems);
+  const root = (
+    <nav className="ehpeek-touch-top-bar">
+      <a className="ehpeek-touch-top-bar-home" href={info.homeHref}>
+        ⌂
+      </a>
+      {menu.element}
+    </nav>
+  ) as HTMLElement;
+
+  return {
+    root,
+    closeMenu: menu.close,
+    contains(target: Element) {
+      return root.contains(target);
+    },
+  };
+}
+
+function touchTopBarMenuDom(navItems: HTMLElement[]) {
+  let button!: HTMLButtonElement;
+  let panel!: HTMLElement;
+  const isOpen = () => panel.hidden === false;
+  const setOpen = (open: boolean) => {
+    panel.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+  };
+  const menu = (
+    <div className="ehpeek-touch-top-bar-menu">
+      <button
+        type="button"
+        className="ehpeek-touch-top-bar-menu-button"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        onClick={(event: MouseEvent) => {
+          event.stopPropagation();
+          setOpen(!isOpen());
+        }}
+        ref={(node: HTMLElement) => {
+          button = node as HTMLButtonElement;
+        }}
+      >
+        ⋮
+      </button>
+      <div
+        className="ehpeek-touch-top-bar-menu-panel"
+        hidden
+        ref={(node: HTMLElement) => {
+          panel = node;
+        }}
+      />
+    </div>
+  ) as HTMLElement;
+
+  panel.append(...navItems);
+  panel.addEventListener(
+    "click",
+    (event) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".ehpeek-settings-trigger")) {
+        return;
+      }
+
+      setOpen(false);
+    },
+    true,
+  );
+
+  return {
+    element: menu,
+    close() {
+      setOpen(false);
+    },
+  };
+}
+
 export class TouchTopBar {
   install(): void {
     ensureTouchTopBarStyle();
@@ -19,70 +95,19 @@ export class TouchTopBar {
       return;
     }
 
-    const shell = this.createShell(info);
-
-    if (!eh.mountTouchTopBar(shell)) {
-      document.body.prepend(shell);
-    }
-  }
-
-  private createShell(info: eh.TouchTopBarInfo): HTMLElement {
-    return (
-      <nav className="ehpeek-touch-top-bar">
-        <a className="ehpeek-touch-top-bar-home" href={info.homeHref}>
-          ⌂
-        </a>
-        {this.createMenu(info.navItems)}
-      </nav>
-    ) as HTMLElement;
-  }
-
-  private createMenu(navItems: HTMLElement[]): HTMLElement {
-    const menu = <div className="ehpeek-touch-top-bar-menu" /> as HTMLElement;
-    const panel = <div className="ehpeek-touch-top-bar-menu-panel" hidden /> as HTMLElement;
-    const button = (
-      <button
-        type="button"
-        className="ehpeek-touch-top-bar-menu-button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          panel.hidden = !panel.hidden;
-          button.setAttribute("aria-expanded", String(!panel.hidden));
-        }}
-      >
-        ⋮
-      </button>
-    ) as HTMLButtonElement;
-
-    panel.append(...navItems);
-    panel.addEventListener(
-      "click",
-      (event) => {
-        if (!(event.target instanceof Element) || !event.target.closest(".ehpeek-settings-trigger")) {
-          return;
-        }
-
-        panel.hidden = true;
-        button.setAttribute("aria-expanded", "false");
-      },
-      true,
-    );
-
+    const dom = touchTopBarDom(info);
     document.addEventListener("click", (event) => {
-      if (event.target instanceof Element && menu.contains(event.target)) {
+      if (event.target instanceof Element && dom.contains(event.target)) {
         return;
       }
 
-      panel.hidden = true;
-      button.setAttribute("aria-expanded", "false");
+      dom.closeMenu();
     });
 
-    menu.append(button, panel);
-    return menu;
+    if (!eh.mountTouchTopBar(dom.root)) {
+      document.body.prepend(dom.root);
+    }
   }
-
 }
 
 function ensureTouchTopBarStyle(): void {
