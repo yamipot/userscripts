@@ -46,3 +46,23 @@
 .ehpeek-settings-item[aria-checked="false"]::after {
   background: #999;
 }
+
+@media (max-width: 760px), (pointer: coarse) {
+  .ehpeek-settings-menu {
+    min-width: min(92vw, 520px);
+    padding: 8px;
+    font-size: 36px;
+    line-height: 1.2;
+  }
+
+  .ehpeek-settings-item {
+    min-height: 95px;
+    gap: 24px;
+    padding: 22px 32px;
+  }
+
+  .ehpeek-settings-item::after {
+    width: 18px;
+    height: 18px;
+  }
+}

@@ -30,11 +30,11 @@ const TOUCH_GALLERY_PANEL_PAGE_CSS = `
     -webkit-overflow-scrolling: touch;
   }
 
-  #gdt {
-    width: 100% !important;
-    margin: 8px 0 !important;
+  body #gdt[class] {
+    width: fit-content !important;
+    max-width: 100% !important;
+    margin: 8px auto !important;
     padding: 0 !important;
-    text-align: center !important;
   }
 
   #gdt .gdtm,
