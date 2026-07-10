@@ -3,13 +3,13 @@
   z-index: 2147483646;
   min-width: 260px;
   padding: 8px;
-  border: 1px solid currentColor;
+  border: 1px solid #8d7454;
   border-radius: 4px;
-  background: Canvas;
-  color: CanvasText;
+  background: #3f4249;
+  color: #f1f1f1;
   font-size: 20px;
   line-height: 1.2;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
 }
 
 .ehpeek-settings-menu[hidden] {
@@ -25,9 +25,10 @@
   min-height: 52px;
   padding: 10px 12px;
   border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   background: transparent;
-  color: inherit;
+  color: #f1f1f1;
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -45,10 +46,10 @@
   display: block;
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid currentColor;
+  border: 1px solid #8d7454;
   border-radius: 3px;
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  color: inherit;
+  background: transparent;
+  color: #f0b35a;
   cursor: pointer;
   font: inherit;
   text-align: center;
@@ -60,7 +61,12 @@
 }
 
 .ehpeek-settings-item:hover {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ehpeek-settings-apply:not(:disabled):hover,
+.ehpeek-settings-close:hover {
+  background: rgba(240, 179, 90, 0.12);
 }
 
 .ehpeek-settings-item::after {
@@ -69,11 +75,11 @@
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #2faa44;
+  background: #4ec46a;
 }
 
 .ehpeek-settings-item[aria-checked="false"]::after {
-  background: #999;
+  background: #8c8f96;
 }
 
 @media (max-width: 760px) {

@@ -129,8 +129,6 @@ body {
   align-self: center;
   justify-self: start;
   padding: 6px 12px;
-  background: #34353b;
-  color: #f0b35a;
   font-size: 17px;
   font-weight: 700;
   line-height: 1.1;
@@ -138,6 +136,11 @@ body {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.ehpeek-touch-gallery-category-default {
+  background: #34353b;
+  color: #f0b35a;
 }
 
 .ehpeek-touch-gallery-rating {

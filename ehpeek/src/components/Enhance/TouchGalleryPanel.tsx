@@ -42,7 +42,10 @@ export class TouchGalleryPanel {
 
   private createShell(source: GalleryInfo): HTMLElement {
     const cover = <div className="ehpeek-touch-gallery-cover" />;
-    const category = textBlock("ehpeek-touch-gallery-category", source.category);
+    const category = textBlock(
+      ["ehpeek-touch-gallery-category", source.categoryClassName || "ehpeek-touch-gallery-category-default"].join(" "),
+      source.category,
+    );
     const categoryRow = <div className="ehpeek-touch-gallery-category-row" />;
     const heading = (
       <div className="ehpeek-touch-gallery-heading">

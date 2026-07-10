@@ -13,24 +13,36 @@ const SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom";
 const PREVIEW_PLACEHOLDER_CLASS = "ehpeek-preview-placeholder";
 
 const TOUCH_GALLERY_PANEL_PAGE_CSS = `
+  :root {
+    --ehpeek-touch-gallery-gutter: clamp(16px, 2.5vw, 36px);
+  }
+
+  .ehpeek-touch-gallery-host,
+  .gpc,
+  body #gdt[class],
+  #cdiv,
+  .ptt,
+  .ptb {
+    box-sizing: border-box !important;
+    width: calc(100% - (var(--ehpeek-touch-gallery-gutter) * 2)) !important;
+    max-width: none !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
   #gd2,
   #gd5 {
     display: none !important;
   }
 
+  body #gdt[class],
   .ptt,
   .ptb,
   .ehpeek-scroll-page-bar {
-    max-width: 100% !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-  }
-
-  body #gdt[class] {
-    width: fit-content !important;
-    max-width: 100% !important;
-    margin: 8px auto !important;
-    padding: 0 !important;
   }
 
   #gdt .gdtm,
@@ -76,6 +88,7 @@ export type GalleryInfo = {
   titleMain: string;
   titleSub: string;
   category: string;
+  categoryClassName: string;
   cover: HTMLElement | null;
   summary: GallerySummaryItem[];
   actions: HTMLElement[];
@@ -369,6 +382,7 @@ export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
     return false;
   }
 
+  original.parentElement.classList.add("ehpeek-touch-gallery-host");
   original.replaceWith(panel);
   return true;
 }
@@ -413,6 +427,7 @@ export function readGalleryInfo(): GalleryInfo {
     titleMain: textOf("#gn"),
     titleSub: textOf("#gj"),
     category: textOf("#gdc"),
+    categoryClassName: readGalleryCategoryClassName(),
     cover: coverUrl ? createGalleryCoverImage(coverUrl) : null,
     summary,
     actions: readGalleryActions(),
@@ -515,6 +530,15 @@ function readGalleryMeta(): Map<string, string> {
     .filter(([label, value]) => label && value);
 
   return new Map(entries);
+}
+
+function readGalleryCategoryClassName(): string {
+  const category = document.querySelector("#gdc");
+  const categoryStyleElement = category?.querySelector("[class*='ct']") ?? category;
+
+  return Array.from(categoryStyleElement?.classList ?? [])
+    .filter((className) => /^ct\d+$/i.test(className))
+    .join(" ");
 }
 
 function readGalleryRating(): HTMLElement | null {
