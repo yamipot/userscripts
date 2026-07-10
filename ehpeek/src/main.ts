@@ -158,7 +158,7 @@ async function openReader(startPageUrl: string, preferredPageNum?: number): Prom
 
       if (enhanceThumbsGridsEnabled()) {
         eh.replaceGalleryPageBar(exitIndex, maxPreviewIndex);
-        void navigateGalleryPreview(galleryUrl, "replace").catch(() => {
+        void navigateGalleryPreview(galleryUrl).catch(() => {
           window.location.replace(galleryUrl);
         });
         return;

@@ -138,7 +138,6 @@ export function installEnhanceThumbsGrids(onError: (error: unknown) => void): vo
 
 export async function navigateGalleryPreview(
   url: string,
-  historyMode: "push" | "replace",
   options: { scrollToPageBar?: "top" | "bottom" } = {},
 ): Promise<void> {
   if (galleryNavigationLoading) {
@@ -152,11 +151,7 @@ export async function navigateGalleryPreview(
   galleryNavigationLoading = true;
   overlayElement?.setAttribute("aria-busy", "true");
 
-  if (historyMode === "push") {
-    window.history.pushState(window.history.state, "", url);
-  } else {
-    window.history.replaceState(window.history.state, "", url);
-  }
+  window.history.replaceState(window.history.state, "", url);
 
   if (targetPreviewIndex !== null) {
     setScrollPageBarWindowIndex(targetPreviewIndex);
@@ -357,7 +352,7 @@ function navigateBySwipe(info: PointerDragEnd, event: Event): void {
   if (url) {
     swipeState.suppressClick = true;
     event.preventDefault();
-    void navigateGalleryPreview(url, "push", { scrollToPageBar: dx < 0 ? "top" : "bottom" }).catch((error) =>
+    void navigateGalleryPreview(url, { scrollToPageBar: dx < 0 ? "top" : "bottom" }).catch((error) =>
       galleryThumbEnhancementErrorHandler?.(error),
     );
   }
@@ -405,7 +400,7 @@ function onPageBarClick(event: MouseEvent): void {
     setScrollPageBarWindowIndex(targetPreviewIndex);
   }
 
-  void navigateGalleryPreview(url, "push", { scrollToPageBar: pageBarScrollTarget(barItem, targetPreviewIndex) }).catch((error) =>
+  void navigateGalleryPreview(url, { scrollToPageBar: pageBarScrollTarget(barItem, targetPreviewIndex) }).catch((error) =>
     galleryThumbEnhancementErrorHandler?.(error),
   );
 }

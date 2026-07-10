@@ -30,10 +30,12 @@ export type ScrollPageBarOptions = {
   urlForIndex: (index: number) => string;
 };
 
-function scrollPageBarDom(top: boolean) {
+function scrollPageBarDom(top: boolean, draggable: boolean) {
   const body = <tbody /> as HTMLTableSectionElement;
   const table = <table className={PAGE_BAR_TABLE_CLASS}>{body}</table> as HTMLTableElement;
-  const overlay = <div className="absolute inset-0 z-1 cursor-pointer bg-transparent" aria-hidden="true" /> as HTMLDivElement;
+  const overlay = (
+    <div className={`absolute inset-0 z-1 cursor-pointer bg-transparent ${draggable ? "" : "pointer-events-none"}`} aria-hidden="true" />
+  ) as HTMLDivElement;
   const element = (
     <div className={`${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`}>
       {table}
@@ -128,7 +130,7 @@ export class ScrollPageBar {
     this.maxIndex = maxIndex;
     this.urlForIndex = options.urlForIndex;
     this.windowIndex = clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex);
-    this.dom = scrollPageBarDom(options.top);
+    this.dom = scrollPageBarDom(options.top, this.draggable());
     this.element = this.dom.element;
     this.render();
     this.installDrag();
