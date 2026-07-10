@@ -102,21 +102,21 @@ async function openReader(startPageUrl: string, preferredPageNum?: number): Prom
   );
   const startUrl = normalizeUrl(startPageUrl);
   const hashPage = preferredPageNum ?? eh.peekPageFromHash();
-
   const startPageNum = hashPage ?? eh.galleryPageNumber(startUrl);
-  let pages = startPageNum ? await provider.loadDisplayPages(provider.displayWindowAround(startPageNum)) : landingPages;
-  let startIndex =
-    hashPage !== null ? pages.findIndex((page) => page.pageNum === hashPage) : pages.findIndex((page) => page.url === startUrl);
 
-  if (startIndex < 0) {
-    startIndex = 0;
-    pages = [{ url: startUrl, aspectRatio: 1.42, pageNum: eh.galleryPageNumber(startUrl) }, ...pages].sort(
-      (left, right) => (left.pageNum ?? 0) - (right.pageNum ?? 0),
-    );
-    startIndex = pages.findIndex((page) => page.url === startUrl);
+  if (!startPageNum) {
+    throw new Error(texts.errors.imageNotFound);
   }
 
-  let lastPageNum = hashPage ?? eh.galleryPageNumber(startUrl);
+  const seedPage = landingPages.find((page) => page.pageNum === startPageNum || page.url === startUrl) ?? {
+    url: startUrl,
+    aspectRatio: 1.42,
+    pageNum: startPageNum,
+  };
+  const pages = [seedPage];
+  const startIndex = 0;
+
+  let lastPageNum = startPageNum;
   const historySession = new ReaderHistorySession({
     galleryId: pageType.galleryId,
     token: pageType.token,

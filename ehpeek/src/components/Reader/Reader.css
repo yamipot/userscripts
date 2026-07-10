@@ -157,9 +157,38 @@
 }
 
 .ehpeek-error {
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
   color: #ffb2a7;
   font-size: 18px;
   font-weight: 700;
+}
+
+.ehpeek-error-message {
+  max-width: min(86vw, 760px);
+  overflow-wrap: anywhere;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.ehpeek-error-reload {
+  display: inline-flex;
+  width: 64px;
+  height: 64px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 178, 167, 0.64);
+  border-radius: 999px;
+  background: rgba(255, 178, 167, 0.12);
+  color: #ffddd8;
+  cursor: pointer;
+  font: 700 34px/1 system-ui, sans-serif;
+  touch-action: manipulation;
+}
+
+.ehpeek-error-reload:active {
+  transform: scale(0.96);
 }
 
 .ehpeek-placeholder-end {

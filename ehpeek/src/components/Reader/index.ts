@@ -281,6 +281,7 @@ class FullscreenReader {
       readDirection: () => state.reader.readDirection.value,
       closed: () => this.closed,
       totalPages: () => this.totalPages,
+      onReloadPage: (pageNum) => this.reloadPage(pageNum),
     });
     this.zoomOverlay = new ZoomOverlay();
     this.toolbar = new Toolbar(
@@ -562,6 +563,14 @@ class FullscreenReader {
     this.viewport.setPageError(target.pageNum, token, message);
   };
 
+  private reloadPage(pageNum: number): void {
+    if (!this.viewport.resetPageError(pageNum)) {
+      return;
+    }
+
+    this.maintainLoadQueue();
+  }
+
   private async installImage(target: LoadTarget, loaded: LoadedReaderPage, token: number): Promise<void> {
     const imageUrl = loaded.imageUrl;
     const width = positiveNumber(loaded.width);
@@ -575,7 +584,9 @@ class FullscreenReader {
 
     try {
       await loadImage(image);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : texts.errors.imageLoadFailed;
+      this.viewport.setPageError(target.pageNum, token, message);
       return;
     }
 

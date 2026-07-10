@@ -54,7 +54,7 @@ type PageSlot = {
   token: number;
 };
 
-function pagesViewportDom() {
+function pagesViewportDom(options: { onReloadPage: (pageNum: number) => void }) {
   let scroller!: HTMLElement;
   let strip!: HTMLElement;
   const element = (
@@ -141,11 +141,12 @@ function pagesViewportDom() {
     },
     setPageNum,
     setPlaceholder(view: SlotView, content: SlotContent, text: string) {
-      const placeholder = (
-        <div className={content.state === "error" ? "ehpeek-error" : "ehpeek-placeholder"}>
-          {text}
-        </div>
-      ) as HTMLElement;
+      const placeholder =
+        content.state === "error" ? errorPlaceholderDom(content.pageNum, text, options.onReloadPage) : (
+          <div className="ehpeek-placeholder">
+            {text}
+          </div>
+        ) as HTMLElement;
 
       placeholder.classList.toggle("ehpeek-placeholder-end", content.kind === "end");
       view.frame.replaceChildren(placeholder);
@@ -169,6 +170,31 @@ function slotViewDom(): SlotView {
   ) as HTMLElement;
 
   return { node, frame };
+}
+
+function errorPlaceholderDom(pageNum: number, text: string, onReloadPage: (pageNum: number) => void): HTMLElement {
+  const button = (
+    <button className="ehpeek-error-reload" type="button" aria-label={texts.reader.reload}>
+      <span aria-hidden="true">↻</span>
+    </button>
+  ) as HTMLButtonElement;
+  const placeholder = (
+    <div className="ehpeek-error">
+      <div className="ehpeek-error-message">{text}</div>
+      {button}
+    </div>
+  ) as HTMLElement;
+  const stop = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  button.addEventListener("pointerdown", stop);
+  button.addEventListener("click", (event) => {
+    stop(event);
+    onReloadPage(pageNum);
+  });
+  return placeholder;
 }
 
 function pageImageDom(pageNum: number, slotImage: ViewportImage): HTMLImageElement {
@@ -265,9 +291,10 @@ export class PagesViewport {
       readDirection: () => ReadDirection;
       closed: () => boolean;
       totalPages: () => number | undefined;
+      onReloadPage: (pageNum: number) => void;
     },
   ) {
-    this.dom = pagesViewportDom();
+    this.dom = pagesViewportDom({ onReloadPage: options.onReloadPage });
     this.element = this.dom.element;
   }
 
@@ -385,6 +412,18 @@ export class PagesViewport {
 
     slot.state = "error";
     this.renderSlotPlaceholder(slot, errorMessage);
+    return true;
+  }
+
+  resetPageError(pageNum: number): boolean {
+    const slot = this.slotFor(pageNum);
+
+    if (!slot || slot.kind !== "page" || slot.state !== "error") {
+      return false;
+    }
+
+    slot.state = "idle";
+    this.refreshSlot(slot);
     return true;
   }
 
