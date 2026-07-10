@@ -1,8 +1,8 @@
-import { PointerDrag, type PointerDragEnd, type PointerDragMove } from "./common/pointerDrag";
-import enhanceSearchPageCss from "./EnhanceSearchPage.css";
-import { h } from "../jsx";
-import * as eh from "../eh";
-import type { PageType } from "../eh";
+import { PointerDrag, type PointerDragEnd, type PointerDragMove } from "../common/pointerDrag";
+import enhanceSearchGridsCss from "./EnhanceSearchGrids.css";
+import { h } from "../../jsx";
+import * as eh from "../../eh";
+import type { PageType } from "../../eh";
 
 const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
@@ -29,7 +29,7 @@ type SwipeState = {
   suppressClick: boolean;
 };
 
-export function installSearchPageSwipeNavigation(pageType: Extract<PageType, { type: "search" }>): void {
+export function installEnhanceSearchGrids(pageType: Extract<PageType, { type: "search" }>): void {
   if (installed || pageType.type !== "search" || !eh.searchPageNavigation()) {
     return;
   }
@@ -44,6 +44,15 @@ export function installSearchPageSwipeNavigation(pageType: Extract<PageType, { t
   ensureSearchSwipeStyle();
   installResultListEnhancement(resultList);
   document.addEventListener("click", onSearchNavigationClick, true);
+}
+
+export function uninstallEnhanceSearchGrids(): void {
+  overlayElement?.remove();
+  overlayElement = null;
+  indicatorElement = null;
+  swipeState = null;
+  installed = false;
+  document.removeEventListener("click", onSearchNavigationClick, true);
 }
 
 function installResultListEnhancement(resultList: HTMLElement): void {
@@ -302,6 +311,6 @@ function ensureSearchSwipeStyle(): void {
 
   const style = document.createElement("style");
   style.id = SEARCH_SWIPE_STYLE_ID;
-  style.textContent = enhanceSearchPageCss;
+  style.textContent = enhanceSearchGridsCss;
   document.head.append(style);
 }

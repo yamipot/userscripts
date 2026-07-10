@@ -1,35 +1,27 @@
-import type { ReaderPage } from "./Reader";
+import type { ReaderPage } from "../Reader";
 import {
-  BETTER_PAGE_BAR_BOTTOM_CLASS,
-  BETTER_PAGE_BAR_CLASS,
-  BETTER_PAGE_BAR_TOP_CLASS,
-  setBetterPageBarWindowIndex,
-} from "./BetterPageBar";
-import enhanceGalleryCss from "./EnhanceGallery.css";
-import * as eh from "../eh";
-import { h } from "../jsx";
-import { state } from "../state";
-import { clamp, requestText } from "../utils";
+  SCROLL_PAGE_BAR_BOTTOM_CLASS,
+  SCROLL_PAGE_BAR_CLASS,
+  SCROLL_PAGE_BAR_TOP_CLASS,
+  setScrollPageBarWindowIndex,
+} from "./ScrollPageBar";
+import * as eh from "../../eh";
+import { state } from "../../state";
+import { clamp, requestText } from "../../utils";
 
 const PREVIEW_CACHE_LIMIT = 10;
-const CONTINUE_READING_STYLE_ID = "ehpeek-continue-reading-style";
 
 let galleryThumbEnhancementErrorHandler: ((error: unknown) => void) | null = null;
 let galleryThumbEnhancementClickInstalled = false;
 
-export function enhanceGalleryThumbsEnabled(): boolean {
+export function enhanceThumbsGridsEnabled(): boolean {
   return state.gallery.enhanceThumbs.value;
 }
 
-export function toggleEnhanceGalleryThumbs(): void {
-  const enabled = !enhanceGalleryThumbsEnabled();
+export function toggleEnhanceThumbsGrids(): boolean {
+  const enabled = !enhanceThumbsGridsEnabled();
   state.gallery.enhanceThumbs.set(enabled);
-
-  if (enabled) {
-    installGalleryPageBar();
-  } else {
-    eh.restoreGalleryPageBar();
-  }
+  return enabled;
 }
 
 export class GalleryPageProvider {
@@ -115,10 +107,10 @@ export class GalleryPageProvider {
   }
 }
 
-export function installGalleryThumbEnhancement(onError: (error: unknown) => void): void {
+export function installEnhanceThumbsGrids(onError: (error: unknown) => void): void {
   galleryThumbEnhancementErrorHandler = onError;
 
-  if (enhanceGalleryThumbsEnabled()) {
+  if (enhanceThumbsGridsEnabled()) {
     installGalleryPageBar();
   }
 
@@ -160,40 +152,8 @@ export async function navigateGalleryPreview(url: string, historyMode: "push" | 
   }
 }
 
-type ContinueReadingButtonInfo = {
-  label: string;
-  detail: string;
-};
-
-export function installContinueReadingButton(
-  info: ContinueReadingButtonInfo,
-  onClick: () => void,
-  mountMobileButton?: (button: HTMLButtonElement) => boolean,
-): void {
-  document.querySelector(".ehpeek-continue-reading")?.remove();
-  ensureContinueReadingStyle();
-
-  const button = (
-    <button
-      type="button"
-      className="ehpeek-continue-reading"
-      title={info.label}
-      onClick={(event: MouseEvent) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClick();
-      }}
-    >
-      {info.label}
-      <span className="ehpeek-continue-reading-page">{info.detail}</span>
-    </button>
-  ) as HTMLButtonElement;
-
-  mountContinueReadingButton(button, mountMobileButton);
-}
-
 function onPageBarClick(event: MouseEvent): void {
-  if (!enhanceGalleryThumbsEnabled()) {
+  if (!enhanceThumbsGridsEnabled()) {
     return;
   }
 
@@ -201,7 +161,7 @@ function onPageBarClick(event: MouseEvent): void {
     return;
   }
 
-  const barItem = event.target.closest<HTMLElement>(`.${BETTER_PAGE_BAR_CLASS} a[data-page-index], .${BETTER_PAGE_BAR_CLASS} button[data-page-jump]`);
+  const barItem = event.target.closest<HTMLElement>(`.${SCROLL_PAGE_BAR_CLASS} a[data-page-index], .${SCROLL_PAGE_BAR_CLASS} button[data-page-jump]`);
 
   if (!barItem) {
     return;
@@ -216,11 +176,11 @@ function onPageBarClick(event: MouseEvent): void {
     return;
   }
 
-  const fromBottomBar = Boolean(barItem.closest(`.${BETTER_PAGE_BAR_BOTTOM_CLASS}`));
+  const fromBottomBar = Boolean(barItem.closest(`.${SCROLL_PAGE_BAR_BOTTOM_CLASS}`));
   const targetPreviewIndex = eh.previewPageIndexFromUrl(url);
 
   if (targetPreviewIndex !== null) {
-    setBetterPageBarWindowIndex(targetPreviewIndex);
+    setScrollPageBarWindowIndex(targetPreviewIndex);
   }
 
   if (fromBottomBar) {
@@ -230,27 +190,8 @@ function onPageBarClick(event: MouseEvent): void {
   void navigateGalleryPreview(url, "push").catch((error) => galleryThumbEnhancementErrorHandler?.(error));
 }
 
-function ensureContinueReadingStyle(): void {
-  if (document.getElementById(CONTINUE_READING_STYLE_ID)) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = CONTINUE_READING_STYLE_ID;
-  style.textContent = enhanceGalleryCss;
-  document.head.append(style);
-}
-
-function mountContinueReadingButton(button: HTMLButtonElement, mountMobileButton?: (button: HTMLButtonElement) => boolean): void {
-  if (mountMobileButton?.(button)) {
-    return;
-  }
-
-  eh.mountGalleryContinueReadingButton(button);
-}
-
 function scrollToTopPageBar(): void {
-  document.querySelector<HTMLElement>(`.${BETTER_PAGE_BAR_TOP_CLASS}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  document.querySelector<HTMLElement>(`.${SCROLL_PAGE_BAR_TOP_CLASS}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 function installGalleryPageBar(): void {

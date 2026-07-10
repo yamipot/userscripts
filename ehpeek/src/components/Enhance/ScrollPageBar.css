@@ -1,4 +1,4 @@
-.ehpeek-better-page-bar {
+.ehpeek-scroll-page-bar {
   border-collapse: separate;
   border-spacing: 4px;
   margin-left: auto;
@@ -6,17 +6,17 @@
   touch-action: pan-y;
 }
 
-.ehpeek-better-page-bar-top {
+.ehpeek-scroll-page-bar-top {
   margin-top: 2px;
   margin-bottom: 0;
 }
 
-.ehpeek-better-page-bar-bottom {
+.ehpeek-scroll-page-bar-bottom {
   margin-top: 0;
   margin-bottom: 10px;
 }
 
-.ehpeek-better-page-bar td {
+.ehpeek-scroll-page-bar td {
   min-width: 34px;
   height: 34px;
   padding: 0;
@@ -27,17 +27,17 @@
   user-select: none;
 }
 
-.ehpeek-better-page-bar-dragging {
+.ehpeek-scroll-page-bar-dragging {
   cursor: grabbing;
 }
 
-.ehpeek-better-page-bar-dragging td {
+.ehpeek-scroll-page-bar-dragging td {
   cursor: grabbing;
 }
 
-.ehpeek-better-page-bar a,
-.ehpeek-better-page-bar button,
-.ehpeek-better-page-bar span {
+.ehpeek-scroll-page-bar a,
+.ehpeek-scroll-page-bar button,
+.ehpeek-scroll-page-bar span {
   display: flex;
   min-width: 34px;
   height: 34px;
@@ -52,31 +52,31 @@
   text-decoration: none;
 }
 
-.ehpeek-better-page-bar button {
+.ehpeek-scroll-page-bar button {
   color: inherit;
   cursor: pointer;
 }
 
-.ehpeek-better-page-bar a:hover,
-.ehpeek-better-page-bar button:hover {
+.ehpeek-scroll-page-bar a:hover,
+.ehpeek-scroll-page-bar button:hover {
   text-decoration: none;
 }
 
-.ehpeek-better-page-bar a:active,
-.ehpeek-better-page-bar button:active {
+.ehpeek-scroll-page-bar a:active,
+.ehpeek-scroll-page-bar button:active {
   text-decoration: none;
 }
 
-.ehpeek-better-page-bar .ptds span,
-.ehpeek-better-page-bar .ptds a {
+.ehpeek-scroll-page-bar .ptds span,
+.ehpeek-scroll-page-bar .ptds a {
   padding: 0 10px;
 }
 
-.ehpeek-better-page-bar .ehpeek-better-page-bar-empty {
+.ehpeek-scroll-page-bar .ehpeek-scroll-page-bar-empty {
   cursor: default;
 }
 
-.ehpeek-better-page-bar .ehpeek-better-page-bar-empty span {
+.ehpeek-scroll-page-bar .ehpeek-scroll-page-bar-empty span {
   visibility: hidden;
 }
 
@@ -93,25 +93,25 @@
 }
 
 @media (pointer: coarse) {
-  .ehpeek-better-page-bar {
+  .ehpeek-scroll-page-bar {
     border-spacing: 6px;
   }
 
-  .ehpeek-better-page-bar td {
+  .ehpeek-scroll-page-bar td {
     min-width: 38px;
     height: 38px;
     border-radius: 6px;
   }
 
-  .ehpeek-better-page-bar a,
-  .ehpeek-better-page-bar button,
-  .ehpeek-better-page-bar span {
+  .ehpeek-scroll-page-bar a,
+  .ehpeek-scroll-page-bar button,
+  .ehpeek-scroll-page-bar span {
     min-width: 38px;
     height: 38px;
     padding: 0 10px;
   }
 
-  .ehpeek-better-page-bar .ptds span {
+  .ehpeek-scroll-page-bar .ptds span {
     padding: 0 12px;
   }
 }

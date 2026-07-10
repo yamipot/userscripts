@@ -32,7 +32,7 @@
 }
 
 @media (max-width: 760px), (pointer: coarse) {
-  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading {
+  .ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading {
     min-height: 87px;
     margin: 0;
     padding: 12px 15px;
@@ -45,7 +45,7 @@
     text-transform: uppercase;
   }
 
-  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading-page {
+  .ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading-page {
     margin-top: 2px;
     color: #f0b35a;
     font-size: 18px;

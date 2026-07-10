@@ -22,16 +22,12 @@
     "menuLabel": "Ehpeek",
     "readerOn": "Reader: on",
     "readerOff": "Reader: off",
-    "enableReader": "Enable Ehpeek Reader",
-    "disableReader": "Disable Ehpeek Reader",
-    "enhanceGalleryThumbsOn": "Enhance gallery thumbs: on",
-    "enhanceGalleryThumbsOff": "Enhance gallery thumbs: off",
-    "enableEnhanceGalleryThumbs": "Enable enhanced gallery thumbs",
-    "disableEnhanceGalleryThumbs": "Disable enhanced gallery thumbs",
-    "enhanceSearchPageOn": "Enhance search page: on",
-    "enhanceSearchPageOff": "Enhance search page: off",
-    "enableEnhanceSearchPage": "Enable enhanced search page",
-    "disableEnhanceSearchPage": "Disable enhanced search page"
+    "enhanceSearchOn": "Enhance Search Grids: on",
+    "enhanceSearchOff": "Enhance Search Grids: off",
+    "enhanceThumbsOn": "Enhance Thumbs Preview: on",
+    "enhanceThumbsOff": "Enhance Thumbs Preview: off",
+    "touchUiOn": "Touch UI: on",
+    "touchUiOff": "Touch UI: off"
   },
   "errors": {
     "imageNotFound": "Image not found",

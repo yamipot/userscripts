@@ -18,10 +18,13 @@ export const state = {
     rightTapAction: persisted<RightTapAction>("ehpeek:reader:right-tap-action", "previous"),
   },
   gallery: {
-    enhanceThumbs: persisted("ehpeek:gallery:enhance-thumbs", true),
+    enhanceThumbs: persisted("ehpeek:enhance-thumbs:enabled", true),
   },
   search: {
-    enhance: persisted("ehpeek:search:enhance", true),
+    enhance: persisted("ehpeek:enhance-search:enabled", true),
+  },
+  touch: {
+    enabled: persisted("ehpeek:touch-ui:enabled", true),
   },
 } as const;
 

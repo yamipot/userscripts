@@ -1,11 +1,11 @@
-import { h } from "../jsx";
-import { clamp } from "../utils";
-import { PointerDrag } from "./common/pointerDrag";
+import { h } from "../../jsx";
+import { clamp } from "../../utils";
+import { PointerDrag } from "../common/pointerDrag";
 
-export const BETTER_PAGE_BAR_CLASS = "ehpeek-better-page-bar";
-export const BETTER_PAGE_BAR_TOP_CLASS = "ehpeek-better-page-bar-top";
-export const BETTER_PAGE_BAR_BOTTOM_CLASS = "ehpeek-better-page-bar-bottom";
-export const BETTER_PAGE_BAR_WINDOW_INDEX_ATTR = "data-ehpeek-window-index";
+export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
+export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
+export const SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom";
+export const SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR = "data-ehpeek-window-index";
 
 const DRAG_PIXEL_STEP = 18;
 let galleryPageBarWindowIndex: number | null = null;
@@ -16,7 +16,7 @@ type PageBarSlot =
       pageIndex: number;
     };
 
-export type BetterPageBarOptions = {
+export type ScrollPageBarOptions = {
   currentIndex: number;
   initialWindowIndex?: number;
   maxIndex: number | null;
@@ -24,7 +24,7 @@ export type BetterPageBarOptions = {
   urlForIndex: (index: number) => string;
 };
 
-export class BetterPageBar {
+export class ScrollPageBar {
   readonly element: HTMLTableElement;
   private readonly currentIndex: number;
   private readonly maxIndex: number;
@@ -32,7 +32,7 @@ export class BetterPageBar {
   private windowIndex: number;
   private dragStartWindowIndex = 0;
 
-  constructor(options: BetterPageBarOptions) {
+  constructor(options: ScrollPageBarOptions) {
     const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
     const currentIndex = clamp(options.currentIndex, 0, maxIndex);
     this.currentIndex = currentIndex;
@@ -41,7 +41,7 @@ export class BetterPageBar {
     this.windowIndex = clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex);
 
     this.element = (
-      <table className={`${BETTER_PAGE_BAR_CLASS} ${options.top ? BETTER_PAGE_BAR_TOP_CLASS : BETTER_PAGE_BAR_BOTTOM_CLASS}`}>
+      <table className={`${SCROLL_PAGE_BAR_CLASS} ${options.top ? SCROLL_PAGE_BAR_TOP_CLASS : SCROLL_PAGE_BAR_BOTTOM_CLASS}`}>
         <tbody />
       </table>
     ) as HTMLTableElement;
@@ -71,7 +71,7 @@ export class BetterPageBar {
     ) as HTMLTableRowElement;
 
     body.replaceChildren(row);
-    this.element.setAttribute(BETTER_PAGE_BAR_WINDOW_INDEX_ATTR, String(this.windowIndex));
+    this.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(this.windowIndex));
   }
 
   private linkCell(text: string, pageIndex: number, current: boolean): HTMLTableCellElement {
@@ -94,7 +94,7 @@ export class BetterPageBar {
 
   private emptyCell(): HTMLTableCellElement {
     return (
-      <td className="ehpeek-better-page-bar-empty">
+      <td className="ehpeek-scroll-page-bar-empty">
         <span />
       </td>
     ) as HTMLTableCellElement;
@@ -105,7 +105,7 @@ export class BetterPageBar {
       shouldStart: () => this.draggable(),
       onStart: () => {
         this.dragStartWindowIndex = this.windowIndex;
-        this.element.classList.add("ehpeek-better-page-bar-dragging");
+        this.element.classList.add("ehpeek-scroll-page-bar-dragging");
       },
       onMove: (info) => {
         if (Math.abs(info.dx) < Math.abs(info.dy)) {
@@ -123,7 +123,7 @@ export class BetterPageBar {
         this.render();
       },
       onEnd: () => {
-        this.element.classList.remove("ehpeek-better-page-bar-dragging");
+        this.element.classList.remove("ehpeek-scroll-page-bar-dragging");
       },
     });
   }
@@ -133,11 +133,11 @@ export class BetterPageBar {
   }
 }
 
-export function createBetterPageBar(options: BetterPageBarOptions): HTMLTableElement {
-  return new BetterPageBar(options).element;
+export function createScrollPageBar(options: ScrollPageBarOptions): HTMLTableElement {
+  return new ScrollPageBar(options).element;
 }
 
-export function setBetterPageBarWindowIndex(index: number): void {
+export function setScrollPageBarWindowIndex(index: number): void {
   galleryPageBarWindowIndex = Math.max(0, Math.round(index));
 }
 

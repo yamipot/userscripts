@@ -1,24 +1,22 @@
-import { h } from "../jsx";
-import * as eh from "../eh/dom";
-import type { GalleryInfo, GalleryTagGroup } from "../eh/dom";
-import texts from "../texts.json";
-import galleryMobileViewCss from "./GalleryMobileView.css";
+import { h } from "../../jsx";
+import * as eh from "../../eh/dom";
+import type { GalleryInfo, GalleryTagGroup } from "../../eh/dom";
+import texts from "../../texts.json";
+import touchGalleryPanelCss from "./TouchGalleryPanel.css";
 
-const STYLE_ID = "ehpeek-gallery-mobile-style";
+const STYLE_ID = "ehpeek-touch-gallery-panel-style";
 const MOBILE_QUERY = "(max-width: 760px), (pointer: coarse)";
 
-export class GalleryMobileView {
-  constructor(private readonly handlers: { onOpenSettings: () => void }) {}
-
+export class TouchGalleryPanel {
   install(): void {
-    ensureGalleryMobileStyle();
-    eh.installGalleryMobilePageStyle();
+    ensureTouchGalleryPanelStyle();
+    eh.installTouchGalleryPanelPageStyle();
 
     if (!this.isActive()) {
       return;
     }
 
-    if (document.querySelector(".ehpeek-mobile-gallery")) {
+    if (document.querySelector(".ehpeek-touch-gallery")) {
       return;
     }
 
@@ -30,7 +28,10 @@ export class GalleryMobileView {
 
     const shell = this.createShell(source);
     this.prepareRatingScale(shell);
-    document.body.prepend(shell);
+
+    if (!eh.mountTouchGalleryPanel(shell)) {
+      document.body.prepend(shell);
+    }
   }
 
   mountContinueButton(button: HTMLButtonElement): boolean {
@@ -38,7 +39,7 @@ export class GalleryMobileView {
       return false;
     }
 
-    const actions = document.querySelector<HTMLElement>(".ehpeek-mobile-gallery-primary-actions");
+    const actions = document.querySelector<HTMLElement>(".ehpeek-touch-gallery-primary-actions");
 
     if (!actions) {
       return false;
@@ -48,29 +49,33 @@ export class GalleryMobileView {
     return true;
   }
 
+  remove(): void {
+    eh.restoreTouchGalleryPanel();
+    document.getElementById(STYLE_ID)?.remove();
+    eh.uninstallTouchGalleryPanelPageStyle();
+  }
+
   private createShell(source: GalleryInfo): HTMLElement {
-    const cover = <div className="ehpeek-mobile-gallery-cover" />;
-    const menuButton = this.createMenuButton(source.navItems);
-    const homeButton = this.createHomeButton(source.homeHref);
-    const category = textBlock("ehpeek-mobile-gallery-category", source.category);
-    const categoryRow = <div className="ehpeek-mobile-gallery-category-row" />;
+    const cover = <div className="ehpeek-touch-gallery-cover" />;
+    const category = textBlock("ehpeek-touch-gallery-category", source.category);
+    const categoryRow = <div className="ehpeek-touch-gallery-category-row" />;
     const heading = (
-      <div className="ehpeek-mobile-gallery-heading">
-        {textBlock("ehpeek-mobile-gallery-title-main", source.titleMain)}
-        {textBlock("ehpeek-mobile-gallery-title-sub", source.titleSub)}
+      <div className="ehpeek-touch-gallery-heading">
+        {textBlock("ehpeek-touch-gallery-title-main", source.titleMain)}
+        {textBlock("ehpeek-touch-gallery-title-sub", source.titleSub)}
       </div>
     );
-    const primaryActions = <div className="ehpeek-mobile-gallery-primary-actions" />;
-    const meta = <div className="ehpeek-mobile-gallery-meta" />;
-    const tagGroups = <div className="ehpeek-mobile-gallery-tag-groups" />;
-    const content = <div className="ehpeek-mobile-gallery-content" />;
+    const primaryActions = <div className="ehpeek-touch-gallery-primary-actions" />;
+    const meta = <div className="ehpeek-touch-gallery-meta" />;
+    const tagGroups = <div className="ehpeek-touch-gallery-tag-groups" />;
+    const content = <div className="ehpeek-touch-gallery-content" />;
 
     if (source.cover) {
       cover.append(source.cover);
     }
 
     for (const item of source.summary) {
-      meta.append(textBlock("ehpeek-mobile-gallery-meta-value", item.value));
+      meta.append(textBlock("ehpeek-touch-gallery-meta-value", item.value));
     }
     meta.append(this.createActionsMenu(source.actions));
 
@@ -91,21 +96,17 @@ export class GalleryMobileView {
     }
 
     return (
-      <section className="ehpeek-mobile-gallery">
-        <div className="ehpeek-mobile-gallery-hero">
-          <div className="ehpeek-mobile-gallery-topbar">
-            {homeButton}
-            {menuButton}
-          </div>
-          <div className="ehpeek-mobile-gallery-summary">
+      <section className="ehpeek-touch-gallery">
+        <div className="ehpeek-touch-gallery-hero">
+          <div className="ehpeek-touch-gallery-summary">
             {cover}
-            <div className="ehpeek-mobile-gallery-hero-side">
+            <div className="ehpeek-touch-gallery-hero-side">
             {heading}
             {categoryRow}
             </div>
           </div>
         </div>
-        <div className="ehpeek-mobile-gallery-primary">
+        <div className="ehpeek-touch-gallery-primary">
           {this.createDownloadButton()}
           {primaryActions}
         </div>
@@ -114,74 +115,13 @@ export class GalleryMobileView {
     ) as HTMLElement;
   }
 
-  private createMenuButton(navItems: HTMLElement[]): HTMLElement {
-    const menu = <div className="ehpeek-mobile-top-menu" /> as HTMLElement;
-    const panel = <div className="ehpeek-mobile-top-menu-panel" hidden /> as HTMLElement;
-    const button = (
-      <button
-        type="button"
-        className="ehpeek-mobile-top-menu-button"
-        aria-haspopup="menu"
-        aria-expanded="false"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          panel.hidden = !panel.hidden;
-          button.setAttribute("aria-expanded", String(!panel.hidden));
-        }}
-      >
-        ⋮
-      </button>
-    ) as HTMLButtonElement;
-
-    for (const item of navItems) {
-      panel.append(item);
-    }
-
-    panel.append(
-      <button
-        type="button"
-        className="ehpeek-mobile-top-menu-item"
-        onClick={(event: MouseEvent) => {
-          event.stopPropagation();
-          panel.hidden = true;
-          button.setAttribute("aria-expanded", "false");
-          this.handlers.onOpenSettings();
-        }}
-      >
-        Ehpeek
-      </button> as HTMLButtonElement,
-    );
-
-    document.addEventListener("click", (event) => {
-      if (event.target instanceof Element && menu.contains(event.target)) {
-        return;
-      }
-
-      panel.hidden = true;
-      button.setAttribute("aria-expanded", "false");
-    });
-
-    menu.append(button, panel);
-    return menu;
-  }
-
-  private createHomeButton(homeHref: string): HTMLAnchorElement {
-    const button = (
-      <a className="ehpeek-mobile-home-button" href={homeHref}>
-        ⌂
-      </a>
-    ) as HTMLAnchorElement;
-
-    return button;
-  }
-
   private createActionsMenu(actions: HTMLElement[]): HTMLElement {
-    const menu = <div className="ehpeek-mobile-actions-menu" /> as HTMLElement;
-    const panel = <div className="ehpeek-mobile-actions-menu-panel" hidden /> as HTMLElement;
+    const menu = <div className="ehpeek-touch-gallery-actions-menu" /> as HTMLElement;
+    const panel = <div className="ehpeek-touch-gallery-actions-menu-panel" hidden /> as HTMLElement;
     const button = (
       <button
         type="button"
-        className="ehpeek-mobile-actions-menu-button"
+        className="ehpeek-touch-gallery-actions-menu-button"
         aria-haspopup="menu"
         aria-expanded="false"
         onClick={(event: MouseEvent) => {
@@ -210,10 +150,10 @@ export class GalleryMobileView {
   }
 
   private createTagGroup(group: GalleryTagGroup): HTMLElement {
-    const wrapper = <section className="ehpeek-mobile-gallery-tag-group" /> as HTMLElement;
-    const tags = <div className="ehpeek-mobile-gallery-tags" /> as HTMLElement;
+    const wrapper = <section className="ehpeek-touch-gallery-tag-group" /> as HTMLElement;
+    const tags = <div className="ehpeek-touch-gallery-tags" /> as HTMLElement;
 
-    wrapper.append(textBlock("ehpeek-mobile-gallery-tag-group-name", group.namespace));
+    wrapper.append(textBlock("ehpeek-touch-gallery-tag-group-name", group.namespace));
 
     for (const tag of group.tags) {
       tags.append(tag);
@@ -227,7 +167,7 @@ export class GalleryMobileView {
     const button = (
       <button
         type="button"
-        className="ehpeek-mobile-gallery-primary-button"
+        className="ehpeek-touch-gallery-primary-button"
         onClick={() => {
           eh.clickGalleryDownloadAction();
         }}
@@ -244,8 +184,8 @@ export class GalleryMobileView {
   }
 
   private prepareRatingScale(shell: HTMLElement): void {
-    const wrapper = shell.querySelector<HTMLElement>(".ehpeek-mobile-gallery-rating");
-    const scaler = shell.querySelector<HTMLElement>(".ehpeek-mobile-gallery-rating-scale");
+    const wrapper = shell.querySelector<HTMLElement>(".ehpeek-touch-gallery-rating");
+    const scaler = shell.querySelector<HTMLElement>(".ehpeek-touch-gallery-rating-scale");
 
     if (!wrapper || !scaler) {
       return;
@@ -285,14 +225,14 @@ export class GalleryMobileView {
   }
 }
 
-function ensureGalleryMobileStyle(): void {
+function ensureTouchGalleryPanelStyle(): void {
   if (document.getElementById(STYLE_ID)) {
     return;
   }
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = galleryMobileViewCss;
+  style.textContent = touchGalleryPanelCss;
   document.head.append(style);
 }
 

@@ -6,8 +6,9 @@ const STYLE_ID = "ehpeek-settings-style";
 
 export type SettingsMenuState = {
   readerEnabled: boolean;
-  enhanceGalleryThumbsEnabled: boolean;
-  enhanceSearchPageEnabled: boolean;
+  enhanceThumbsGridsEnabled: boolean;
+  enhanceSearchGridsEnabled: boolean;
+  touchUiEnabled: boolean;
 };
 
 export class SettingsMenu {
@@ -15,16 +16,18 @@ export class SettingsMenu {
   private readonly trigger: HTMLElement;
   private readonly menu: HTMLElement;
   private readonly readerSetting: HTMLButtonElement;
-  private readonly enhanceGalleryThumbsSetting: HTMLButtonElement;
-  private readonly enhanceSearchPageSetting: HTMLButtonElement;
+  private readonly enhanceThumbsGridsSetting: HTMLButtonElement;
+  private readonly enhanceSearchGridsSetting: HTMLButtonElement;
+  private readonly touchUiSetting: HTMLButtonElement;
 
   constructor(
     triggerTagName: "a" | "button",
     private readonly state: () => SettingsMenuState,
     private readonly handlers: {
       onReaderToggle: () => void;
-      onEnhanceGalleryThumbsToggle: () => void;
-      onEnhanceSearchPageToggle: () => void;
+      onEnhanceThumbsGridsToggle: () => void;
+      onEnhanceSearchGridsToggle: () => void;
+      onTouchUiToggle: () => void;
     },
   ) {
     this.root = triggerTagName === "a"
@@ -35,16 +38,20 @@ export class SettingsMenu {
     this.readerSetting = this.createSwitchButton(() => {
       this.handlers.onReaderToggle();
     });
-    this.enhanceGalleryThumbsSetting = this.createSwitchButton(() => {
-      this.handlers.onEnhanceGalleryThumbsToggle();
+    this.enhanceThumbsGridsSetting = this.createSwitchButton(() => {
+      this.handlers.onEnhanceThumbsGridsToggle();
       this.update();
     });
-    this.enhanceSearchPageSetting = this.createSwitchButton(() => {
-      this.handlers.onEnhanceSearchPageToggle();
+    this.enhanceSearchGridsSetting = this.createSwitchButton(() => {
+      this.handlers.onEnhanceSearchGridsToggle();
+      this.update();
+    });
+    this.touchUiSetting = this.createSwitchButton(() => {
+      this.handlers.onTouchUiToggle();
       this.update();
     });
 
-    this.menu.append(this.readerSetting, this.enhanceGalleryThumbsSetting, this.enhanceSearchPageSetting);
+    this.menu.append(this.readerSetting, this.enhanceSearchGridsSetting, this.enhanceThumbsGridsSetting, this.touchUiSetting);
     this.root.append(this.trigger, this.menu);
     this.update();
   }
@@ -82,19 +89,21 @@ export class SettingsMenu {
       this.readerSetting,
       current.readerEnabled,
       current.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
-      current.readerEnabled ? texts.settings.disableReader : texts.settings.enableReader,
     );
     this.updateSwitch(
-      this.enhanceGalleryThumbsSetting,
-      current.enhanceGalleryThumbsEnabled,
-      current.enhanceGalleryThumbsEnabled ? texts.settings.enhanceGalleryThumbsOn : texts.settings.enhanceGalleryThumbsOff,
-      current.enhanceGalleryThumbsEnabled ? texts.settings.disableEnhanceGalleryThumbs : texts.settings.enableEnhanceGalleryThumbs,
+      this.enhanceSearchGridsSetting,
+      current.enhanceSearchGridsEnabled,
+      current.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
     );
     this.updateSwitch(
-      this.enhanceSearchPageSetting,
-      current.enhanceSearchPageEnabled,
-      current.enhanceSearchPageEnabled ? texts.settings.enhanceSearchPageOn : texts.settings.enhanceSearchPageOff,
-      current.enhanceSearchPageEnabled ? texts.settings.disableEnhanceSearchPage : texts.settings.enableEnhanceSearchPage,
+      this.enhanceThumbsGridsSetting,
+      current.enhanceThumbsGridsEnabled,
+      current.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
+    );
+    this.updateSwitch(
+      this.touchUiSetting,
+      current.touchUiEnabled,
+      current.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
     );
 
     this.position();
@@ -128,10 +137,10 @@ export class SettingsMenu {
     return button;
   }
 
-  private updateSwitch(button: HTMLButtonElement, checked: boolean, label: string, title: string): void {
+  private updateSwitch(button: HTMLButtonElement, checked: boolean, label: string): void {
     button.setAttribute("aria-checked", String(checked));
     button.textContent = label;
-    button.title = title;
+    button.removeAttribute("title");
   }
 
   private toggle(): void {

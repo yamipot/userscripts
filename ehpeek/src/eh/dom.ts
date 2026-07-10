@@ -1,28 +1,30 @@
-import { BETTER_PAGE_BAR_WINDOW_INDEX_ATTR, createBetterPageBar } from "../components/BetterPageBar";
-import betterPageBarCss from "../components/BetterPageBar.css";
+import { SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, createScrollPageBar } from "../components/Enhance/ScrollPageBar";
+import scrollPageBarCss from "../components/Enhance/ScrollPageBar.css";
 import type { ReaderPage } from "../components/Reader";
 import type { SettingsMenu } from "../components/SettingsMenu";
 import texts from "../texts.json";
 import { normalizeUrl } from "../utils";
 
 const GALLERY_STYLE_ID = "ehpeek-gallery-style";
-const GALLERY_MOBILE_PAGE_STYLE_ID = "ehpeek-gallery-mobile-page-style";
-const BETTER_PAGE_BAR_TOP_CLASS = "ehpeek-better-page-bar-top";
-const BETTER_PAGE_BAR_BOTTOM_CLASS = "ehpeek-better-page-bar-bottom";
+const TOUCH_GALLERY_PANEL_PAGE_STYLE_ID = "ehpeek-touch-gallery-panel-page-style";
+const TOUCH_TOP_BAR_PAGE_STYLE_ID = "ehpeek-touch-top-bar-page-style";
+const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
+const SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom";
 const PREVIEW_PLACEHOLDER_CLASS = "ehpeek-preview-placeholder";
 
-const GALLERY_MOBILE_PAGE_CSS = `
+let originalTopBar: Element | null = null;
+let originalGalleryPanel: Element | null = null;
+
+const TOUCH_GALLERY_PANEL_PAGE_CSS = `
 @media (max-width: 760px), (pointer: coarse) {
-  #nb,
   #gd2,
-  #gmid,
   #gd5 {
     display: none !important;
   }
 
   .ptt,
   .ptb,
-  .ehpeek-better-page-bar {
+  .ehpeek-scroll-page-bar {
     max-width: 100% !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
@@ -32,6 +34,7 @@ const GALLERY_MOBILE_PAGE_CSS = `
     width: 100% !important;
     margin: 8px 0 !important;
     padding: 0 !important;
+    text-align: center !important;
   }
 
   #gdt .gdtm,
@@ -51,11 +54,13 @@ const GALLERY_MOBILE_PAGE_CSS = `
     justify-content: center;
   }
 
-  .ehpeek-mobile-gallery-rating #gdr {
+  .ehpeek-touch-gallery-rating #gdr {
     margin: 0 !important;
   }
 }
 `;
+
+const TOUCH_TOP_BAR_PAGE_CSS = "";
 
 export type PreviewSnapshot = {
   description: Node | null;
@@ -81,6 +86,10 @@ export type GalleryInfo = {
   actions: HTMLElement[];
   rating: HTMLElement | null;
   tagGroups: GalleryTagGroup[];
+};
+
+export type TouchTopBarInfo = {
+  available: boolean;
   navItems: HTMLElement[];
   homeHref: string;
 };
@@ -247,7 +256,7 @@ export function replaceGalleryPageBar(options: {
 }
 
 export function restoreGalleryPageBar(): void {
-  document.querySelectorAll<HTMLElement>(`.${BETTER_PAGE_BAR_TOP_CLASS}, .${BETTER_PAGE_BAR_BOTTOM_CLASS}`).forEach((item) => {
+  document.querySelectorAll<HTMLElement>(`.${SCROLL_PAGE_BAR_TOP_CLASS}, .${SCROLL_PAGE_BAR_BOTTOM_CLASS}`).forEach((item) => {
     item.remove();
   });
 
@@ -298,10 +307,16 @@ export function restorePreview(snapshot: PreviewSnapshot): void {
 }
 
 export function mountSettingsMenu(settingsMenu: SettingsMenu): boolean {
+  const touchTopBarMenu = document.querySelector(".ehpeek-touch-top-bar-menu-panel");
   const thumbnailContainer = document.querySelector("#gdt");
   const titleContainer = document.querySelector("#gd2, h1");
   const topNav = document.querySelector("#nb");
   const anchor = thumbnailContainer ?? titleContainer;
+
+  if (touchTopBarMenu) {
+    settingsMenu.mount(touchTopBarMenu);
+    return true;
+  }
 
   if (topNav) {
     settingsMenu.mount(topNav);
@@ -326,18 +341,100 @@ export function mountSettingsMenu(settingsMenu: SettingsMenu): boolean {
 }
 
 export function settingsMenuTriggerTagName(): "a" | "button" {
-  return document.querySelector("#nb") ? "a" : "button";
+  return document.querySelector("#nb") && !document.querySelector(".ehpeek-touch-top-bar") ? "a" : "button";
 }
 
-export function installGalleryMobilePageStyle(): void {
-  if (document.getElementById(GALLERY_MOBILE_PAGE_STYLE_ID)) {
+export function installTouchGalleryPanelPageStyle(): void {
+  if (document.getElementById(TOUCH_GALLERY_PANEL_PAGE_STYLE_ID)) {
     return;
   }
 
   const style = document.createElement("style");
-  style.id = GALLERY_MOBILE_PAGE_STYLE_ID;
-  style.textContent = GALLERY_MOBILE_PAGE_CSS;
+  style.id = TOUCH_GALLERY_PANEL_PAGE_STYLE_ID;
+  style.textContent = TOUCH_GALLERY_PANEL_PAGE_CSS;
   document.head.append(style);
+}
+
+export function uninstallTouchGalleryPanelPageStyle(): void {
+  document.getElementById(TOUCH_GALLERY_PANEL_PAGE_STYLE_ID)?.remove();
+}
+
+export function installTouchTopBarPageStyle(): void {
+  if (document.getElementById(TOUCH_TOP_BAR_PAGE_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = TOUCH_TOP_BAR_PAGE_STYLE_ID;
+  style.textContent = TOUCH_TOP_BAR_PAGE_CSS;
+  document.head.append(style);
+}
+
+export function uninstallTouchTopBarPageStyle(): void {
+  document.getElementById(TOUCH_TOP_BAR_PAGE_STYLE_ID)?.remove();
+}
+
+export function mountTouchTopBar(topBar: HTMLElement): boolean {
+  const original = document.querySelector("#nb");
+
+  if (!original?.parentElement) {
+    return false;
+  }
+
+  originalTopBar = original;
+  original.replaceWith(topBar);
+  return true;
+}
+
+export function restoreTouchTopBar(): void {
+  const current = document.querySelector(".ehpeek-touch-top-bar");
+
+  if (current && originalTopBar) {
+    current.replaceWith(originalTopBar);
+  } else {
+    current?.remove();
+  }
+
+  originalTopBar = null;
+}
+
+export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
+  const original = document.querySelector("#gmid");
+
+  if (!original?.parentElement) {
+    return false;
+  }
+
+  originalGalleryPanel = original;
+  original.replaceWith(panel);
+  return true;
+}
+
+export function restoreTouchGalleryPanel(): void {
+  const current = document.querySelector(".ehpeek-touch-gallery");
+
+  if (current && originalGalleryPanel) {
+    current.replaceWith(originalGalleryPanel);
+  } else {
+    current?.remove();
+  }
+
+  originalGalleryPanel = null;
+}
+
+export function readTouchTopBarInfo(): TouchTopBarInfo {
+  const navItems = Array.from(document.querySelectorAll<HTMLAnchorElement>("#nb a[href]")).map((link) => {
+    const clone = link.cloneNode(true) as HTMLAnchorElement;
+    clone.removeAttribute("id");
+    clone.className = "ehpeek-touch-top-bar-menu-item";
+    return clone;
+  });
+
+  return {
+    available: navItems.length > 0,
+    navItems,
+    homeHref: navItems.find((item): item is HTMLAnchorElement => item instanceof HTMLAnchorElement)?.href ?? "/",
+  };
 }
 
 export function readGalleryInfo(): GalleryInfo {
@@ -370,8 +467,6 @@ export function readGalleryInfo(): GalleryInfo {
     actions: readGalleryActions(),
     rating: readGalleryRating(),
     tagGroups: readGalleryTagGroups(),
-    navItems: readGalleryTopNavItems(),
-    homeHref: document.querySelector<HTMLAnchorElement>("#nb a[href]")?.href ?? "/",
   };
 }
 
@@ -384,10 +479,10 @@ function replaceGalleryPageBarAt(
     previewUrlForIndex: (index: number) => string;
   },
 ): void {
-  const className = top ? BETTER_PAGE_BAR_TOP_CLASS : BETTER_PAGE_BAR_BOTTOM_CLASS;
+  const className = top ? SCROLL_PAGE_BAR_TOP_CLASS : SCROLL_PAGE_BAR_BOTTOM_CLASS;
   const existing = document.querySelector<HTMLElement>(`.${className}`);
-  const initialWindowIndex = existing ? Number(existing.getAttribute(BETTER_PAGE_BAR_WINDOW_INDEX_ATTR) || "") : undefined;
-  const pageBar = createBetterPageBar({
+  const initialWindowIndex = existing ? Number(existing.getAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR) || "") : undefined;
+  const pageBar = createScrollPageBar({
     currentIndex: options.currentIndex,
     initialWindowIndex: Number.isFinite(initialWindowIndex) ? initialWindowIndex : undefined,
     maxIndex: options.maxIndex,
@@ -453,7 +548,7 @@ function ensureGalleryStyle(): void {
 
   const style = document.createElement("style");
   style.id = GALLERY_STYLE_ID;
-  style.textContent = betterPageBarCss;
+  style.textContent = scrollPageBarCss;
   document.head.append(style);
 }
 
@@ -485,8 +580,8 @@ function readGalleryRating(): HTMLElement | null {
   const wrapper = document.createElement("div");
   const scaler = document.createElement("div");
 
-  wrapper.className = "ehpeek-mobile-gallery-rating";
-  scaler.className = "ehpeek-mobile-gallery-rating-scale";
+  wrapper.className = "ehpeek-touch-gallery-rating";
+  scaler.className = "ehpeek-touch-gallery-rating-scale";
 
   scaler.append(element);
   wrapper.append(scaler);
@@ -498,7 +593,7 @@ function readGalleryActions(): HTMLElement[] {
     .map((item) => {
       const clone = item.cloneNode(true) as HTMLElement;
       clone.removeAttribute("id");
-      clone.classList.add("ehpeek-mobile-actions-menu-item");
+      clone.classList.add("ehpeek-touch-gallery-actions-menu-item");
       return clone;
     })
     .slice(0, 6);
@@ -537,15 +632,6 @@ function cloneGalleryTag(tag: HTMLAnchorElement): HTMLElement {
   const clone = tag.cloneNode(true) as HTMLElement;
   clone.removeAttribute("id");
   return clone;
-}
-
-function readGalleryTopNavItems(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLAnchorElement>("#nb a[href]")).map((link) => {
-    const clone = link.cloneNode(true) as HTMLAnchorElement;
-    clone.removeAttribute("id");
-    clone.className = "ehpeek-mobile-top-menu-item";
-    return clone;
-  });
 }
 
 function findDownloadAction(): HTMLElement | null {

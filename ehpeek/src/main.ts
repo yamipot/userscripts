@@ -1,15 +1,16 @@
 import { openFullscreenReader } from "./components/Reader";
 import { SettingsMenu } from "./components/SettingsMenu";
-import { GalleryMobileView } from "./components/GalleryMobileView";
+import { TouchGalleryPanel } from "./components/Enhance/TouchGalleryPanel";
+import { TouchTopBar } from "./components/Enhance/TouchTopBar";
 import {
-  enhanceGalleryThumbsEnabled,
+  enhanceThumbsGridsEnabled,
   GalleryPageProvider,
-  installContinueReadingButton,
-  installGalleryThumbEnhancement,
+  installEnhanceThumbsGrids,
   navigateGalleryPreview,
-  toggleEnhanceGalleryThumbs,
-} from "./components/EnhanceGallery";
-import { installSearchPageSwipeNavigation } from "./components/EnhanceSearchPage";
+  toggleEnhanceThumbsGrids,
+} from "./components/Enhance/EnhanceThumbsGrids";
+import { installEnhanceSearchGrids, uninstallEnhanceSearchGrids } from "./components/Enhance/EnhanceSearchGrids";
+import { installReadButton, uninstallReadButton } from "./components/Enhance/ReadButton";
 import * as eh from "./eh";
 import texts from "./texts.json";
 import { state } from "./state";
@@ -20,10 +21,18 @@ const READER_WINDOW_SIZE = 10;
 
 let menuCommandId: number | string | null = null;
 let settingsMenu: SettingsMenu | null = null;
-let galleryMobileView: GalleryMobileView | null = null;
+let touchGalleryPanel: TouchGalleryPanel | null = null;
+let touchTopBar: TouchTopBar | null = null;
 
 function updateReaderEnabled(enabled: boolean): void {
   state.reader.enabled.set(enabled);
+  if (pageType.type === "gallery") {
+    if (enabled) {
+      installContinueReading();
+    } else {
+      uninstallReadButton();
+    }
+  }
   settingsMenu?.update();
   registerUserscriptMenu();
 }
@@ -48,21 +57,51 @@ function registerUserscriptMenu(): void {
   );
 }
 
-function toggleEnhanceGalleryThumbsSetting(): void {
-  toggleEnhanceGalleryThumbs();
+function toggleEnhanceThumbsGridsSetting(): void {
+  const enabled = toggleEnhanceThumbsGrids();
+  if (pageType.type === "gallery") {
+    if (enabled) {
+      installEnhanceThumbsGrids(reportOpenError);
+    } else {
+      eh.restoreGalleryPageBar();
+    }
+  }
   settingsMenu?.update();
 }
 
-function toggleEnhanceSearchPageSetting(): void {
+function toggleEnhanceSearchGridsSetting(): void {
   state.search.enhance.set(!state.search.enhance.value);
+  if (state.search.enhance.value && pageType.type === "search") {
+    installEnhanceSearchGrids(pageType);
+  } else if (pageType.type === "search") {
+    uninstallEnhanceSearchGrids();
+  }
+  settingsMenu?.update();
+}
+
+function toggleTouchUiSetting(): void {
+  state.touch.enabled.set(!state.touch.enabled.value);
+  if (state.touch.enabled.value) {
+    installTouchUi();
+    if (pageType.type === "gallery") {
+      installContinueReading();
+    }
+  } else {
+    touchTopBar?.remove();
+    touchGalleryPanel?.remove();
+    if (pageType.type === "gallery") {
+      installContinueReading();
+    }
+  }
   settingsMenu?.update();
 }
 
 function settingsMenuState() {
   return {
     readerEnabled: state.reader.enabled.value,
-    enhanceGalleryThumbsEnabled: enhanceGalleryThumbsEnabled(),
-    enhanceSearchPageEnabled: state.search.enhance.value,
+    enhanceThumbsGridsEnabled: enhanceThumbsGridsEnabled(),
+    enhanceSearchGridsEnabled: state.search.enhance.value,
+    touchUiEnabled: state.touch.enabled.value,
   };
 }
 
@@ -132,7 +171,7 @@ async function openReader(startPageUrl: string, preferredPageNum?: number): Prom
     onActivePageChange: (page) => {
       if (page.pageNum) {
         lastPageNum = page.pageNum;
-        if (enhanceGalleryThumbsEnabled()) {
+        if (enhanceThumbsGridsEnabled()) {
           eh.replaceGalleryPageBar(provider.previewIndexForPage(page.pageNum), maxPreviewIndex);
         }
       }
@@ -146,7 +185,7 @@ async function openReader(startPageUrl: string, preferredPageNum?: number): Prom
       const exitIndex = lastPageNum ? provider.previewIndexForPage(lastPageNum) : landingIndex;
       const galleryUrl = eh.previewUrlForIndex(exitIndex);
 
-      if (enhanceGalleryThumbsEnabled()) {
+      if (enhanceThumbsGridsEnabled()) {
         eh.replaceGalleryPageBar(exitIndex, maxPreviewIndex);
         void navigateGalleryPreview(galleryUrl, "replace").catch(() => {
           window.location.replace(galleryUrl);
@@ -188,8 +227,9 @@ function installSettingsMenu(): void {
 
   settingsMenu = new SettingsMenu(eh.settingsMenuTriggerTagName(), settingsMenuState, {
     onReaderToggle: toggleReader,
-    onEnhanceGalleryThumbsToggle: toggleEnhanceGalleryThumbsSetting,
-    onEnhanceSearchPageToggle: toggleEnhanceSearchPageSetting,
+    onEnhanceThumbsGridsToggle: toggleEnhanceThumbsGridsSetting,
+    onEnhanceSearchGridsToggle: toggleEnhanceSearchGridsSetting,
+    onTouchUiToggle: toggleTouchUiSetting,
   });
 
   if (!eh.mountSettingsMenu(settingsMenu)) {
@@ -197,10 +237,24 @@ function installSettingsMenu(): void {
   }
 }
 
-function installGalleryMobileView(): GalleryMobileView {
-  galleryMobileView ??= new GalleryMobileView({ onOpenSettings: openSettingsMenu });
-  galleryMobileView.install();
-  return galleryMobileView;
+function installTouchGalleryPanel(): TouchGalleryPanel {
+  touchGalleryPanel ??= new TouchGalleryPanel();
+  touchGalleryPanel.install();
+  return touchGalleryPanel;
+}
+
+function installTouchTopBar(): TouchTopBar {
+  touchTopBar ??= new TouchTopBar();
+  touchTopBar.install();
+  return touchTopBar;
+}
+
+function installTouchUi(): void {
+  installTouchTopBar();
+
+  if (pageType.type === "gallery") {
+    installTouchGalleryPanel();
+  }
 }
 
 function onDocumentClick(event: MouseEvent): void {
@@ -237,18 +291,22 @@ async function openReaderFromHash(): Promise<void> {
 registerUserscriptMenu();
 
 const pageType = eh.extractPageType();
+
+if (state.touch.enabled.value) {
+  installTouchUi();
+}
+
 installSettingsMenu();
 
 if (pageType.type === "gallery") {
-  installGalleryMobileView();
-  installGalleryThumbEnhancement(reportOpenError);
+  installEnhanceThumbsGrids(reportOpenError);
   installContinueReading();
   document.addEventListener("click", onDocumentClick, true);
   if (state.reader.enabled.value && pageType.peekPage !== null) {
     void openReaderFromHash();
   }
 } else if (pageType.type === "search" && state.search.enhance.value) {
-  installSearchPageSwipeNavigation(pageType);
+  installEnhanceSearchGrids(pageType);
 }
 
 function installContinueReading(): void {
@@ -261,9 +319,9 @@ function installContinueReading(): void {
   const totalPages = record?.totalPages ?? eh.readShowingRange()?.total;
   const detail = record && totalPages ? `${pageNum}/${totalPages}` : totalPages ? `${totalPages} ${texts.reader.pages}` : String(pageNum);
 
-  const mobileView = installGalleryMobileView();
+  const galleryPanel = state.touch.enabled.value ? installTouchGalleryPanel() : null;
 
-  installContinueReadingButton(
+  installReadButton(
     {
       label: record ? texts.reader.continueReading : texts.reader.startReading,
       detail,
@@ -277,6 +335,6 @@ function installContinueReading(): void {
 
       void openReader(page.url, pageNum).catch(reportOpenError);
     },
-    (button) => mobileView.mountContinueButton(button),
+    (button) => galleryPanel?.mountContinueButton(button) ?? false,
   );
 }
