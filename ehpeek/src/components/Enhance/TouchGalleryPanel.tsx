@@ -5,16 +5,11 @@ import texts from "../../texts.json";
 import touchGalleryPanelCss from "./TouchGalleryPanel.css";
 
 const STYLE_ID = "ehpeek-touch-gallery-panel-style";
-const MOBILE_QUERY = "(max-width: 760px), (pointer: coarse)";
 
 export class TouchGalleryPanel {
   install(): void {
     ensureTouchGalleryPanelStyle();
     eh.installTouchGalleryPanelPageStyle();
-
-    if (!this.isActive()) {
-      return;
-    }
 
     if (document.querySelector(".ehpeek-touch-gallery")) {
       return;
@@ -35,10 +30,6 @@ export class TouchGalleryPanel {
   }
 
   mountContinueButton(button: HTMLButtonElement): boolean {
-    if (!this.isActive()) {
-      return false;
-    }
-
     const actions = document.querySelector<HTMLElement>(".ehpeek-touch-gallery-primary-actions");
 
     if (!actions) {
@@ -47,12 +38,6 @@ export class TouchGalleryPanel {
 
     actions.append(button);
     return true;
-  }
-
-  remove(): void {
-    eh.restoreTouchGalleryPanel();
-    document.getElementById(STYLE_ID)?.remove();
-    eh.uninstallTouchGalleryPanelPageStyle();
   }
 
   private createShell(source: GalleryInfo): HTMLElement {
@@ -177,10 +162,6 @@ export class TouchGalleryPanel {
     ) as HTMLButtonElement;
 
     return button;
-  }
-
-  private isActive(): boolean {
-    return window.matchMedia(MOBILE_QUERY).matches;
   }
 
   private prepareRatingScale(shell: HTMLElement): void {

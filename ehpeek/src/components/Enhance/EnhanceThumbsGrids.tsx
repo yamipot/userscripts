@@ -18,12 +18,6 @@ export function enhanceThumbsGridsEnabled(): boolean {
   return state.gallery.enhanceThumbs.value;
 }
 
-export function toggleEnhanceThumbsGrids(): boolean {
-  const enabled = !enhanceThumbsGridsEnabled();
-  state.gallery.enhanceThumbs.set(enabled);
-  return enabled;
-}
-
 export class GalleryPageProvider {
   private readonly previewCache = new Map<number, ReaderPage[]>();
 

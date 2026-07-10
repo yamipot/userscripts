@@ -31,26 +31,23 @@
   font-weight: 600;
 }
 
-@media (max-width: 760px), (pointer: coarse) {
-  .ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading {
-    min-height: 87px;
-    margin: 0;
-    padding: 12px 15px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: #f0b35a;
-    box-shadow: none;
-    font-size: 26px;
-    text-transform: uppercase;
-  }
+.ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading {
+  min-height: 87px;
+  margin: 0;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #f0b35a;
+  box-shadow: none;
+  font-size: 26px;
+  text-transform: uppercase;
+}
 
-  .ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading-page {
-    margin-top: 2px;
-    color: #f0b35a;
-    font-size: 18px;
-    opacity: 0.78;
-    text-transform: none;
-  }
-
+.ehpeek-touch-gallery-primary-actions .ehpeek-continue-reading-page {
+  margin-top: 2px;
+  color: #f0b35a;
+  font-size: 18px;
+  opacity: 0.78;
+  text-transform: none;
 }

@@ -46,15 +46,6 @@ export function installEnhanceSearchGrids(pageType: Extract<PageType, { type: "s
   document.addEventListener("click", onSearchNavigationClick, true);
 }
 
-export function uninstallEnhanceSearchGrids(): void {
-  overlayElement?.remove();
-  overlayElement = null;
-  indicatorElement = null;
-  swipeState = null;
-  installed = false;
-  document.removeEventListener("click", onSearchNavigationClick, true);
-}
-
 function installResultListEnhancement(resultList: HTMLElement): void {
   overlayElement = installResultListOverlay(resultList);
   new PointerDrag(overlayElement, {

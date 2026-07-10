@@ -19,51 +19,84 @@ export class SettingsMenu {
   private readonly enhanceThumbsGridsSetting: HTMLButtonElement;
   private readonly enhanceSearchGridsSetting: HTMLButtonElement;
   private readonly touchUiSetting: HTMLButtonElement;
+  private readonly actionRow: HTMLElement;
+  private readonly applyButton: HTMLButtonElement;
+  private readonly closeButton: HTMLButtonElement;
+  private draft: SettingsMenuState;
 
   constructor(
     triggerTagName: "a" | "button",
     private readonly state: () => SettingsMenuState,
     private readonly handlers: {
-      onReaderToggle: () => void;
-      onEnhanceThumbsGridsToggle: () => void;
-      onEnhanceSearchGridsToggle: () => void;
-      onTouchUiToggle: () => void;
+      onApply: (state: SettingsMenuState) => void;
     },
   ) {
+    this.draft = { ...this.state() };
     this.root = triggerTagName === "a"
       ? (<div className="ehpeek-settings-root" /> as HTMLElement)
       : (<span className="ehpeek-settings-root" /> as HTMLElement);
     this.trigger = this.createTrigger(triggerTagName);
     this.menu = <div className="ehpeek-settings-menu" hidden /> as HTMLElement;
     this.readerSetting = this.createSwitchButton(() => {
-      this.handlers.onReaderToggle();
+      this.draft.readerEnabled = !this.draft.readerEnabled;
+      this.update();
     });
     this.enhanceThumbsGridsSetting = this.createSwitchButton(() => {
-      this.handlers.onEnhanceThumbsGridsToggle();
+      this.draft.enhanceThumbsGridsEnabled = !this.draft.enhanceThumbsGridsEnabled;
       this.update();
     });
     this.enhanceSearchGridsSetting = this.createSwitchButton(() => {
-      this.handlers.onEnhanceSearchGridsToggle();
+      this.draft.enhanceSearchGridsEnabled = !this.draft.enhanceSearchGridsEnabled;
       this.update();
     });
     this.touchUiSetting = this.createSwitchButton(() => {
-      this.handlers.onTouchUiToggle();
+      this.draft.touchUiEnabled = !this.draft.touchUiEnabled;
       this.update();
     });
+    this.applyButton = (
+      <button
+        type="button"
+        className="ehpeek-settings-apply"
+        onClick={(event: MouseEvent) => {
+          event.stopPropagation();
+          this.apply();
+        }}
+      />
+    ) as HTMLButtonElement;
+    this.closeButton = (
+      <button
+        type="button"
+        className="ehpeek-settings-close"
+        onClick={(event: MouseEvent) => {
+          event.stopPropagation();
+          this.close();
+        }}
+      />
+    ) as HTMLButtonElement;
+    this.actionRow = <div className="ehpeek-settings-actions" /> as HTMLElement;
+    this.actionRow.append(this.applyButton, this.closeButton);
 
-    this.menu.append(this.readerSetting, this.enhanceSearchGridsSetting, this.enhanceThumbsGridsSetting, this.touchUiSetting);
-    this.root.append(this.trigger, this.menu);
+    this.menu.append(
+      this.readerSetting,
+      this.enhanceSearchGridsSetting,
+      this.enhanceThumbsGridsSetting,
+      this.touchUiSetting,
+      this.actionRow,
+    );
+    this.root.append(this.trigger);
     this.update();
   }
 
   mount(parent: Element): void {
     ensureSettingsStyle();
     parent.append(this.root);
+    document.body.append(this.menu);
     this.bindGlobalEvents();
     this.update();
   }
 
   open(): void {
+    this.resetDraft();
     this.menu.hidden = false;
     this.update();
     this.position();
@@ -75,6 +108,7 @@ export class SettingsMenu {
     }
 
     this.menu.hidden = true;
+    this.resetDraft();
     this.update();
   }
 
@@ -87,24 +121,27 @@ export class SettingsMenu {
 
     this.updateSwitch(
       this.readerSetting,
-      current.readerEnabled,
-      current.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
+      this.draft.readerEnabled,
+      this.draft.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
     );
     this.updateSwitch(
       this.enhanceSearchGridsSetting,
-      current.enhanceSearchGridsEnabled,
-      current.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
+      this.draft.enhanceSearchGridsEnabled,
+      this.draft.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
     );
     this.updateSwitch(
       this.enhanceThumbsGridsSetting,
-      current.enhanceThumbsGridsEnabled,
-      current.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
+      this.draft.enhanceThumbsGridsEnabled,
+      this.draft.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
     );
     this.updateSwitch(
       this.touchUiSetting,
-      current.touchUiEnabled,
-      current.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
+      this.draft.touchUiEnabled,
+      this.draft.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
     );
+    this.applyButton.textContent = texts.settings.apply;
+    this.applyButton.disabled = !settingsChanged(current, this.draft);
+    this.closeButton.textContent = texts.settings.close;
 
     this.position();
   }
@@ -144,6 +181,10 @@ export class SettingsMenu {
   }
 
   private toggle(): void {
+    if (this.menu.hidden) {
+      this.resetDraft();
+    }
+
     this.menu.hidden = !this.menu.hidden;
     this.update();
 
@@ -157,14 +198,29 @@ export class SettingsMenu {
       return;
     }
 
-    this.menu.style.top = "8px";
-    this.menu.style.right = "8px";
+    this.menu.style.top = "24px";
+    this.menu.style.right = "24px";
     this.menu.style.left = "";
+  }
+
+  private resetDraft(): void {
+    this.draft = { ...this.state() };
+  }
+
+  private apply(): void {
+    const current = this.state();
+
+    if (!settingsChanged(current, this.draft)) {
+      this.close();
+      return;
+    }
+
+    this.handlers.onApply({ ...this.draft });
   }
 
   private bindGlobalEvents(): void {
     document.addEventListener("click", (event) => {
-      if (event.target instanceof Element && this.root.contains(event.target)) {
+      if (event.target instanceof Element && (this.root.contains(event.target) || this.menu.contains(event.target))) {
         return;
       }
 
@@ -178,6 +234,15 @@ export class SettingsMenu {
     window.addEventListener("resize", () => this.position());
     window.addEventListener("scroll", () => this.position(), true);
   }
+}
+
+function settingsChanged(left: SettingsMenuState, right: SettingsMenuState): boolean {
+  return (
+    left.readerEnabled !== right.readerEnabled ||
+    left.enhanceThumbsGridsEnabled !== right.enhanceThumbsGridsEnabled ||
+    left.enhanceSearchGridsEnabled !== right.enhanceSearchGridsEnabled ||
+    left.touchUiEnabled !== right.touchUiEnabled
+  );
 }
 
 function ensureSettingsStyle(): void {

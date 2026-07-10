@@ -1,12 +1,14 @@
 .ehpeek-settings-menu {
   position: fixed;
   z-index: 2147483646;
-  min-width: 190px;
-  padding: 6px;
+  min-width: 260px;
+  padding: 8px;
   border: 1px solid currentColor;
   border-radius: 4px;
   background: Canvas;
   color: CanvasText;
+  font-size: 20px;
+  line-height: 1.2;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
 }
 
@@ -19,8 +21,9 @@
   width: 100%;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 6px 8px;
+  gap: 16px;
+  min-height: 52px;
+  padding: 10px 12px;
   border: 0;
   border-radius: 3px;
   background: transparent;
@@ -28,6 +31,32 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
+}
+
+.ehpeek-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ehpeek-settings-apply,
+.ehpeek-settings-close {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.ehpeek-settings-apply:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .ehpeek-settings-item:hover {
@@ -47,21 +76,32 @@
   background: #999;
 }
 
-@media (max-width: 760px), (pointer: coarse) {
-  .ehpeek-settings-menu {
+@media (max-width: 760px) {
+  html.ehpeek-touch-ui .ehpeek-settings-menu {
     min-width: min(92vw, 520px);
     padding: 8px;
-    font-size: 36px;
+    font-size: 30px;
     line-height: 1.2;
   }
 
-  .ehpeek-settings-item {
-    min-height: 95px;
-    gap: 24px;
-    padding: 22px 32px;
+  html.ehpeek-touch-ui .ehpeek-settings-item {
+    min-height: 80px;
+    gap: 20px;
+    padding: 18px 26px;
   }
 
-  .ehpeek-settings-item::after {
+  html.ehpeek-touch-ui .ehpeek-settings-actions {
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  html.ehpeek-touch-ui .ehpeek-settings-apply,
+  html.ehpeek-touch-ui .ehpeek-settings-close {
+    min-height: 80px;
+    padding: 18px 26px;
+  }
+
+  html.ehpeek-touch-ui .ehpeek-settings-item::after {
     width: 18px;
     height: 18px;
   }

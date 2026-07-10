@@ -12,11 +12,7 @@ const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
 const SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom";
 const PREVIEW_PLACEHOLDER_CLASS = "ehpeek-preview-placeholder";
 
-let originalTopBar: Element | null = null;
-let originalGalleryPanel: Element | null = null;
-
 const TOUCH_GALLERY_PANEL_PAGE_CSS = `
-@media (max-width: 760px), (pointer: coarse) {
   #gd2,
   #gd5 {
     display: none !important;
@@ -57,7 +53,6 @@ const TOUCH_GALLERY_PANEL_PAGE_CSS = `
   .ehpeek-touch-gallery-rating #gdr {
     margin: 0 !important;
   }
-}
 `;
 
 const TOUCH_TOP_BAR_PAGE_CSS = "";
@@ -255,16 +250,6 @@ export function replaceGalleryPageBar(options: {
   }
 }
 
-export function restoreGalleryPageBar(): void {
-  document.querySelectorAll<HTMLElement>(`.${SCROLL_PAGE_BAR_TOP_CLASS}, .${SCROLL_PAGE_BAR_BOTTOM_CLASS}`).forEach((item) => {
-    item.remove();
-  });
-
-  document.querySelectorAll<HTMLElement>(".ptt, .ptb").forEach((item) => {
-    item.hidden = false;
-  });
-}
-
 export function snapshotPreview(): PreviewSnapshot {
   return {
     description: document.querySelector(".gpc")?.cloneNode(true) ?? null,
@@ -355,10 +340,6 @@ export function installTouchGalleryPanelPageStyle(): void {
   document.head.append(style);
 }
 
-export function uninstallTouchGalleryPanelPageStyle(): void {
-  document.getElementById(TOUCH_GALLERY_PANEL_PAGE_STYLE_ID)?.remove();
-}
-
 export function installTouchTopBarPageStyle(): void {
   if (document.getElementById(TOUCH_TOP_BAR_PAGE_STYLE_ID)) {
     return;
@@ -370,10 +351,6 @@ export function installTouchTopBarPageStyle(): void {
   document.head.append(style);
 }
 
-export function uninstallTouchTopBarPageStyle(): void {
-  document.getElementById(TOUCH_TOP_BAR_PAGE_STYLE_ID)?.remove();
-}
-
 export function mountTouchTopBar(topBar: HTMLElement): boolean {
   const original = document.querySelector("#nb");
 
@@ -381,21 +358,8 @@ export function mountTouchTopBar(topBar: HTMLElement): boolean {
     return false;
   }
 
-  originalTopBar = original;
   original.replaceWith(topBar);
   return true;
-}
-
-export function restoreTouchTopBar(): void {
-  const current = document.querySelector(".ehpeek-touch-top-bar");
-
-  if (current && originalTopBar) {
-    current.replaceWith(originalTopBar);
-  } else {
-    current?.remove();
-  }
-
-  originalTopBar = null;
 }
 
 export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
@@ -405,21 +369,8 @@ export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
     return false;
   }
 
-  originalGalleryPanel = original;
   original.replaceWith(panel);
   return true;
-}
-
-export function restoreTouchGalleryPanel(): void {
-  const current = document.querySelector(".ehpeek-touch-gallery");
-
-  if (current && originalGalleryPanel) {
-    current.replaceWith(originalGalleryPanel);
-  } else {
-    current?.remove();
-  }
-
-  originalGalleryPanel = null;
 }
 
 export function readTouchTopBarInfo(): TouchTopBarInfo {

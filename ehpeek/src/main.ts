@@ -7,9 +7,8 @@ import {
   GalleryPageProvider,
   installEnhanceThumbsGrids,
   navigateGalleryPreview,
-  toggleEnhanceThumbsGrids,
 } from "./components/Enhance/EnhanceThumbsGrids";
-import { installEnhanceSearchGrids, uninstallEnhanceSearchGrids } from "./components/Enhance/EnhanceSearchGrids";
+import { installEnhanceSearchGrids } from "./components/Enhance/EnhanceSearchGrids";
 import { installReadButton, uninstallReadButton } from "./components/Enhance/ReadButton";
 import * as eh from "./eh";
 import texts from "./texts.json";
@@ -37,10 +36,6 @@ function updateReaderEnabled(enabled: boolean): void {
   registerUserscriptMenu();
 }
 
-function toggleReader(): void {
-  updateReaderEnabled(!state.reader.enabled.value);
-}
-
 function registerUserscriptMenu(): void {
   if (typeof GM_registerMenuCommand !== "function") {
     return;
@@ -57,45 +52,6 @@ function registerUserscriptMenu(): void {
   );
 }
 
-function toggleEnhanceThumbsGridsSetting(): void {
-  const enabled = toggleEnhanceThumbsGrids();
-  if (pageType.type === "gallery") {
-    if (enabled) {
-      installEnhanceThumbsGrids(reportOpenError);
-    } else {
-      eh.restoreGalleryPageBar();
-    }
-  }
-  settingsMenu?.update();
-}
-
-function toggleEnhanceSearchGridsSetting(): void {
-  state.search.enhance.set(!state.search.enhance.value);
-  if (state.search.enhance.value && pageType.type === "search") {
-    installEnhanceSearchGrids(pageType);
-  } else if (pageType.type === "search") {
-    uninstallEnhanceSearchGrids();
-  }
-  settingsMenu?.update();
-}
-
-function toggleTouchUiSetting(): void {
-  state.touch.enabled.set(!state.touch.enabled.value);
-  if (state.touch.enabled.value) {
-    installTouchUi();
-    if (pageType.type === "gallery") {
-      installContinueReading();
-    }
-  } else {
-    touchTopBar?.remove();
-    touchGalleryPanel?.remove();
-    if (pageType.type === "gallery") {
-      installContinueReading();
-    }
-  }
-  settingsMenu?.update();
-}
-
 function settingsMenuState() {
   return {
     readerEnabled: state.reader.enabled.value,
@@ -103,6 +59,14 @@ function settingsMenuState() {
     enhanceSearchGridsEnabled: state.search.enhance.value,
     touchUiEnabled: state.touch.enabled.value,
   };
+}
+
+function applySettingsMenuState(next: ReturnType<typeof settingsMenuState>): void {
+  state.reader.enabled.set(next.readerEnabled);
+  state.gallery.enhanceThumbs.set(next.enhanceThumbsGridsEnabled);
+  state.search.enhance.set(next.enhanceSearchGridsEnabled);
+  state.touch.enabled.set(next.touchUiEnabled);
+  window.location.reload();
 }
 
 async function openReader(startPageUrl: string, preferredPageNum?: number): Promise<void> {
@@ -226,10 +190,7 @@ function installSettingsMenu(): void {
   }
 
   settingsMenu = new SettingsMenu(eh.settingsMenuTriggerTagName(), settingsMenuState, {
-    onReaderToggle: toggleReader,
-    onEnhanceThumbsGridsToggle: toggleEnhanceThumbsGridsSetting,
-    onEnhanceSearchGridsToggle: toggleEnhanceSearchGridsSetting,
-    onTouchUiToggle: toggleTouchUiSetting,
+    onApply: applySettingsMenuState,
   });
 
   if (!eh.mountSettingsMenu(settingsMenu)) {
@@ -250,6 +211,7 @@ function installTouchTopBar(): TouchTopBar {
 }
 
 function installTouchUi(): void {
+  document.documentElement.classList.add("ehpeek-touch-ui");
   installTouchTopBar();
 
   if (pageType.type === "gallery") {

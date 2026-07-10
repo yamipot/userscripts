@@ -3,14 +3,13 @@ import * as eh from "../../eh/dom";
 import touchTopBarCss from "./TouchTopBar.css";
 
 const STYLE_ID = "ehpeek-touch-top-bar-style";
-const MOBILE_QUERY = "(max-width: 760px), (pointer: coarse)";
 
 export class TouchTopBar {
   install(): void {
     ensureTouchTopBarStyle();
     eh.installTouchTopBarPageStyle();
 
-    if (!this.isActive() || document.querySelector(".ehpeek-touch-top-bar")) {
+    if (document.querySelector(".ehpeek-touch-top-bar")) {
       return;
     }
 
@@ -25,12 +24,6 @@ export class TouchTopBar {
     if (!eh.mountTouchTopBar(shell)) {
       document.body.prepend(shell);
     }
-  }
-
-  remove(): void {
-    eh.restoreTouchTopBar();
-    document.getElementById(STYLE_ID)?.remove();
-    eh.uninstallTouchTopBarPageStyle();
   }
 
   private createShell(info: eh.TouchTopBarInfo): HTMLElement {
@@ -64,6 +57,18 @@ export class TouchTopBar {
     ) as HTMLButtonElement;
 
     panel.append(...navItems);
+    panel.addEventListener(
+      "click",
+      (event) => {
+        if (!(event.target instanceof Element) || !event.target.closest(".ehpeek-settings-trigger")) {
+          return;
+        }
+
+        panel.hidden = true;
+        button.setAttribute("aria-expanded", "false");
+      },
+      true,
+    );
 
     document.addEventListener("click", (event) => {
       if (event.target instanceof Element && menu.contains(event.target)) {
@@ -78,9 +83,6 @@ export class TouchTopBar {
     return menu;
   }
 
-  private isActive(): boolean {
-    return window.matchMedia(MOBILE_QUERY).matches;
-  }
 }
 
 function ensureTouchTopBarStyle(): void {
