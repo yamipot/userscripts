@@ -194,8 +194,8 @@ export class PagesViewport {
 
     slot.state = "ready";
     slot.imageUrl = slotImage.imageUrl;
-    slot.width = slotImage.width;
-    slot.height = slotImage.height;
+    slot.width = positiveDimension(image.naturalWidth) ?? slotImage.width;
+    slot.height = positiveDimension(image.naturalHeight) ?? slotImage.height;
     this.applySlotSize(slot);
     slot.view.frame.replaceChildren(image);
     return true;
@@ -591,4 +591,8 @@ export class PagesViewport {
 
     return String(content.pageNum);
   }
+}
+
+function positiveDimension(value: number): number | null {
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
