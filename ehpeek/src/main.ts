@@ -9,7 +9,11 @@ import {
   navigateGalleryPreview,
 } from "./components/Enhance/EnhanceThumbsGrids";
 import { installEnhanceSearchGrids } from "./components/Enhance/EnhanceSearchGrids";
-import { installReadButton, uninstallReadButton } from "./components/Enhance/ReadButton";
+import {
+  createGalleryReadButton,
+  createTouchGalleryReadButton,
+  removeGalleryReadButton,
+} from "./components/Enhance/Misc";
 import * as eh from "./eh";
 import texts from "./texts.json";
 import { state } from "./state";
@@ -32,7 +36,7 @@ function updateReaderEnabled(enabled: boolean): void {
     if (enabled) {
       installContinueReading();
     } else {
-      uninstallReadButton();
+      removeGalleryReadButton();
     }
   }
   settingsMenu?.update();
@@ -285,21 +289,24 @@ function installContinueReading(): void {
   const detail = record && totalPages ? `${pageNum}/${totalPages}` : totalPages ? `${totalPages} ${texts.reader.pages}` : String(pageNum);
 
   const galleryPanel = state.touch.enabled.value ? installTouchGalleryPanel() : null;
+  const info = {
+    label: record ? texts.reader.continueReading : texts.reader.startReading,
+    detail,
+  };
+  const onClick = () => {
+    const page = eh.collectGalleryPages()[0];
 
-  installReadButton(
-    {
-      label: record ? texts.reader.continueReading : texts.reader.startReading,
-      detail,
-    },
-    () => {
-      const page = eh.collectGalleryPages()[0];
+    if (!page) {
+      return;
+    }
 
-      if (!page) {
-        return;
-      }
+    void openReader(page.url, pageNum).catch(reportOpenError);
+  };
 
-      void openReader(page.url, pageNum).catch(reportOpenError);
-    },
-    (button) => galleryPanel?.mountContinueButton(button) ?? false,
-  );
+  removeGalleryReadButton();
+  if (galleryPanel?.mountContinueButton(createTouchGalleryReadButton(info, onClick))) {
+    return;
+  }
+
+  eh.mountGalleryContinueReadingButton(createGalleryReadButton(info, onClick));
 }

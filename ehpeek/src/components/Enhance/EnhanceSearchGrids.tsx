@@ -1,5 +1,5 @@
 import { PointerDrag, type PointerDragEnd, type PointerDragMove } from "../common/pointerDrag";
-import enhanceSearchGridsCss from "./EnhanceSearchGrids.css";
+import { SwipeIndicator } from "./Misc";
 import { h } from "../../jsx";
 import * as eh from "../../eh";
 import type { PageType } from "../../eh";
@@ -8,17 +8,12 @@ const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
 const HORIZONTAL_INTENT_RATIO = 2.2;
 const SWIPE_MAX_VERTICAL_RATIO = 0.38;
-const SEARCH_SWIPE_STYLE_ID = "ehpeek-search-swipe-style";
 const SEARCH_SWIPE_WRAPPER_CLASS = "ehpeek-search-swipe-wrapper";
 const SEARCH_SWIPE_OVERLAY_CLASS = "ehpeek-search-swipe-overlay";
-const SEARCH_SWIPE_INDICATOR_ACTIVE_CLASS = "ehpeek-search-swipe-indicator-active";
-const SEARCH_SWIPE_INDICATOR_LEFT_CLASS = "ehpeek-search-swipe-indicator-left";
-const SEARCH_SWIPE_INDICATOR_RIGHT_CLASS = "ehpeek-search-swipe-indicator-right";
-const SEARCH_SWIPE_INDICATOR_DISABLED_CLASS = "ehpeek-search-swipe-indicator-disabled";
 
 let installed = false;
 let overlayElement: HTMLDivElement | null = null;
-let indicatorElement: HTMLDivElement | null = null;
+let swipeIndicator: SwipeIndicator | null = null;
 let swipeState: SwipeState | null = null;
 let searchNavigationLoading = false;
 
@@ -40,7 +35,6 @@ export function installEnhanceSearchGrids(pageType: Extract<PageType, { type: "s
   }
 
   installed = true;
-  ensureSearchSwipeStyle();
   installResultListEnhancement(resultList);
   document.addEventListener("click", onSearchNavigationClick, true);
 }
@@ -76,19 +70,15 @@ function installResultListOverlayDom(resultList: HTMLElement): HTMLDivElement {
     ? (resultList.parentElement as HTMLDivElement)
     : null;
   const wrapper = existingWrapper ?? (<div className={`${SEARCH_SWIPE_WRAPPER_CLASS} relative`} /> as HTMLDivElement);
+  const indicator = new SwipeIndicator();
 
   wrapper.querySelectorAll<HTMLElement>(`:scope > .${SEARCH_SWIPE_OVERLAY_CLASS}`).forEach((item) => item.remove());
   overlay = (
     <div className={`${SEARCH_SWIPE_OVERLAY_CLASS} absolute inset-0 z-2 bg-transparent overscroll-x-contain touch-pan-y`} aria-hidden="true">
-      <div
-        className="ehpeek-search-swipe-indicator fixed top-1/2 z-[2147483645] hidden w-42px h-108px items-center justify-center border color-search-swipe rounded-22px text-52px font-sans font-300 leading-1 pointer-events-none select-none transition-opacity duration-120 ease-in-out"
-        aria-hidden="true"
-        ref={(node: HTMLElement) => {
-          indicatorElement = node as HTMLDivElement;
-        }}
-      />
+      {indicator.element}
     </div>
   ) as HTMLDivElement;
+  swipeIndicator = indicator;
 
   if (!existingWrapper) {
     resultList.before(wrapper);
@@ -179,37 +169,25 @@ function updateSwipeState(info: PointerDragMove, event: PointerEvent | MouseEven
 }
 
 function updateSwipeIndicator(info: PointerDragMove): void {
-  if (!indicatorElement || !swipeState?.horizontal || swipeState.cancelled) {
+  if (!swipeIndicator || !swipeState?.horizontal || swipeState.cancelled) {
     return;
   }
 
   const direction = info.dx < 0 ? "left" : "right";
   const availableUrl = swipeUrlForDelta(info.dx);
-  const progress = Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
-  const pull = Math.round(48 * progress);
 
-  indicatorElement.textContent = direction === "left" ? "‹" : "›";
-  indicatorElement.classList.add(SEARCH_SWIPE_INDICATOR_ACTIVE_CLASS);
-  indicatorElement.classList.toggle(SEARCH_SWIPE_INDICATOR_LEFT_CLASS, direction === "left");
-  indicatorElement.classList.toggle(SEARCH_SWIPE_INDICATOR_RIGHT_CLASS, direction === "right");
-  indicatorElement.classList.toggle(SEARCH_SWIPE_INDICATOR_DISABLED_CLASS, !availableUrl);
-  indicatorElement.style.opacity = String(0.35 + progress * 0.65);
-  indicatorElement.style.setProperty("--ehpeek-search-swipe-pull", `${pull}px`);
-}
-
-function hideSwipeIndicator(): void {
-  if (!indicatorElement) {
+  if (!availableUrl) {
+    swipeIndicator.hide();
     return;
   }
 
-  indicatorElement.classList.remove(
-    SEARCH_SWIPE_INDICATOR_ACTIVE_CLASS,
-    SEARCH_SWIPE_INDICATOR_LEFT_CLASS,
-    SEARCH_SWIPE_INDICATOR_RIGHT_CLASS,
-    SEARCH_SWIPE_INDICATOR_DISABLED_CLASS,
-  );
-  indicatorElement.style.opacity = "";
-  indicatorElement.style.removeProperty("--ehpeek-search-swipe-pull");
+  const progress = Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
+
+  swipeIndicator.show(direction, progress);
+}
+
+function hideSwipeIndicator(): void {
+  swipeIndicator?.hide();
 }
 
 function navigateBySwipe(info: PointerDragEnd, event: Event): void {
@@ -292,15 +270,4 @@ function isNextPageOrJump(link: HTMLAnchorElement): boolean {
   const id = link.id.toLowerCase();
 
   return id.endsWith("next") || id.endsWith("last");
-}
-
-function ensureSearchSwipeStyle(): void {
-  if (document.getElementById(SEARCH_SWIPE_STYLE_ID)) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = SEARCH_SWIPE_STYLE_ID;
-  style.textContent = enhanceSearchGridsCss;
-  document.head.append(style);
 }
