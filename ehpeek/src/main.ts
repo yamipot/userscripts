@@ -1,5 +1,6 @@
 import { openFullscreenReader } from "./components/Reader";
 import { SettingsMenu } from "./components/SettingsMenu";
+import { GalleryMobileView } from "./components/GalleryMobileView";
 import {
   enhanceGalleryThumbsEnabled,
   GalleryPageProvider,
@@ -19,6 +20,7 @@ const READER_WINDOW_SIZE = 10;
 
 let menuCommandId: number | string | null = null;
 let settingsMenu: SettingsMenu | null = null;
+let galleryMobileView: GalleryMobileView | null = null;
 
 function updateReaderEnabled(enabled: boolean): void {
   state.reader.enabled.set(enabled);
@@ -195,6 +197,12 @@ function installSettingsMenu(): void {
   }
 }
 
+function installGalleryMobileView(): GalleryMobileView {
+  galleryMobileView ??= new GalleryMobileView({ onOpenSettings: openSettingsMenu });
+  galleryMobileView.install();
+  return galleryMobileView;
+}
+
 function onDocumentClick(event: MouseEvent): void {
   if (!state.reader.enabled.value) {
     return;
@@ -232,7 +240,8 @@ const pageType = eh.extractPageType();
 installSettingsMenu();
 
 if (pageType.type === "gallery") {
-  installGalleryThumbEnhancement(reportOpenError, openSettingsMenu);
+  installGalleryMobileView();
+  installGalleryThumbEnhancement(reportOpenError);
   installContinueReading();
   document.addEventListener("click", onDocumentClick, true);
   if (state.reader.enabled.value && pageType.peekPage !== null) {
@@ -252,16 +261,22 @@ function installContinueReading(): void {
   const totalPages = record?.totalPages ?? eh.readShowingRange()?.total;
   const detail = record && totalPages ? `${pageNum}/${totalPages}` : totalPages ? `${totalPages} ${texts.reader.pages}` : String(pageNum);
 
-  installContinueReadingButton({
-    label: record ? texts.reader.continueReading : texts.reader.startReading,
-    detail,
-  }, () => {
-    const page = eh.collectGalleryPages()[0];
+  const mobileView = installGalleryMobileView();
 
-    if (!page) {
-      return;
-    }
+  installContinueReadingButton(
+    {
+      label: record ? texts.reader.continueReading : texts.reader.startReading,
+      detail,
+    },
+    () => {
+      const page = eh.collectGalleryPages()[0];
 
-    void openReader(page.url, pageNum).catch(reportOpenError);
-  });
+      if (!page) {
+        return;
+      }
+
+      void openReader(page.url, pageNum).catch(reportOpenError);
+    },
+    (button) => mobileView.mountContinueButton(button),
+  );
 }

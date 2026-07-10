@@ -1,0 +1,88 @@
+.ehpeek-gallery-actions {
+  box-sizing: border-box;
+}
+
+.ehpeek-continue-reading {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  background: rgba(18, 18, 18, 0.82);
+  color: #f5f5f5;
+  box-shadow: none;
+  cursor: pointer;
+  text-align: center;
+  font: 700 13px/1.15 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ehpeek-continue-reading:hover {
+  background: rgba(32, 32, 32, 0.9);
+}
+
+.ehpeek-continue-reading-page {
+  display: block;
+  margin-top: 1px;
+  opacity: 0.72;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px), (pointer: coarse) {
+  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading {
+    min-height: 87px;
+    margin: 0;
+    padding: 12px 15px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #f0b35a;
+    box-shadow: none;
+    font-size: 26px;
+    text-transform: uppercase;
+  }
+
+  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading-page {
+    margin-top: 2px;
+    color: #f0b35a;
+    font-size: 18px;
+    opacity: 0.78;
+    text-transform: none;
+  }
+
+  .ehpeek-gallery-actions {
+    display: flex;
+    height: auto !important;
+    min-height: 0 !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    overflow: visible !important;
+  }
+
+  .ehpeek-gallery-actions > * {
+    box-sizing: border-box;
+    max-width: 100%;
+  }
+
+  .ehpeek-gallery-actions a,
+  .ehpeek-gallery-actions button,
+  .ehpeek-gallery-actions input[type="button"],
+  .ehpeek-gallery-actions input[type="submit"] {
+    min-height: 63px;
+    touch-action: manipulation;
+  }
+
+  .ehpeek-continue-reading {
+    margin-top: 0;
+    padding: 12px 15px;
+    font-size: 23px;
+  }
+
+  .ehpeek-continue-reading-page {
+    font-size: 18px;
+  }
+}

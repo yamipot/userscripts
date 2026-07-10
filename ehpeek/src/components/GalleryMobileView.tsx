@@ -1,37 +1,18 @@
 import { h } from "../jsx";
+import * as eh from "../eh/dom";
+import type { GalleryInfo, GalleryTagGroup } from "../eh/dom";
 import texts from "../texts.json";
 import galleryMobileViewCss from "./GalleryMobileView.css";
 
 const STYLE_ID = "ehpeek-gallery-mobile-style";
 const MOBILE_QUERY = "(max-width: 760px), (pointer: coarse)";
 
-type SummaryItem = {
-  value: string;
-};
-
-type GalleryMobileSource = {
-  anchor: HTMLElement | null;
-  titleMain: string;
-  titleSub: string;
-  category: string;
-  cover: HTMLElement | null;
-  summary: SummaryItem[];
-  actions: HTMLElement[];
-  rating: HTMLElement | null;
-  tagGroups: TagGroup[];
-  navItems: HTMLElement[];
-};
-
-type TagGroup = {
-  namespace: string;
-  tags: HTMLElement[];
-};
-
 export class GalleryMobileView {
   constructor(private readonly handlers: { onOpenSettings: () => void }) {}
 
   install(): void {
     ensureGalleryMobileStyle();
+    eh.installGalleryMobilePageStyle();
 
     if (!this.isActive()) {
       return;
@@ -41,9 +22,9 @@ export class GalleryMobileView {
       return;
     }
 
-    const source = this.readSource();
+    const source = eh.readGalleryInfo();
 
-    if (!source.anchor) {
+    if (!source.available) {
       return;
     }
 
@@ -67,10 +48,10 @@ export class GalleryMobileView {
     return true;
   }
 
-  private createShell(source: GalleryMobileSource): HTMLElement {
+  private createShell(source: GalleryInfo): HTMLElement {
     const cover = <div className="ehpeek-mobile-gallery-cover" />;
     const menuButton = this.createMenuButton(source.navItems);
-    const homeButton = this.createHomeButton(source.navItems);
+    const homeButton = this.createHomeButton(source.homeHref);
     const category = textBlock("ehpeek-mobile-gallery-category", source.category);
     const categoryRow = <div className="ehpeek-mobile-gallery-category-row" />;
     const heading = (
@@ -133,21 +114,6 @@ export class GalleryMobileView {
     ) as HTMLElement;
   }
 
-  private readSource(): GalleryMobileSource {
-    return {
-      anchor: document.querySelector<HTMLElement>("#gmid"),
-      titleMain: textOf("#gn"),
-      titleSub: textOf("#gj"),
-      category: textOf("#gdc"),
-      cover: readCoverElement(),
-      summary: readGallerySummary(),
-      actions: readGalleryActions(),
-      rating: readRatingElement(),
-      tagGroups: readGalleryTagGroups(),
-      navItems: readTopNavItems(),
-    };
-  }
-
   private createMenuButton(navItems: HTMLElement[]): HTMLElement {
     const menu = <div className="ehpeek-mobile-top-menu" /> as HTMLElement;
     const panel = <div className="ehpeek-mobile-top-menu-panel" hidden /> as HTMLElement;
@@ -199,10 +165,9 @@ export class GalleryMobileView {
     return menu;
   }
 
-  private createHomeButton(navItems: HTMLElement[]): HTMLAnchorElement {
-    const firstLink = navItems.find((item): item is HTMLAnchorElement => item instanceof HTMLAnchorElement);
+  private createHomeButton(homeHref: string): HTMLAnchorElement {
     const button = (
-      <a className="ehpeek-mobile-home-button" href={firstLink?.href || "/"}>
+      <a className="ehpeek-mobile-home-button" href={homeHref}>
         ⌂
       </a>
     ) as HTMLAnchorElement;
@@ -229,10 +194,7 @@ export class GalleryMobileView {
       </button>
     ) as HTMLButtonElement;
 
-    for (const action of actions) {
-      action.classList.add("ehpeek-mobile-actions-menu-item");
-      panel.append(action);
-    }
+    panel.append(...actions);
 
     document.addEventListener("click", (event) => {
       if (event.target instanceof Element && menu.contains(event.target)) {
@@ -247,7 +209,7 @@ export class GalleryMobileView {
     return menu;
   }
 
-  private createTagGroup(group: TagGroup): HTMLElement {
+  private createTagGroup(group: GalleryTagGroup): HTMLElement {
     const wrapper = <section className="ehpeek-mobile-gallery-tag-group" /> as HTMLElement;
     const tags = <div className="ehpeek-mobile-gallery-tags" /> as HTMLElement;
 
@@ -267,7 +229,7 @@ export class GalleryMobileView {
         type="button"
         className="ehpeek-mobile-gallery-primary-button"
         onClick={() => {
-          findDownloadAction()?.click();
+          eh.clickGalleryDownloadAction();
         }}
       >
         {texts.reader.download}
@@ -332,161 +294,6 @@ function ensureGalleryMobileStyle(): void {
   style.id = STYLE_ID;
   style.textContent = galleryMobileViewCss;
   document.head.append(style);
-}
-
-function readGallerySummary(): SummaryItem[] {
-  const meta = readGalleryMeta();
-  const range = readShowingRange();
-  const fields = [
-    meta.get("language"),
-    range?.total ? `${range.total} ${texts.reader.pages.toLowerCase()}` : undefined,
-    meta.get("file size") ?? meta.get("size"),
-    meta.get("favorited"),
-    meta.get("posted") ?? meta.get("parent"),
-  ];
-
-  return fields
-    .filter((value): value is string => Boolean(value))
-    .slice(0, 6)
-    .map((value) => ({ value }));
-}
-
-function readGalleryMeta(): Map<string, string> {
-  const entries = Array.from(document.querySelectorAll<HTMLTableRowElement>("#gdd tr"))
-    .map((row) => {
-      const cells = Array.from(row.cells);
-      const label = cells[0]?.textContent?.trim().replace(/:$/, "").toLowerCase() ?? "";
-      const value = cells.slice(1).map((cell) => cell.textContent?.trim() ?? "").filter(Boolean).join(" ");
-
-      return [label, value] as const;
-    })
-    .filter(([label, value]) => label && value);
-
-  return new Map(entries);
-}
-
-function readShowingRange(): { total: number } | null {
-  const text = document.querySelector(".gpc")?.textContent ?? "";
-  const match = text.match(/[\d,]+\s*-\s*[\d,]+\s+of\s+([\d,]+)/i);
-  const total = Number(match?.[1]?.replace(/,/g, "") ?? "");
-
-  return Number.isFinite(total) && total > 0 ? { total } : null;
-}
-
-function readRatingElement(): HTMLElement | null {
-  const element =
-    document.querySelector<HTMLElement>("#gdr") ??
-    document.querySelector<HTMLElement>("#rating") ??
-    document.querySelector<HTMLElement>("#rating_label")?.parentElement ??
-    null;
-
-  if (!element) {
-    return null;
-  }
-
-  const wrapper = <div className="ehpeek-mobile-gallery-rating" /> as HTMLElement;
-  const scaler = <div className="ehpeek-mobile-gallery-rating-scale" /> as HTMLElement;
-
-  scaler.append(element);
-  wrapper.append(scaler);
-  return wrapper;
-}
-
-function readGalleryActions(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLElement>("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']"))
-    .map((item) => {
-      const clone = item.cloneNode(true) as HTMLElement;
-      clone.removeAttribute("id");
-      return clone;
-    })
-    .slice(0, 6);
-}
-
-function readGalleryTagGroups(): TagGroup[] {
-  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#taglist tr"));
-
-  if (rows.length > 0) {
-    return rows
-      .map((row) => {
-        const namespace = row.querySelector(".tc, td:first-child")?.textContent?.trim().replace(/:$/, "") || "tag";
-        const tags = Array.from(row.querySelectorAll<HTMLAnchorElement>("a"))
-          .map(cloneTag)
-          .filter(Boolean)
-          .slice(0, 30);
-
-        return { namespace, tags };
-      })
-      .filter((group) => group.tags.length > 0);
-  }
-
-  const groups = new Map<string, HTMLElement[]>();
-
-  for (const tag of Array.from(document.querySelectorAll<HTMLAnchorElement>("#taglist a")).slice(0, 60)) {
-    const clone = cloneTag(tag);
-    const tags = groups.get("tag") ?? [];
-    tags.push(clone);
-    groups.set("tag", tags);
-  }
-
-  return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
-}
-
-function cloneTag(tag: HTMLAnchorElement): HTMLElement {
-  const clone = tag.cloneNode(true) as HTMLElement;
-  clone.removeAttribute("id");
-  return clone;
-}
-
-function readTopNavItems(): HTMLElement[] {
-  return Array.from(document.querySelectorAll<HTMLAnchorElement>("#nb a[href]")).map((link) => {
-    const clone = link.cloneNode(true) as HTMLAnchorElement;
-    clone.removeAttribute("id");
-    clone.className = "ehpeek-mobile-top-menu-item";
-    return clone;
-  });
-}
-
-function findDownloadAction(): HTMLElement | null {
-  const actions = Array.from(document.querySelectorAll<HTMLElement>("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']"));
-
-  return actions.find((item) => /download|archive/i.test(item.textContent ?? item.getAttribute("value") ?? "")) ?? actions[0] ?? null;
-}
-
-function textOf(selector: string): string {
-  return document.querySelector(selector)?.textContent?.trim() ?? "";
-}
-
-function readCoverElement(): HTMLElement | null {
-  const source = document.querySelector<HTMLImageElement>("#gd1 img");
-  const imageUrl = source?.currentSrc || source?.src || source?.getAttribute("src") || backgroundImageUrl(document.querySelector("#gd1"));
-
-  if (!imageUrl) {
-    return null;
-  }
-
-  const image = document.createElement("img");
-  image.src = imageUrl;
-  image.alt = "";
-  image.decoding = "async";
-  image.loading = "eager";
-  return image;
-}
-
-function backgroundImageUrl(root: Element | null): string {
-  if (!root) {
-    return "";
-  }
-
-  for (const item of [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))]) {
-    const backgroundImage = window.getComputedStyle(item).backgroundImage;
-    const match = backgroundImage.match(/url\(["']?(.+?)["']?\)/);
-
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  return "";
 }
 
 function textBlock(className: string, text: string): HTMLElement {

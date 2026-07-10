@@ -307,6 +307,10 @@ export function settingsMenuTriggerTagName(): "a" | "button" {
   return dom.settingsMenuTriggerTagName();
 }
 
+export function mountGalleryContinueReadingButton(button: HTMLButtonElement): void {
+  dom.mountGalleryContinueReadingButton(button);
+}
+
 function numericAttribute(element: Element | null, attribute: string): number | null {
   const value = Number(element?.getAttribute(attribute) || "");
   return Number.isFinite(value) && value > 0 ? value : null;

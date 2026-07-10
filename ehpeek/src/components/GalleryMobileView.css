@@ -20,13 +20,6 @@
     line-height: 1.35 !important;
   }
 
-  #nb,
-  #gd2,
-  #gmid,
-  #gd5 {
-    display: none !important;
-  }
-
   .ehpeek-mobile-gallery {
     display: flex;
     box-sizing: border-box;
@@ -185,10 +178,6 @@
     text-align: left;
     font-size: 20px;
     line-height: 1.15;
-  }
-
-  .ehpeek-mobile-gallery-rating #gdr {
-    margin: 0 !important;
   }
 
   .ehpeek-mobile-gallery-rating-scale {
@@ -451,36 +440,5 @@
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-  }
-
-  .ptt,
-  .ptb,
-  .ehpeek-better-page-bar {
-    max-width: 100% !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  #gdt {
-    width: 100% !important;
-    margin: 8px 0 !important;
-    padding: 0 !important;
-  }
-
-  #gdt .gdtm,
-  #gdt .gdtl,
-  #gdt > div {
-    display: inline-flex !important;
-    min-width: 132px !important;
-    align-items: center !important;
-    justify-content: center !important;
-    vertical-align: top;
-  }
-
-  #gdt a {
-    display: flex !important;
-    min-height: 150px;
-    align-items: center;
-    justify-content: center;
   }
 }

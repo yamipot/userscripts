@@ -27,9 +27,9 @@ export class SettingsMenu {
       onEnhanceSearchPageToggle: () => void;
     },
   ) {
-    this.root = document.createElement(triggerTagName === "a" ? "div" : "span");
-    this.root.className = "ehpeek-settings-root";
-
+    this.root = triggerTagName === "a"
+      ? (<div className="ehpeek-settings-root" /> as HTMLElement)
+      : (<span className="ehpeek-settings-root" /> as HTMLElement);
     this.trigger = this.createTrigger(triggerTagName);
     this.menu = <div className="ehpeek-settings-menu" hidden /> as HTMLElement;
     this.readerSetting = this.createSwitchButton(() => {
@@ -101,22 +101,15 @@ export class SettingsMenu {
   }
 
   private createTrigger(tagName: "a" | "button"): HTMLElement {
-    const trigger = document.createElement(tagName);
-    trigger.className = "ehpeek-settings-trigger";
-
-    if (trigger instanceof HTMLAnchorElement) {
-      trigger.href = "#";
-    } else {
-      trigger.type = "button";
-    }
-
-    trigger.addEventListener("click", (event) => {
+    const onClick = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
       this.toggle();
-    });
+    };
 
-    return trigger;
+    return tagName === "a"
+      ? (<a className="ehpeek-settings-trigger" href="#" onClick={onClick} /> as HTMLAnchorElement)
+      : (<button type="button" className="ehpeek-settings-trigger" onClick={onClick} /> as HTMLButtonElement);
   }
 
   private createSwitchButton(onClick: () => void): HTMLButtonElement {

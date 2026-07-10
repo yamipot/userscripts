@@ -1,112 +1,21 @@
 import type { ReaderPage } from "./Reader";
-import { GalleryMobileView } from "./GalleryMobileView";
 import {
   BETTER_PAGE_BAR_BOTTOM_CLASS,
   BETTER_PAGE_BAR_CLASS,
   BETTER_PAGE_BAR_TOP_CLASS,
   setBetterPageBarWindowIndex,
 } from "./BetterPageBar";
+import enhanceGalleryCss from "./EnhanceGallery.css";
 import * as eh from "../eh";
+import { h } from "../jsx";
 import { state } from "../state";
-import texts from "../texts.json";
 import { clamp, requestText } from "../utils";
 
 const PREVIEW_CACHE_LIMIT = 10;
 const CONTINUE_READING_STYLE_ID = "ehpeek-continue-reading-style";
-const CONTINUE_READING_STYLE = `
-.ehpeek-gallery-actions {
-  box-sizing: border-box;
-}
-
-.ehpeek-continue-reading {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
-  margin-top: 4px;
-  padding: 4px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-  background: rgba(18, 18, 18, 0.82);
-  color: #f5f5f5;
-  box-shadow: none;
-  cursor: pointer;
-  text-align: center;
-  font: 700 13px/1.15 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-.ehpeek-continue-reading:hover {
-  background: rgba(32, 32, 32, 0.9);
-}
-
-.ehpeek-continue-reading-page {
-  display: block;
-  margin-top: 1px;
-  opacity: 0.72;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-@media (max-width: 760px), (pointer: coarse) {
-  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading {
-    min-height: 87px;
-    margin: 0;
-    padding: 12px 15px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: #f0b35a;
-    box-shadow: none;
-    font-size: 26px;
-    text-transform: uppercase;
-  }
-
-  .ehpeek-mobile-gallery-primary-actions .ehpeek-continue-reading-page {
-    margin-top: 2px;
-    color: #f0b35a;
-    font-size: 18px;
-    opacity: 0.78;
-    text-transform: none;
-  }
-
-  .ehpeek-gallery-actions {
-    display: flex;
-    height: auto !important;
-    min-height: 0 !important;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    overflow: visible !important;
-  }
-
-  .ehpeek-gallery-actions > * {
-    box-sizing: border-box;
-    max-width: 100%;
-  }
-
-  .ehpeek-gallery-actions a,
-  .ehpeek-gallery-actions button,
-  .ehpeek-gallery-actions input[type="button"],
-  .ehpeek-gallery-actions input[type="submit"] {
-    min-height: 63px;
-    touch-action: manipulation;
-  }
-
-  .ehpeek-continue-reading {
-    margin-top: 0;
-    padding: 12px 15px;
-    font-size: 23px;
-  }
-
-  .ehpeek-continue-reading-page {
-    font-size: 18px;
-  }
-}
-`;
 
 let galleryThumbEnhancementErrorHandler: ((error: unknown) => void) | null = null;
 let galleryThumbEnhancementClickInstalled = false;
-let galleryMobileView: GalleryMobileView | null = null;
 
 export function enhanceGalleryThumbsEnabled(): boolean {
   return state.gallery.enhanceThumbs.value;
@@ -206,10 +115,8 @@ export class GalleryPageProvider {
   }
 }
 
-export function installGalleryThumbEnhancement(onError: (error: unknown) => void, onOpenSettings: () => void): void {
+export function installGalleryThumbEnhancement(onError: (error: unknown) => void): void {
   galleryThumbEnhancementErrorHandler = onError;
-  galleryMobileView ??= new GalleryMobileView({ onOpenSettings });
-  galleryMobileView.install();
 
   if (enhanceGalleryThumbsEnabled()) {
     installGalleryPageBar();
@@ -258,28 +165,31 @@ type ContinueReadingButtonInfo = {
   detail: string;
 };
 
-export function installContinueReadingButton(info: ContinueReadingButtonInfo, onClick: () => void): void {
+export function installContinueReadingButton(
+  info: ContinueReadingButtonInfo,
+  onClick: () => void,
+  mountMobileButton?: (button: HTMLButtonElement) => boolean,
+): void {
   document.querySelector(".ehpeek-continue-reading")?.remove();
-  galleryMobileView?.install();
   ensureContinueReadingStyle();
 
-  const detail = document.createElement("span");
-  const button = document.createElement("button");
+  const button = (
+    <button
+      type="button"
+      className="ehpeek-continue-reading"
+      title={info.label}
+      onClick={(event: MouseEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+    >
+      {info.label}
+      <span className="ehpeek-continue-reading-page">{info.detail}</span>
+    </button>
+  ) as HTMLButtonElement;
 
-  button.type = "button";
-  button.className = "ehpeek-continue-reading";
-  button.title = info.label;
-  button.textContent = info.label;
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    onClick();
-  });
-
-  detail.className = "ehpeek-continue-reading-page";
-  detail.textContent = info.detail;
-  button.append(detail);
-  mountContinueReadingButton(button);
+  mountContinueReadingButton(button, mountMobileButton);
 }
 
 function onPageBarClick(event: MouseEvent): void {
@@ -327,24 +237,16 @@ function ensureContinueReadingStyle(): void {
 
   const style = document.createElement("style");
   style.id = CONTINUE_READING_STYLE_ID;
-  style.textContent = CONTINUE_READING_STYLE;
+  style.textContent = enhanceGalleryCss;
   document.head.append(style);
 }
 
-function mountContinueReadingButton(button: HTMLButtonElement): void {
-  if (galleryMobileView?.mountContinueButton(button)) {
+function mountContinueReadingButton(button: HTMLButtonElement, mountMobileButton?: (button: HTMLButtonElement) => boolean): void {
+  if (mountMobileButton?.(button)) {
     return;
   }
 
-  const viewerOptions = document.querySelector<HTMLElement>("#gd5");
-
-  if (viewerOptions) {
-    viewerOptions.classList.add("ehpeek-gallery-actions");
-    viewerOptions.append(button);
-    return;
-  }
-
-  document.body.append(button);
+  eh.mountGalleryContinueReadingButton(button);
 }
 
 function scrollToTopPageBar(): void {

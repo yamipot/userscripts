@@ -168,14 +168,17 @@ export class PagesViewport {
   }
 
   createPageImage(pageNum: number, slotImage: ViewportImage): HTMLImageElement {
-    const image = document.createElement("img");
-    image.className = "ehpeek-image";
-    image.alt = `Page ${pageNum}`;
-    image.decoding = "async";
-    image.loading = "eager";
-    image.draggable = false;
-    image.setAttribute("fetchpriority", slotImage.highPriority ? "high" : "low");
-    image.src = slotImage.imageUrl;
+    const image = (
+      <img
+        className="ehpeek-image"
+        alt={`Page ${pageNum}`}
+        decoding="async"
+        loading="eager"
+        draggable={false}
+        fetchpriority={slotImage.highPriority ? "high" : "low"}
+        src={slotImage.imageUrl}
+      />
+    ) as HTMLImageElement;
 
     if (slotImage.width && slotImage.height) {
       image.width = slotImage.width;
@@ -406,12 +409,12 @@ export class PagesViewport {
   }
 
   private createSlotView(index: number, pageNum: number): SlotView {
-    const node = document.createElement("section");
-    node.className = "ehpeek-page";
-
-    const frame = document.createElement("div");
-    frame.className = "ehpeek-frame";
-    node.append(frame);
+    let frame!: HTMLElement;
+    const node = (
+      <section className="ehpeek-page">
+        <div className="ehpeek-frame" ref={(element: HTMLElement) => (frame = element)} />
+      </section>
+    ) as HTMLElement;
 
     const view = { node, frame };
     this.setSlotOrder(view, index, index + 1);
@@ -447,10 +450,13 @@ export class PagesViewport {
   }
 
   private setSlotPlaceholder(view: SlotView, content: SlotContent): void {
-    const placeholder = document.createElement("div");
-    placeholder.className = content.state === "error" ? "ehpeek-error" : "ehpeek-placeholder";
+    const placeholder = (
+      <div className={content.state === "error" ? "ehpeek-error" : "ehpeek-placeholder"}>
+        {this.slotPlaceholderText(content)}
+      </div>
+    ) as HTMLElement;
+
     placeholder.classList.toggle("ehpeek-placeholder-end", content.kind === "end");
-    placeholder.textContent = this.slotPlaceholderText(content);
 
     view.frame.replaceChildren(placeholder);
   }

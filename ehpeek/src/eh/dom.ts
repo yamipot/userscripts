@@ -2,16 +2,87 @@ import { BETTER_PAGE_BAR_WINDOW_INDEX_ATTR, createBetterPageBar } from "../compo
 import betterPageBarCss from "../components/BetterPageBar.css";
 import type { ReaderPage } from "../components/Reader";
 import type { SettingsMenu } from "../components/SettingsMenu";
+import texts from "../texts.json";
 import { normalizeUrl } from "../utils";
 
 const GALLERY_STYLE_ID = "ehpeek-gallery-style";
+const GALLERY_MOBILE_PAGE_STYLE_ID = "ehpeek-gallery-mobile-page-style";
 const BETTER_PAGE_BAR_TOP_CLASS = "ehpeek-better-page-bar-top";
 const BETTER_PAGE_BAR_BOTTOM_CLASS = "ehpeek-better-page-bar-bottom";
 const PREVIEW_PLACEHOLDER_CLASS = "ehpeek-preview-placeholder";
 
+const GALLERY_MOBILE_PAGE_CSS = `
+@media (max-width: 760px), (pointer: coarse) {
+  #nb,
+  #gd2,
+  #gmid,
+  #gd5 {
+    display: none !important;
+  }
+
+  .ptt,
+  .ptb,
+  .ehpeek-better-page-bar {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #gdt {
+    width: 100% !important;
+    margin: 8px 0 !important;
+    padding: 0 !important;
+  }
+
+  #gdt .gdtm,
+  #gdt .gdtl,
+  #gdt > div {
+    display: inline-flex !important;
+    min-width: 132px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    vertical-align: top;
+  }
+
+  #gdt a {
+    display: flex !important;
+    min-height: 150px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ehpeek-mobile-gallery-rating #gdr {
+    margin: 0 !important;
+  }
+}
+`;
+
 export type PreviewSnapshot = {
   description: Node | null;
   thumbs: Node | null;
+};
+
+export type GallerySummaryItem = {
+  value: string;
+};
+
+export type GalleryTagGroup = {
+  namespace: string;
+  tags: HTMLElement[];
+};
+
+export type GalleryInfo = {
+  available: boolean;
+  titleMain: string;
+  titleSub: string;
+  category: string;
+  cover: HTMLElement | null;
+  summary: GallerySummaryItem[];
+  actions: HTMLElement[];
+  rating: HTMLElement | null;
+  tagGroups: GalleryTagGroup[];
+  navItems: HTMLElement[];
+  homeHref: string;
 };
 
 type PageType =
@@ -258,6 +329,52 @@ export function settingsMenuTriggerTagName(): "a" | "button" {
   return document.querySelector("#nb") ? "a" : "button";
 }
 
+export function installGalleryMobilePageStyle(): void {
+  if (document.getElementById(GALLERY_MOBILE_PAGE_STYLE_ID)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = GALLERY_MOBILE_PAGE_STYLE_ID;
+  style.textContent = GALLERY_MOBILE_PAGE_CSS;
+  document.head.append(style);
+}
+
+export function readGalleryInfo(): GalleryInfo {
+  const meta = readGalleryMeta();
+  const range = readShowingRange();
+  const coverSource = document.querySelector<HTMLImageElement>("#gd1 img");
+  const coverUrl =
+    coverSource?.currentSrc ||
+    coverSource?.src ||
+    coverSource?.getAttribute("src") ||
+    backgroundImageUrl(document.querySelector("#gd1"));
+  const summary = [
+    meta.get("language"),
+    range?.total ? `${range.total} ${texts.reader.pages.toLowerCase()}` : undefined,
+    meta.get("file size") ?? meta.get("size"),
+    meta.get("favorited"),
+    meta.get("posted") ?? meta.get("parent"),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 6)
+    .map((value) => ({ value }));
+
+  return {
+    available: Boolean(document.querySelector("#gmid")),
+    titleMain: textOf("#gn"),
+    titleSub: textOf("#gj"),
+    category: textOf("#gdc"),
+    cover: coverUrl ? createGalleryCoverImage(coverUrl) : null,
+    summary,
+    actions: readGalleryActions(),
+    rating: readGalleryRating(),
+    tagGroups: readGalleryTagGroups(),
+    navItems: readGalleryTopNavItems(),
+    homeHref: document.querySelector<HTMLAnchorElement>("#nb a[href]")?.href ?? "/",
+  };
+}
+
 function replaceGalleryPageBarAt(
   source: HTMLElement,
   top: boolean,
@@ -338,4 +455,147 @@ function ensureGalleryStyle(): void {
   style.id = GALLERY_STYLE_ID;
   style.textContent = betterPageBarCss;
   document.head.append(style);
+}
+
+function readGalleryMeta(): Map<string, string> {
+  const entries = Array.from(document.querySelectorAll<HTMLTableRowElement>("#gdd tr"))
+    .map((row) => {
+      const cells = Array.from(row.cells);
+      const label = cells[0]?.textContent?.trim().replace(/:$/, "").toLowerCase() ?? "";
+      const value = cells.slice(1).map((cell) => cell.textContent?.trim() ?? "").filter(Boolean).join(" ");
+
+      return [label, value] as const;
+    })
+    .filter(([label, value]) => label && value);
+
+  return new Map(entries);
+}
+
+function readGalleryRating(): HTMLElement | null {
+  const element =
+    document.querySelector<HTMLElement>("#gdr") ??
+    document.querySelector<HTMLElement>("#rating") ??
+    document.querySelector<HTMLElement>("#rating_label")?.parentElement ??
+    null;
+
+  if (!element) {
+    return null;
+  }
+
+  const wrapper = document.createElement("div");
+  const scaler = document.createElement("div");
+
+  wrapper.className = "ehpeek-mobile-gallery-rating";
+  scaler.className = "ehpeek-mobile-gallery-rating-scale";
+
+  scaler.append(element);
+  wrapper.append(scaler);
+  return wrapper;
+}
+
+function readGalleryActions(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']"))
+    .map((item) => {
+      const clone = item.cloneNode(true) as HTMLElement;
+      clone.removeAttribute("id");
+      clone.classList.add("ehpeek-mobile-actions-menu-item");
+      return clone;
+    })
+    .slice(0, 6);
+}
+
+function readGalleryTagGroups(): GalleryTagGroup[] {
+  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>("#taglist tr"));
+
+  if (rows.length > 0) {
+    return rows
+      .map((row) => {
+        const namespace = row.querySelector(".tc, td:first-child")?.textContent?.trim().replace(/:$/, "") || "tag";
+        const tags = Array.from(row.querySelectorAll<HTMLAnchorElement>("a"))
+          .map(cloneGalleryTag)
+          .filter(Boolean)
+          .slice(0, 30);
+
+        return { namespace, tags };
+      })
+      .filter((group) => group.tags.length > 0);
+  }
+
+  const groups = new Map<string, HTMLElement[]>();
+
+  for (const tag of Array.from(document.querySelectorAll<HTMLAnchorElement>("#taglist a")).slice(0, 60)) {
+    const clone = cloneGalleryTag(tag);
+    const tags = groups.get("tag") ?? [];
+    tags.push(clone);
+    groups.set("tag", tags);
+  }
+
+  return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
+}
+
+function cloneGalleryTag(tag: HTMLAnchorElement): HTMLElement {
+  const clone = tag.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("id");
+  return clone;
+}
+
+function readGalleryTopNavItems(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLAnchorElement>("#nb a[href]")).map((link) => {
+    const clone = link.cloneNode(true) as HTMLAnchorElement;
+    clone.removeAttribute("id");
+    clone.className = "ehpeek-mobile-top-menu-item";
+    return clone;
+  });
+}
+
+function findDownloadAction(): HTMLElement | null {
+  const actions = Array.from(document.querySelectorAll<HTMLElement>("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']"));
+
+  return actions.find((item) => /download|archive/i.test(item.textContent ?? item.getAttribute("value") ?? "")) ?? actions[0] ?? null;
+}
+
+export function clickGalleryDownloadAction(): void {
+  findDownloadAction()?.click();
+}
+
+export function mountGalleryContinueReadingButton(button: HTMLButtonElement): void {
+  const viewerOptions = document.querySelector<HTMLElement>("#gd5");
+
+  if (viewerOptions) {
+    viewerOptions.classList.add("ehpeek-gallery-actions");
+    viewerOptions.append(button);
+    return;
+  }
+
+  document.body.append(button);
+}
+
+function textOf(selector: string): string {
+  return document.querySelector(selector)?.textContent?.trim() ?? "";
+}
+
+function createGalleryCoverImage(imageUrl: string): HTMLImageElement {
+  const image = document.createElement("img");
+  image.src = imageUrl;
+  image.alt = "";
+  image.decoding = "async";
+  image.loading = "eager";
+  return image;
+}
+
+function backgroundImageUrl(root: Element | null): string {
+  if (!root) {
+    return "";
+  }
+
+  for (const item of [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))]) {
+    const backgroundImage = window.getComputedStyle(item).backgroundImage;
+    const match = backgroundImage.match(/url\(["']?(.+?)["']?\)/);
+
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
 }
