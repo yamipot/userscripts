@@ -27,11 +27,6 @@ const TOUCH_GALLERY_PANEL_PAGE_CSS = `
     padding-right: 0 !important;
   }
 
-  #gd2,
-  #gd5 {
-    display: none !important;
-  }
-
   body #gdt[class],
   .ptt,
   .ptb,
@@ -55,10 +50,6 @@ const TOUCH_GALLERY_PANEL_PAGE_CSS = `
     min-height: 150px;
     align-items: center;
     justify-content: center;
-  }
-
-  .ehpeek-touch-gallery-rating #gdr {
-    margin: 0 !important;
   }
 `;
 
@@ -371,13 +362,19 @@ export function mountTouchTopBar(topBar: HTMLElement): boolean {
 
 export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
   const original = document.querySelector("#gmid");
+  const host = original?.parentElement ?? document.querySelector("#gleft")?.parentElement;
 
-  if (!original?.parentElement) {
+  if (!host) {
     return false;
   }
 
-  original.parentElement.classList.add("ehpeek-touch-gallery-host");
-  original.replaceWith(panel);
+  host.classList.add("ehpeek-touch-gallery-host");
+
+  for (const child of Array.from(host.children)) {
+    (child as HTMLElement).hidden = true;
+  }
+
+  host.prepend(panel);
   return true;
 }
 
