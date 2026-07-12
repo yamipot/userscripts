@@ -36,8 +36,15 @@ export type GalleryInfo = {
 };
 
 export type GalleryFavoriteInfo = {
+  actionUrl: string;
   favorited: boolean;
   label: string;
+};
+
+export type GalleryFavoriteOption = {
+  label: string;
+  selected: boolean;
+  value: string;
 };
 
 export type TouchTopBarInfo = {
@@ -563,13 +570,36 @@ function readGalleryFavoriteInfo(): GalleryFavoriteInfo {
   const favorited = /^favorites?\s+\d+/i.test(text);
 
   return {
+    actionUrl: galleryFavoriteActionUrl(),
     favorited,
     label: favorited ? text : "Not Favorited",
   };
 }
 
-export function clickGalleryFavoriteAction(): void {
-  document.querySelector<HTMLElement>("#gdf")?.click();
+export function parseGalleryFavoriteOptions(doc: Document): GalleryFavoriteOption[] {
+  return Array.from(doc.querySelectorAll<HTMLInputElement>("input[name='favcat']")).map((input) => {
+    const row = input.closest<HTMLElement>("div[style*='height']");
+    const label = row?.textContent?.trim().replace(/\s+/g, " ") || input.value;
+
+    return {
+      label,
+      selected: input.checked,
+      value: input.value,
+    };
+  });
+}
+
+function galleryFavoriteActionUrl(): string {
+  const script = Array.from(document.scripts)
+    .map((item) => item.textContent ?? "")
+    .find((text) => text.includes("popbase") && text.includes("addfav")) ?? "";
+  const match = script.match(/popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"]+)&act="/);
+
+  if (match) {
+    return `/gallerypopups.php?gid=${match[1]}&t=${match[2]}&act=addfav`;
+  }
+
+  return "";
 }
 
 export function mountGalleryContinueReadingButton(button: HTMLButtonElement): void {

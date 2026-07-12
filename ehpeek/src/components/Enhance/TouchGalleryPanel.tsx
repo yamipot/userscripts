@@ -1,6 +1,7 @@
 import { h } from "../../jsx";
 import * as eh from "../../eh/dom";
-import type { GalleryInfo, GalleryTagGroup } from "../../eh/dom";
+import type { GalleryFavoriteOption, GalleryInfo, GalleryTagGroup } from "../../eh/dom";
+import { requestText } from "../../utils";
 
 export const TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item control-touch-menu-item text-21px leading-[1.2]";
 export const TOUCH_GALLERY_TAG_CLASS = "ehpeek-touch-gallery-tag control-tag color-tag text-23px";
@@ -37,7 +38,7 @@ function touchGalleryPanelDom(source: GalleryInfo) {
           </div>
         </div>
       </div>
-      <div className="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-[var(--ehpeek-control-primary-height)] mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-hidden rounded-[var(--ehpeek-control-radius-sm)] color-panel-primary">
+      <div className="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-[var(--ehpeek-control-primary-height)] mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-[var(--ehpeek-control-radius-sm)] color-panel-primary">
         {touchGalleryFavoriteButtonDom(source)}
         <div
           className="ehpeek-touch-gallery-primary-actions flex min-w-0 border-l border-[rgba(255,255,255,0.12)]"
@@ -132,21 +133,144 @@ function touchGalleryTagGroupDom(group: GalleryTagGroup): HTMLElement {
   ) as HTMLElement;
 }
 
-function touchGalleryFavoriteButtonDom(source: GalleryInfo): HTMLButtonElement {
+function touchGalleryFavoriteButtonDom(source: GalleryInfo): HTMLElement {
+  let button!: HTMLButtonElement;
+  let panel!: HTMLElement;
+  let icon!: HTMLElement;
+  let label!: HTMLElement;
+  let favorite = { ...source.favorite };
+  const isOpen = () => panel.hidden === false;
+  const setOpen = (open: boolean) => {
+    panel.hidden = !open;
+    panel.style.display = open ? "" : "none";
+    button.setAttribute("aria-expanded", String(open));
+  };
+  const setFavorite = (favorited: boolean, text: string) => {
+    favorite = { ...favorite, favorited, label: text };
+    icon.textContent = favorited ? "♥" : "♡";
+    icon.classList.toggle("color-accent", favorited);
+    icon.classList.toggle("text-[#111]", !favorited);
+    label.textContent = text;
+    button.classList.toggle("ehpeek-touch-gallery-favorite-on", favorited);
+    button.classList.toggle("ehpeek-touch-gallery-favorite-off", !favorited);
+  };
+  const openMenu = async () => {
+    if (!favorite.actionUrl) {
+      return;
+    }
+
+    panel.replaceChildren(textBlockDom("ehpeek-touch-gallery-favorite-loading flex min-h-[var(--ehpeek-control-menu-item-min-height)] items-center gap-12px py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text font-inherit text-21px leading-[1.2] text-left", "Loading..."));
+    setOpen(true);
+
+    try {
+      const html = await requestText(favorite.actionUrl);
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const options = eh.parseGalleryFavoriteOptions(doc);
+
+      panel.replaceChildren(...options.map((option) => touchGalleryFavoriteOptionDom(option, favorite.actionUrl, setFavorite, () => setOpen(false))));
+    } catch (error) {
+      console.error("[ehpeek]", error);
+      panel.replaceChildren(textBlockDom("ehpeek-touch-gallery-favorite-loading flex min-h-[var(--ehpeek-control-menu-item-min-height)] items-center gap-12px py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text font-inherit text-21px leading-[1.2] text-left", "Failed"));
+    }
+  };
+
+  return (
+    <div className="ehpeek-touch-gallery-favorite-menu relative z-2 min-w-0">
+      <button
+        type="button"
+        className={`ehpeek-touch-gallery-primary-button ehpeek-touch-gallery-favorite-button control-primary-action textsize-lg font-700 normal-case ${source.favorite.favorited ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`}
+        aria-haspopup="menu"
+        aria-expanded="false"
+        onClick={(event: MouseEvent) => {
+          event.stopPropagation();
+          if (isOpen()) {
+            setOpen(false);
+          } else {
+            void openMenu();
+          }
+        }}
+        ref={(node: HTMLElement) => {
+          button = node as HTMLButtonElement;
+        }}
+      >
+        <span
+          className="block leading-[1.15]"
+          ref={(node: HTMLElement) => {
+            label = node;
+          }}
+        >
+          {source.favorite.label}
+        </span>
+        <span
+          className={`ehpeek-touch-gallery-favorite-icon block mt-2px textsize-md font-600 opacity-78 normal-case leading-[1.15] ${source.favorite.favorited ? "color-accent" : "text-[#111]"}`}
+          aria-hidden="true"
+          ref={(node: HTMLElement) => {
+            icon = node;
+          }}
+        >
+          {source.favorite.favorited ? "♥" : "♡"}
+        </span>
+      </button>
+      <div
+        className="ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-[2147483644] flex w-[min(86vw,360px)] flex-col overflow-hidden border color-border rounded-[var(--ehpeek-control-radius-md)] color-elevated"
+        hidden
+        style="display: none;"
+        ref={(node: HTMLElement) => {
+          panel = node;
+        }}
+      />
+    </div>
+  ) as HTMLElement;
+}
+
+function touchGalleryFavoriteOptionDom(
+  option: GalleryFavoriteOption,
+  actionUrl: string,
+  setFavorite: (favorited: boolean, label: string) => void,
+  close: () => void,
+): HTMLButtonElement {
   return (
     <button
       type="button"
-      className={`ehpeek-touch-gallery-primary-button control-primary-action textsize-lg font-700 ${source.favorite.favorited ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`}
-      onClick={() => {
-        eh.clickGalleryFavoriteAction();
+      className={`ehpeek-touch-gallery-favorite-option flex min-h-[var(--ehpeek-control-menu-item-min-height)] items-center gap-12px py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text font-inherit text-21px leading-[1.2] text-left ${option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`}
+      aria-pressed={String(option.selected)}
+      onClick={(event: MouseEvent) => {
+        event.stopPropagation();
+        void applyFavoriteOption(actionUrl, option).then(() => {
+          setFavorite(option.value !== "favdel", option.value === "favdel" ? "Not Favorited" : option.label);
+          close();
+        }).catch((error) => {
+          console.error("[ehpeek]", error);
+        });
       }}
     >
-      <span className={`ehpeek-touch-gallery-favorite-icon flex-none text-30px leading-1 ${source.favorite.favorited ? "color-accent" : "text-[#111]"}`} aria-hidden="true">
-        {source.favorite.favorited ? "♥" : "♡"}
+      <span className={`ehpeek-touch-gallery-favorite-option-icon flex-none text-24px leading-1 ${option.value === "favdel" ? "text-[#111]" : "color-accent"}`} aria-hidden="true">
+        {option.value === "favdel" ? "♡" : "♥"}
       </span>
-      <span>{source.favorite.label}</span>
+      <span>{option.label}</span>
     </button>
   ) as HTMLButtonElement;
+}
+
+async function applyFavoriteOption(actionUrl: string, option: GalleryFavoriteOption): Promise<void> {
+  const body = new URLSearchParams();
+  body.set("favcat", option.value);
+  body.set("favnote", "");
+  body.set("apply", "Apply Changes");
+  body.set("update", "1");
+
+  const response = await fetch(actionUrl, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
 }
 
 export class TouchGalleryPanel {
