@@ -2,6 +2,7 @@ import { DomData, h } from "../../jsx";
 import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
+import { ProgressBar } from "../Misc";
 
 export type ReaderControls = {
   mode: ViewMode;
@@ -35,9 +36,16 @@ function toolbarDom(handlers: {
   let readDirectionButton!: HTMLButtonElement;
   let rightTapButton!: HTMLButtonElement;
   let pageNumberLabel!: HTMLElement;
-  let progressInput!: HTMLInputElement;
   let disableReaderButton!: HTMLButtonElement;
   const toolbarOpen = new DomData<boolean>();
+  const progressBar = new ProgressBar({
+    className: "text-xl coarse:text-3xl",
+    min: 1,
+    step: 1,
+    onPointerDown: handlers.onProgressPointerDown,
+    onInput: handlers.onProgressInput,
+    onCommit: handlers.onProgressCommit,
+  });
 
   const topbar = (
     <div
@@ -143,30 +151,7 @@ function toolbarDom(handlers: {
       onPointerDown={stopEvent}
       onWheel={stopEvent}
     >
-      <input
-        type="range"
-        className={
-          // Base.
-          "ehpeek-progress w-full control-range coarse:(h-72px px-19px) m-0 color-progress-reader " +
-          // Interaction.
-          "cursor-grab active:cursor-grabbing touch-none select-none [-webkit-appearance:none] [appearance:none] " +
-          // Progress fill.
-          "[--ehpeek-progress-fill:0%] [--ehpeek-progress-track-direction:to_right] " +
-          // Thumb size.
-          "[--ehpeek-progress-thumb-size:30px] [--ehpeek-progress-thumb-offset:-11px] " +
-          "coarse:([--ehpeek-progress-thumb-size:43px] [--ehpeek-progress-thumb-offset:-17px])"
-        }
-        min="1"
-        step="1"
-        ref={(node: HTMLInputElement) => {
-          progressInput = node;
-        }}
-        onPointerDown={handlers.onProgressPointerDown}
-        onInput={handlers.onProgressInput}
-        onChange={handlers.onProgressCommit}
-        onPointerUp={handlers.onProgressCommit}
-        onPointerCancel={handlers.onProgressCommit}
-      />
+      {progressBar.element}
     </div>
   ) as HTMLElement;
 
@@ -180,13 +165,10 @@ function toolbarDom(handlers: {
   return {
     elements: [topbar, pageNumber, progress],
     progressRange() {
-      return {
-        min: Number(progressInput.min || "1"),
-        max: Number(progressInput.max || "1"),
-      };
+      return progressBar.range();
     },
     progressValue() {
-      return Number(progressInput.value || "");
+      return progressBar.value();
     },
     setModeButton(mode: ViewMode) {
       const paged = mode === "paged";
@@ -197,8 +179,7 @@ function toolbarDom(handlers: {
       const rtl = direction === "rtl";
       readDirectionButton.textContent = rtl ? "RL" : "LR";
       readDirectionButton.title = rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft;
-      progressInput.dir = rtl ? "rtl" : "ltr";
-      progressInput.style.setProperty("--ehpeek-progress-track-direction", rtl ? "to left" : "to right");
+      progressBar.setDirection(rtl ? "rtl" : "ltr");
     },
     setRightTapButton(action: RightTapAction) {
       const previous = action === "previous";
@@ -209,13 +190,13 @@ function toolbarDom(handlers: {
       pageNumberLabel.textContent = text;
     },
     setProgressMax(max: number) {
-      progressInput.max = String(Math.max(1, max));
+      progressBar.setMax(max);
     },
     setProgressValue(value: number) {
-      progressInput.value = String(value);
+      progressBar.setValue(value);
     },
     setProgressFill(fillPercent: number) {
-      progressInput.style.setProperty("--ehpeek-progress-fill", `${fillPercent}%`);
+      progressBar.setFill(fillPercent);
     },
     toggleToolbar(): boolean {
       const open = !toolbarOpen.value;

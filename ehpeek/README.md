@@ -1,6 +1,6 @@
 # ehpeek
 
-A mobile-optimized reader for E-H / ExH galleries.
+Another reader for E-H / ExH galleries. Optmized for touchscreen and mobile.
 
 ## Features
 

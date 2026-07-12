@@ -60,7 +60,7 @@ function pagesViewportDom(options: { onReloadPage: (pageNum: number) => void }) 
   const element = (
     <div
       className={
-        "ehpeek-scroller w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab " +
+        "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab control-scroll-hidden " +
         "[&[data-dragging=true]]:(cursor-grabbing select-none) " +
         "[#ehpeek-reader[data-view-mode=paged]_&]:(overflow-hidden touch-none select-none)"
       }

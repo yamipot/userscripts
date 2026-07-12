@@ -62,6 +62,17 @@ export function stopEvent(event: Event): void {
   event.stopPropagation();
 }
 
+export function registerGlobalStyle(id: string, css: string): void {
+  if (document.getElementById(id)) {
+    return;
+  }
+
+  const style = document.createElement("style");
+  style.id = id;
+  style.textContent = css;
+  document.head.append(style);
+}
+
 export function targetSummary(target: EventTarget | null): string {
   if (!(target instanceof Element)) {
     return String(target);

@@ -1,8 +1,22 @@
 import { defineConfig, presetWind3, transformerVariantGroup } from "unocss";
 
+const ehpTheme = {
+  colors: {
+    accent: "#4da3ff",
+    border: "rgba(15, 15, 15, 0.92)",
+    foreground: "#f3f3f3",
+    track: "rgba(255, 255, 255, 0.34)",
+  },
+};
+
 export default defineConfig({
   presets: [presetWind3()],
   transformers: [transformerVariantGroup()],
+  theme: {
+    colors: {
+      ehp: ehpTheme.colors,
+    },
+  },
   variants: [
     mediaVariant("coarse", "(pointer: coarse)"),
     mediaVariant("desktop", "(min-width: 760px)"),
@@ -48,6 +62,10 @@ export default defineConfig({
   --ehpeek-control-toggle-dot-size: 10px;
   --ehpeek-control-toggle-dot-touch-size: 18px;
   --ehpeek-control-touch-min-height: 80px;
+  --ehp-color-accent: ${ehpTheme.colors.accent};
+  --ehp-color-border: ${ehpTheme.colors.border};
+  --ehp-color-foreground: ${ehpTheme.colors.foreground};
+  --ehp-color-track: ${ehpTheme.colors.track};
 }
 
 .ehpeek-ui-state-dot::after {
@@ -81,7 +99,6 @@ html[data-ehpeek-touch-ui="true"] .ehpeek-ui-state-dot::after {
     "color-item-hover": "hover:bg-[var(--ehpeek-color-item-hover)]",
     "color-panel-primary": "bg-[var(--ehpeek-color-elevated)] shadow-[0_2px_10px_rgba(0,0,0,0.32)]",
     "color-panel-reader-btn": "bg-[rgba(18,18,18,0.82)] text-[#f5f5f5] border-[rgba(255,255,255,0.18)] hover:bg-[var(--ehpeek-color-accent-hover-bg)]",
-    "color-progress-reader": "[accent-color:#f3f3f3]",
     "color-reader-badge": "bg-[rgba(15,15,15,0.34)]",
     "color-reader-text": "text-[var(--ehpeek-color-reader-text)]",
     "color-search-swipe": "bg-[rgba(16,16,16,0.38)] text-[rgba(255,255,255,0.88)] border-[var(--ehpeek-color-border-soft)]",
@@ -96,10 +113,10 @@ html[data-ehpeek-touch-ui="true"] .ehpeek-ui-state-dot::after {
     "control-page": "w-[var(--ehpeek-control-page-size)] h-[var(--ehpeek-control-page-size)] rounded-[var(--ehpeek-control-radius-md)] touch:w-38px touch:h-38px touch:rounded-[var(--ehpeek-control-radius-reader)]",
     "control-primary-action": "flex min-w-0 w-full h-full flex-col items-center justify-center gap-[var(--ehpeek-control-primary-gap)] py-[var(--ehpeek-control-action-padding-y)] px-15px border-0 bg-transparent color-accent text-center uppercase [touch-action:manipulation]",
     "control-reader-btn": "w-[var(--ehpeek-control-reader-button-width)] h-[var(--ehpeek-control-reader-button-height)] px-[var(--ehpeek-control-btn-padding-x)] py-0 rounded-[var(--ehpeek-control-radius-reader)]",
+    "control-scroll-hidden": "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
     "control-tag": "inline-flex max-w-full min-h-[var(--ehpeek-control-tag-min-height)] items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--ehpeek-control-radius-pill)] px-21px no-underline",
     "control-tag-group": "min-h-34px overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--ehpeek-control-radius-pill)] py-7px px-10px text-center lowercase",
     "control-touch-menu-item": "block box-border w-full min-h-[var(--ehpeek-control-menu-item-min-height)] py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text text-left no-underline",
-    "control-range": "h-48px px-12px py-0",
     "textsize-lg": "text-26px touch:text-30px",
     "textsize-md": "text-20px touch:text-26px",
     "textsize-sm": "text-14px touch:text-20px",
