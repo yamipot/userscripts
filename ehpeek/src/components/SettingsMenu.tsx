@@ -1,4 +1,5 @@
-import { h } from "../jsx";
+import { Fragment, h } from "preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import texts from "../texts.json";
 
 export type SettingsMenuState = {
@@ -8,277 +9,138 @@ export type SettingsMenuState = {
   touchUiEnabled: boolean;
 };
 
-function settingsMenuDom(
-  triggerTagName: "a" | "button",
-  handlers: {
-    onApplyClick: (event: MouseEvent) => void;
-    onCloseClick: (event: MouseEvent) => void;
-    onEnhanceSearchClick: (event: MouseEvent) => void;
-    onEnhanceThumbsClick: (event: MouseEvent) => void;
-    onReaderClick: (event: MouseEvent) => void;
-    onTouchUiClick: (event: MouseEvent) => void;
-    onTriggerClick: (event: MouseEvent) => void;
-  },
-) {
-  let trigger!: HTMLElement;
-  let readerSetting!: HTMLButtonElement;
-  let enhanceSearchGridsSetting!: HTMLButtonElement;
-  let enhanceThumbsGridsSetting!: HTMLButtonElement;
-  let touchUiSetting!: HTMLButtonElement;
-  let applyButton!: HTMLButtonElement;
-  let closeButton!: HTMLButtonElement;
+const SETTINGS_ACTION_BUTTON_CLASS =
+  "block w-full control-btn color-btn cursor-pointer font-inherit text-center textsize-md";
+const SETTINGS_DOT_CLASS =
+  "block flex-none w-[var(--ehpeek-control-toggle-dot-size)] h-[var(--ehpeek-control-toggle-dot-size)] touch:w-[var(--ehpeek-control-toggle-dot-touch-size)] touch:h-[var(--ehpeek-control-toggle-dot-touch-size)] rounded-[var(--ehpeek-control-radius-pill)]";
 
-  const switchItemDom = (
-    onClick: (event: MouseEvent) => void,
-    assign: (node: HTMLButtonElement) => void,
-  ) => (
-    <button
-      type="button"
-      className="ehpeek-settings-item ehpeek-ui-state-dot flex w-full items-center justify-between gap-16px touch:gap-20px control-action border-0 border-b color-border-subtle-b bg-transparent color-text color-item-hover cursor-pointer font-inherit text-left textsize-md"
-      role="switch"
-      onClick={onClick}
-      ref={(node: HTMLElement) => assign(node as HTMLButtonElement)}
-    />
-  );
-
-  const actionButtonDom = (
-    className: string,
-    onClick: (event: MouseEvent) => void,
-    assign: (node: HTMLButtonElement) => void,
-  ) => (
-    <button
-      type="button"
-      className={`${className} block w-full control-btn color-btn cursor-pointer font-inherit text-center textsize-md`}
-      onClick={onClick}
-      ref={(node: HTMLElement) => assign(node as HTMLButtonElement)}
-    />
-  );
-
-  const root = triggerTagName === "a"
-    ? (
-      <div className="ehpeek-settings-root">
-        <a
-          className="ehpeek-settings-trigger textsize-sm font-inherit"
-          href="#"
-          onClick={handlers.onTriggerClick}
-          ref={(node: HTMLElement) => {
-            trigger = node;
-          }}
-        />
-      </div>
-    ) as HTMLElement
-    : (
-      <span className="ehpeek-settings-root">
-        <button
-          type="button"
-          className="ehpeek-settings-trigger textsize-sm font-inherit"
-          onClick={handlers.onTriggerClick}
-          ref={(node: HTMLElement) => {
-            trigger = node;
-          }}
-        />
-      </span>
-    ) as HTMLElement;
-  const menu = (
-    <div className="ehpeek-settings-menu fixed z-[2147483646] min-w-260px touch:min-w-[min(92vw,520px)] p-8px border color-border rounded-4px color-elevated color-text textsize-md leading-[1.2]" hidden style="display: none;">
-      {switchItemDom(handlers.onReaderClick, (node) => {
-        readerSetting = node;
-      })}
-      {switchItemDom(handlers.onEnhanceSearchClick, (node) => {
-        enhanceSearchGridsSetting = node;
-      })}
-      {switchItemDom(handlers.onEnhanceThumbsClick, (node) => {
-        enhanceThumbsGridsSetting = node;
-      })}
-      {switchItemDom(handlers.onTouchUiClick, (node) => {
-        touchUiSetting = node;
-      })}
-      <div className="ehpeek-settings-actions grid grid-cols-[1fr_1fr] gap-8px touch:gap-10px mt-6px touch:mt-8px">
-        {actionButtonDom("ehpeek-settings-apply", handlers.onApplyClick, (node) => {
-          applyButton = node;
-        })}
-        {actionButtonDom("ehpeek-settings-close", handlers.onCloseClick, (node) => {
-          closeButton = node;
-        })}
-      </div>
-    </div>
-  ) as HTMLElement;
-
-  const updateSwitch = (button: HTMLButtonElement, checked: boolean, label: string) => {
-    button.setAttribute("aria-checked", String(checked));
-    button.textContent = label;
-    button.removeAttribute("title");
+function SwitchButton(props: {
+  checked: [boolean, string, string];
+  onChange: (value: boolean) => void;
+}) {
+  const [initialChecked, labelOn, labelOff] = props.checked;
+  const [checked, setChecked] = useState(initialChecked);
+  const setValue = (value: boolean) => {
+    setChecked(value);
+    props.onChange(value);
   };
 
-  return {
-    root,
-    contains(target: Element) {
-      return root.contains(target) || menu.contains(target);
-    },
-    isOpen() {
-      return !menu.hidden;
-    },
-    mount(parent: Element) {
-      parent.append(root);
-      document.body.append(menu);
-    },
-    position() {
-      if (menu.hidden) {
-        return;
-      }
-
-      menu.style.top = "24px";
-      menu.style.right = "24px";
-      menu.style.left = "";
-    },
-    setOpen(open: boolean) {
-      menu.hidden = !open;
-      menu.style.display = open ? "" : "none";
-      trigger.setAttribute("aria-expanded", String(open));
-      trigger.setAttribute("aria-haspopup", "menu");
-    },
-    update(draft: SettingsMenuState, labels: {
-      apply: string;
-      close: string;
-      enhanceSearch: string;
-      enhanceThumbs: string;
-      reader: string;
-      touchUi: string;
-    }) {
-      trigger.textContent = texts.settings.menuLabel;
-      updateSwitch(readerSetting, draft.readerEnabled, labels.reader);
-      updateSwitch(enhanceSearchGridsSetting, draft.enhanceSearchGridsEnabled, labels.enhanceSearch);
-      updateSwitch(enhanceThumbsGridsSetting, draft.enhanceThumbsGridsEnabled, labels.enhanceThumbs);
-      updateSwitch(touchUiSetting, draft.touchUiEnabled, labels.touchUi);
-      applyButton.textContent = labels.apply;
-      closeButton.textContent = labels.close;
-    },
-  };
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center justify-between gap-16px touch:gap-20px control-action border-0 border-b color-border-subtle-b bg-transparent color-text color-item-hover cursor-pointer font-inherit text-left textsize-md"
+      onClick={(event: MouseEvent) => {
+        event.stopPropagation();
+        setValue(!checked);
+      }}
+    >
+      <span>{checked ? labelOn : labelOff}</span>
+      <span className={`${SETTINGS_DOT_CLASS} ${checked ? "bg-[var(--ehpeek-color-state-on)]" : "bg-[var(--ehpeek-color-state-off)]"}`} />
+    </button>
+  );
 }
 
-export class SettingsMenu {
-  readonly root: HTMLElement;
-  private readonly dom: ReturnType<typeof settingsMenuDom>;
-  private draft: SettingsMenuState;
+export function SettingsMenu(props: {
+  open: boolean;
+  initState: SettingsMenuState;
+  onApply: (state: SettingsMenuState) => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [draft, setDraft] = useState(() => ({ ...props.initState }));
+  const menuRef = useRef<HTMLDivElement>(null);
+  const close = () => {
+    props.onOpenChange(false);
+  };
 
-  constructor(
-    triggerTagName: "a" | "button",
-    private readonly state: () => SettingsMenuState,
-    private readonly handlers: {
-      onApply: (state: SettingsMenuState) => void;
-    },
-  ) {
-    this.draft = { ...this.state() };
-    this.dom = settingsMenuDom(triggerTagName, {
-      onApplyClick: (event) => {
-        event.stopPropagation();
-        this.apply();
-      },
-      onCloseClick: (event) => {
-        event.stopPropagation();
-        this.close();
-      },
-      onEnhanceSearchClick: (event) => {
-        event.stopPropagation();
-        this.draft.enhanceSearchGridsEnabled = !this.draft.enhanceSearchGridsEnabled;
-        this.update();
-      },
-      onEnhanceThumbsClick: (event) => {
-        event.stopPropagation();
-        this.draft.enhanceThumbsGridsEnabled = !this.draft.enhanceThumbsGridsEnabled;
-        this.update();
-      },
-      onReaderClick: (event) => {
-        event.stopPropagation();
-        this.draft.readerEnabled = !this.draft.readerEnabled;
-        this.update();
-      },
-      onTouchUiClick: (event) => {
-        event.stopPropagation();
-        this.draft.touchUiEnabled = !this.draft.touchUiEnabled;
-        this.update();
-      },
-      onTriggerClick: (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.toggle();
-      },
-    });
-    this.root = this.dom.root;
-    this.update();
-  }
-
-  mount(parent: Element): void {
-    this.dom.mount(parent);
-    this.bindGlobalEvents();
-    this.update();
-  }
-
-  open(): void {
-    this.resetDraft();
-    this.dom.setOpen(true);
-    this.update();
-    this.dom.position();
-  }
-
-  close(): void {
-    if (!this.dom.isOpen()) {
-      return;
+  useEffect(() => {
+    if (props.open) {
+      setDraft({ ...props.initState });
     }
+  }, [props.open, props.initState]);
 
-    this.dom.setOpen(false);
-    this.resetDraft();
-    this.update();
-  }
-
-  update(): void {
-    this.dom.update(this.draft, {
-      apply: texts.settings.apply,
-      close: texts.settings.close,
-      enhanceSearch: this.draft.enhanceSearchGridsEnabled ? texts.settings.enhanceSearchOn : texts.settings.enhanceSearchOff,
-      enhanceThumbs: this.draft.enhanceThumbsGridsEnabled ? texts.settings.enhanceThumbsOn : texts.settings.enhanceThumbsOff,
-      reader: this.draft.readerEnabled ? texts.settings.readerOn : texts.settings.readerOff,
-      touchUi: this.draft.touchUiEnabled ? texts.settings.touchUiOn : texts.settings.touchUiOff,
-    });
-
-    this.dom.position();
-  }
-
-  private toggle(): void {
-    if (!this.dom.isOpen()) {
-      this.resetDraft();
-    }
-
-    this.dom.setOpen(!this.dom.isOpen());
-    this.update();
-
-    if (this.dom.isOpen()) {
-      this.dom.position();
-    }
-  }
-
-  private resetDraft(): void {
-    this.draft = { ...this.state() };
-  }
-
-  private apply(): void {
-    this.handlers.onApply({ ...this.draft });
-  }
-
-  private bindGlobalEvents(): void {
-    document.addEventListener("click", (event) => {
-      if (event.target instanceof Element && this.dom.contains(event.target)) {
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (!props.open) {
         return;
       }
 
-      this.close();
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        this.close();
+      if (event.target instanceof Element && menuRef.current?.contains(event.target)) {
+        return;
       }
-    });
-    window.addEventListener("resize", () => this.dom.position());
-    window.addEventListener("scroll", () => this.dom.position(), true);
+
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!props.open) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [props.open]);
+
+  if (!props.open) {
+    return <Fragment />;
   }
+
+  return (
+    <div ref={menuRef} className="ehpeek-settings-menu fixed top-24px right-24px z-[2147483646] min-w-260px touch:min-w-[min(92vw,520px)] p-8px border color-border rounded-4px color-elevated color-text textsize-md leading-[1.2]">
+      <SwitchButton
+        checked={[draft.readerEnabled, texts.settings.readerOn, texts.settings.readerOff]}
+        onChange={(value) => {
+          draft.readerEnabled = value;
+        }}
+      />
+      <SwitchButton
+        checked={[draft.enhanceSearchGridsEnabled, texts.settings.enhanceSearchOn, texts.settings.enhanceSearchOff]}
+        onChange={(value) => {
+          draft.enhanceSearchGridsEnabled = value;
+        }}
+      />
+      <SwitchButton
+        checked={[draft.enhanceThumbsGridsEnabled, texts.settings.enhanceThumbsOn, texts.settings.enhanceThumbsOff]}
+        onChange={(value) => {
+          draft.enhanceThumbsGridsEnabled = value;
+        }}
+      />
+      <SwitchButton
+        checked={[draft.touchUiEnabled, texts.settings.touchUiOn, texts.settings.touchUiOff]}
+        onChange={(value) => {
+          draft.touchUiEnabled = value;
+        }}
+      />
+      <div className="ehpeek-settings-actions grid grid-cols-[1fr_1fr] gap-8px touch:gap-10px mt-6px touch:mt-8px">
+        <button
+          type="button"
+          className={`ehpeek-settings-apply ${SETTINGS_ACTION_BUTTON_CLASS}`}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            props.onApply({ ...draft });
+          }}
+        >
+          {texts.settings.apply}
+        </button>
+        <button
+          type="button"
+          className={`ehpeek-settings-close ${SETTINGS_ACTION_BUTTON_CLASS}`}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            close();
+          }}
+        >
+          {texts.settings.close}
+        </button>
+      </div>
+    </div>
+  );
 }

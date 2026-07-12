@@ -1,7 +1,26 @@
-import type { LoadedReaderPage, ReaderPage } from "../components/Reader";
+import type { LoadedReaderPage, ReaderPage } from "../readerTypes";
 import texts from "../texts.json";
 import { normalizeUrl, requestText } from "../utils";
 import * as dom from "./dom";
+
+export {
+  applyTouchGalleryPanelPageStyle,
+  findSearchNavigationLink,
+  galleryContinueReadingButtonMountTarget,
+  insertTouchGalleryPanel,
+  insertTouchTopBar,
+  maxPreviewPageIndex,
+  prepareThumbsGridSwipeTargets,
+  readGalleryInfo,
+  readShowingRange,
+  readTouchTopBarInfo,
+  restorePreview,
+  searchPageNavigation,
+  searchResultList,
+  settingsMenuMountTarget,
+  showPreviewPlaceholder,
+  snapshotPreview,
+} from "./dom";
 
 export type PreviewSnapshot = dom.PreviewSnapshot;
 
@@ -177,22 +196,6 @@ export function collectGalleryPages(root: ParentNode = document, baseUrl = windo
   return dom.collectGalleryPages(extractPageType, root, baseUrl);
 }
 
-export function readShowingRange(root: ParentNode = document): { start: number; end: number; total: number } | null {
-  return dom.readShowingRange(root);
-}
-
-export function searchPageNavigation(root: ParentNode = document): { previousUrl: string | null; nextUrl: string | null } | null {
-  return dom.searchPageNavigation(root);
-}
-
-export function searchResultList(root: ParentNode = document): HTMLElement | null {
-  return dom.searchResultList(root);
-}
-
-export function findSearchNavigationLink(target: EventTarget | null): HTMLAnchorElement | null {
-  return dom.findSearchNavigationLink(target);
-}
-
 export async function replaceSearchPageContentFromUrl(url: string): Promise<HTMLElement> {
   const html = await requestText(url);
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -206,7 +209,7 @@ export async function replaceSearchPageContentFromUrl(url: string): Promise<HTML
 }
 
 export function computePreviewPageSize(root: ParentNode = document): number {
-  const range = readShowingRange(root);
+  const range = dom.readShowingRange(root);
 
   if (!range) {
     throw new Error(texts.errors.previewPageSizeUnknown);
@@ -218,7 +221,7 @@ export function computePreviewPageSize(root: ParentNode = document): number {
     return currentPageCount;
   }
 
-  const lastPreviewIndex = maxPreviewPageIndex(root);
+  const lastPreviewIndex = dom.maxPreviewPageIndex(root);
 
   if (lastPreviewIndex === null || lastPreviewIndex <= 0) {
     return currentPageCount;
@@ -231,10 +234,6 @@ export function computePreviewPageSize(root: ParentNode = document): number {
   }
 
   return fullPageCount;
-}
-
-export function maxPreviewPageIndex(root: ParentNode = document, baseUrl = window.location.href): number | null {
-  return dom.maxPreviewPageIndex(root, baseUrl);
 }
 
 export async function pullPreviewPage(index: number, landingIndex: number, landingPages: ReaderPage[]): Promise<ReaderPage[]> {
@@ -270,45 +269,12 @@ export async function loadEhImagePage(page: ReaderPage): Promise<LoadedReaderPag
   };
 }
 
-export function replaceGalleryPageBar(currentIndex: number, maxIndex: number | null): void {
-  dom.replaceGalleryPageBar({
-    currentIndex,
-    maxIndex,
-    previewUrlForIndex,
-  });
+export function replaceGalleryPageBarMounts(topClassName: string, bottomClassName: string): dom.GalleryPageBarMount[] {
+  return dom.replaceGalleryPageBarMounts(topClassName, bottomClassName);
 }
 
-export function snapshotPreview(): PreviewSnapshot {
-  return dom.snapshotPreview();
-}
-
-export function installPreviewPlaceholder(): void {
-  dom.installPreviewPlaceholder();
-}
-
-export function replacePreviewContent(doc: Document, baseUrl: string): void {
+export function replacePreviewContent(doc: Document): void {
   dom.replacePreviewContent(doc);
-  replaceGalleryPageBar(previewPageIndexFromUrl(baseUrl) ?? previewPageIndex(), maxPreviewPageIndex(doc, baseUrl));
-}
-
-export function prepareThumbsGridSwipeTargets(thumbs: HTMLElement): void {
-  dom.prepareThumbsGridSwipeTargets(thumbs);
-}
-
-export function restorePreview(snapshot: unknown): void {
-  dom.restorePreview(snapshot as PreviewSnapshot);
-}
-
-export function mountSettingsMenu(settingsMenu: Parameters<typeof dom.mountSettingsMenu>[0], touchTopBarMenuItemClassName: string): boolean {
-  return dom.mountSettingsMenu(settingsMenu, touchTopBarMenuItemClassName);
-}
-
-export function settingsMenuTriggerTagName(): "a" | "button" {
-  return dom.settingsMenuTriggerTagName();
-}
-
-export function mountGalleryContinueReadingButton(button: HTMLButtonElement): void {
-  dom.mountGalleryContinueReadingButton(button);
 }
 
 function numericAttribute(element: Element | null, attribute: string): number | null {

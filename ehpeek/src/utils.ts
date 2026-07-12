@@ -63,12 +63,14 @@ export function stopEvent(event: Event): void {
 }
 
 export function registerGlobalStyle(id: string, css: string): void {
-  if (document.getElementById(id)) {
+  const styleId = `style-${id}`;
+
+  if (document.getElementById(styleId)) {
     return;
   }
 
   const style = document.createElement("style");
-  style.id = `style-${id}`;
+  style.id = styleId;
   style.textContent = css;
   document.head.append(style);
 }
@@ -82,8 +84,4 @@ export function targetSummary(target: EventTarget | null): string {
   const className = typeof target.className === "string" && target.className ? `.${target.className.replace(/\s+/g, ".")}` : "";
 
   return `${target.tagName.toLowerCase()}${id}${className}`;
-}
-
-export function assertNever(value: never): never {
-  throw new Error(`Unexpected value: ${String(value)}`);
 }

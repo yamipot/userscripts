@@ -1,52 +1,48 @@
-import { PointerGesture, type PointerDragEnd, type PointerDragMove } from "../common/pointerGesture";
-import { SwipeIndicator } from "./Misc";
-import { h } from "../../jsx";
+import type { PointerDragEnd, PointerDragMove } from "../common/pointerGesture";
+import { usePointerGestureElement } from "../common/PointerGestureSurface";
+import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
+import { h } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import * as eh from "../../eh";
-import type { PageType } from "../../eh";
 
 const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
 const HORIZONTAL_INTENT_RATIO = 2.2;
 const SWIPE_MAX_VERTICAL_RATIO = 0.38;
-const SEARCH_SWIPE_WRAPPER_CLASS = "ehpeek-search-swipe-wrapper";
 
 let installed = false;
-let swipeElement: HTMLDivElement | null = null;
-let swipeIndicator: SwipeIndicator | null = null;
+let swipeElement: HTMLElement | null = null;
+let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
+let swipeIndicator: SwipeIndicatorHandle | null = null;
+let swipeIndicatorDirection: SwipeDirection = "left";
 let swipeState: SwipeState | null = null;
 let searchNavigationLoading = false;
-const installedSwipeElements = new WeakSet<HTMLElement>();
 
 type SwipeState = {
   horizontal: boolean;
   cancelled: boolean;
 };
 
-export function installEnhanceSearchGrids(pageType: Extract<PageType, { type: "search" }>): void {
-  if (installed || pageType.type !== "search" || !eh.searchPageNavigation()) {
-    return;
-  }
+export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
+  const [gestureTarget, setGestureTarget] = useState<HTMLElement | null>(null);
 
-  const resultList = eh.searchResultList();
+  useEffect(() => {
+    setSwipeGestureTarget = setGestureTarget;
+    setResultListSwipeTarget(props.resultList);
 
-  if (!resultList?.parentElement) {
-    return;
-  }
+    if (!installed) {
+      installed = true;
+      document.addEventListener("click", onSearchNavigationClick, true);
+    }
 
-  installed = true;
-  installResultListEnhancement(resultList);
-  document.addEventListener("click", onSearchNavigationClick, true);
-}
+    return () => {
+      if (setSwipeGestureTarget === setGestureTarget) {
+        setSwipeGestureTarget = null;
+      }
+    };
+  }, [props.resultList]);
 
-function installResultListEnhancement(resultList: HTMLElement): void {
-  swipeElement = installResultListSwipeDom(resultList);
-
-  if (installedSwipeElements.has(swipeElement)) {
-    return;
-  }
-
-  installedSwipeElements.add(swipeElement);
-  new PointerGesture(swipeElement, {
+  usePointerGestureElement(gestureTarget, {
     onStart: () => {
       swipeState = { horizontal: false, cancelled: false };
       hideSwipeIndicator();
@@ -64,37 +60,21 @@ function installResultListEnhancement(resultList: HTMLElement): void {
       clickFromStartTarget(info.startTarget, info.clientX, info.clientY);
     },
   });
+
+  return (
+    <SwipeIndicator
+      handleRef={(handle) => {
+        swipeIndicator = handle;
+      }}
+    />
+  );
 }
 
-function installResultListSwipeDom(resultList: HTMLElement): HTMLDivElement {
-  const existingWrapper = resultList.parentElement?.classList.contains(SEARCH_SWIPE_WRAPPER_CLASS)
-    ? (resultList.parentElement as HTMLDivElement)
-    : null;
-  const wrapper =
-    existingWrapper ??
-    (
-      <div
-        className={
-          SEARCH_SWIPE_WRAPPER_CLASS +
-          " relative block w-full overscroll-x-contain touch-pan-y"
-        }
-      />
-    ) as HTMLDivElement;
-  const indicator = new SwipeIndicator();
-
-  wrapper.className =
-    SEARCH_SWIPE_WRAPPER_CLASS +
-    " relative block w-full overscroll-x-contain touch-pan-y";
-  swipeIndicator = indicator;
-
-  if (!existingWrapper) {
-    resultList.before(wrapper);
-    wrapper.append(resultList);
-  }
-
-  wrapper.querySelectorAll<HTMLElement>(":scope > .ehpeek-swipe-indicator").forEach((item) => item.remove());
-  wrapper.append(indicator.element);
-  return wrapper;
+function setResultListSwipeTarget(resultList: HTMLElement): void {
+  resultList.style.touchAction = "pan-y";
+  resultList.style.overscrollBehaviorX = "contain";
+  swipeElement = resultList;
+  setSwipeGestureTarget?.(resultList);
 }
 
 function onSearchNavigationClick(event: MouseEvent): void {
@@ -158,25 +138,30 @@ function updateSwipeState(info: PointerDragMove, event: PointerEvent | MouseEven
 }
 
 function updateSwipeIndicator(info: PointerDragMove): void {
-  if (!swipeIndicator || !swipeState?.horizontal || swipeState.cancelled) {
+  if (!swipeState?.horizontal || swipeState.cancelled) {
     return;
   }
 
   const direction = info.dx < 0 ? "left" : "right";
   const availableUrl = swipeUrlForDelta(info.dx);
+  const progress = swipeProgressForDelta(info.dx);
 
   if (!availableUrl) {
-    swipeIndicator.hide();
+    swipeIndicatorDirection = direction;
+    swipeIndicator?.update({
+      blocked: true,
+      direction,
+      progress,
+    });
     return;
   }
 
-  const progress = Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
-
-  swipeIndicator.show(direction, progress);
+  swipeIndicatorDirection = direction;
+  swipeIndicator?.update({ direction, progress });
 }
 
 function hideSwipeIndicator(): void {
-  swipeIndicator?.hide();
+  swipeIndicator?.hide(swipeIndicatorDirection);
 }
 
 function navigateBySwipe(info: PointerDragEnd, event: Event): void {
@@ -213,7 +198,7 @@ async function navigateSearchPage(url: string, scrollToTopNavigation: boolean): 
   try {
     const resultList = await eh.replaceSearchPageContentFromUrl(url);
     window.history.pushState(window.history.state, "", url);
-    installResultListEnhancement(resultList);
+    setResultListSwipeTarget(resultList);
   } catch (error) {
     console.error("[ehpeek]", error);
   } finally {
@@ -230,6 +215,10 @@ function swipeUrlForDelta(dx: number): string | null {
   }
 
   return dx < 0 ? nav.nextUrl : nav.previousUrl;
+}
+
+function swipeProgressForDelta(dx: number): number {
+  return Math.min(1, Math.max(0, (Math.abs(dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
 }
 
 function scrollSearchNavigationIntoView(enabled: boolean): void {

@@ -1,4 +1,5 @@
-import { applyProps, h, type Props } from "../jsx";
+import { h } from "preact";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import { registerGlobalStyle } from "../utils";
 
 const PROGRESS_BAR_CLASS = "ehpeek-progress-bar";
@@ -55,55 +56,69 @@ registerGlobalStyle(PROGRESS_BAR_CLASS, `
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }`);
 
-export function ProgressBar(props: Props<{
+export function ProgressBar(props: {
+  className?: string;
+  direction?: "ltr" | "rtl";
+  fillPercent?: number;
+  keepInputValue?: boolean;
   max?: number;
   min: number;
+  onCommit?: (value: number) => void;
+  onInput?: (value: number) => void;
   onPointerDown?: (event: PointerEvent) => void;
-  onInput?: () => void;
-  onCommit?: () => void;
   step: number;
-}, HTMLInputElement, ReturnType<typeof createProgressBarOperator>>): HTMLInputElement {
-  const element = (
+  value?: number;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    const element = input.current;
+
+    if (!element) {
+      return;
+    }
+
+    const max = Math.max(1, props.max ?? props.min);
+    const direction = props.direction ?? "ltr";
+    element.min = String(props.min);
+    element.max = String(max);
+    element.step = String(props.step);
+    element.dir = direction;
+    element.style.setProperty("--progress-bar-track-direction", direction === "rtl" ? "to left" : "to right");
+    element.style.setProperty("--progress-bar-fill", `${Math.min(100, Math.max(0, props.fillPercent ?? 0))}%`);
+
+    if (!props.keepInputValue && props.value !== undefined) {
+      element.value = String(props.value);
+    }
+  }, [props.direction, props.fillPercent, props.keepInputValue, props.max, props.min, props.step, props.value]);
+
+  const currentValue = (event: Event): number => Number((event.currentTarget as HTMLInputElement).value || "");
+
+  return (
     <input
+      ref={input}
       type="range"
-      className={PROGRESS_BAR_CLASS_NAME}
+      className={`${PROGRESS_BAR_CLASS_NAME}${props.className ? ` ${props.className}` : ""}`}
       min={String(props.min)}
       max={props.max === undefined ? undefined : String(props.max)}
       step={String(props.step)}
-      onPointerDown={props.onPointerDown}
-      onInput={props.onInput}
-      onChange={props.onCommit}
-      onPointerUp={props.onCommit}
-      onPointerCancel={props.onCommit}
+      defaultValue={String(props.value ?? props.min)}
+      dir={props.direction ?? "ltr"}
+      onPointerDown={(event: PointerEvent) => {
+        props.onPointerDown?.(event);
+      }}
+      onInput={(event: Event) => {
+        props.onInput?.(currentValue(event));
+      }}
+      onChange={(event: Event) => {
+        props.onCommit?.(currentValue(event));
+      }}
+      onPointerUp={(event: PointerEvent) => {
+        props.onCommit?.(currentValue(event));
+      }}
+      onPointerCancel={(event: PointerEvent) => {
+        props.onCommit?.(currentValue(event));
+      }}
     />
-  ) as HTMLInputElement;
-  const operator = createProgressBarOperator(element);
-
-  return applyProps({ props, operator }, element);
-}
-
-function createProgressBarOperator(element: HTMLInputElement) {
-  return {
-    range: () => {
-      return {
-        min: Number(element.min || "1"),
-        max: Number(element.max || "1"),
-      };
-    },
-    value: () => Number(element.value || ""),
-    setDirection: (direction: "ltr" | "rtl") => {
-      const rtl = direction === "rtl";
-      element.dir = direction;
-      element.style.setProperty("--progress-bar-track-direction", rtl ? "to left" : "to right");
-    },
-    setFill: (fillPercent: number) => {
-      element.style.setProperty("--progress-bar-fill", `${fillPercent}%`);
-    },
-    setMax: (max: number) => {
-      element.max = String(Math.max(1, max));
-    },
-    setValue: (value: number) => {
-      element.value = String(value);
-    },
-  };
+  );
 }

@@ -1,6 +1,8 @@
-import { h } from "../../jsx";
+import { h } from "preact";
+import { useRef, useState } from "preact/hooks";
 import { clamp } from "../../utils";
-import { PointerGesture, type PointerDragTap } from "../common/pointerGesture";
+import type { PointerDragTap } from "../common/pointerGesture";
+import { usePointerGestureElement } from "../common/PointerGestureSurface";
 
 export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
 export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
@@ -30,157 +32,94 @@ export type ScrollPageBarOptions = {
   urlForIndex: (index: number) => string;
 };
 
-function scrollPageBarDom(top: boolean, draggable: boolean) {
-  const body = <tbody /> as HTMLTableSectionElement;
-  const table = <table className={PAGE_BAR_TABLE_CLASS}>{body}</table> as HTMLTableElement;
-  const element = (
-    <div className={`${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`}>
-      {table}
-    </div>
-  ) as HTMLDivElement;
+export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDivElement }) {
+  const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
+  const currentIndex = clamp(options.currentIndex, 0, maxIndex);
+  const [windowIndex, setWindowIndex] = useState(() =>
+    clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex),
+  );
+  const dragStartWindowIndex = useRef(windowIndex);
+  const draggable = () => maxIndex + 1 > 7;
+  const slots = pageSlots(windowIndex, currentIndex, maxIndex);
+  const firstSlotIndex = slots[0]?.pageIndex ?? currentIndex;
+  const lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? currentIndex;
+  const currentBeforeWindow = currentIndex < firstSlotIndex;
+  const currentAfterWindow = currentIndex > lastSlotIndex;
+  const linkCell = (text: string, pageIndex: number, current: boolean) => {
+    if (current) {
+      return (
+        <td className={`ptds ${PAGE_BAR_CELL_CLASS}`}>
+          <span className={PAGE_BAR_LINK_CLASS}>{text}</span>
+        </td>
+      );
+    }
 
-  return {
-    element,
-    render(row: HTMLTableRowElement, windowIndex: number) {
-      body.replaceChildren(row);
-      element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex));
-    },
-  };
-}
-
-function pageBarRowDom(options: {
-  currentAfterWindow: boolean;
-  currentBeforeWindow: boolean;
-  currentIndex: number;
-  maxIndex: number;
-  slots: Array<PageBarSlot | null>;
-  urlForIndex: (index: number) => string;
-}): HTMLTableRowElement {
-  const { currentAfterWindow, currentBeforeWindow, currentIndex, maxIndex, slots, urlForIndex } = options;
-
-  return (
-    <tr>
-      {pageBarLinkCellDom("<<", 0, currentIndex === 0, urlForIndex)}
-      {currentBeforeWindow ? pageBarLinkCellDom(String(currentIndex + 1), currentIndex, true, urlForIndex) : pageBarEmptyCellDom()}
-      {pageBarLinkCellDom("<", Math.max(0, currentIndex - 1), currentIndex === 0, urlForIndex)}
-      {slots.map((slot) =>
-        slot ? pageBarLinkCellDom(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex, urlForIndex) : pageBarEmptyCellDom(),
-      )}
-      {pageBarLinkCellDom(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex, urlForIndex)}
-      {currentAfterWindow ? pageBarLinkCellDom(String(currentIndex + 1), currentIndex, true, urlForIndex) : pageBarEmptyCellDom()}
-      {pageBarLinkCellDom(">>", maxIndex, currentIndex === maxIndex, urlForIndex)}
-    </tr>
-  ) as HTMLTableRowElement;
-}
-
-function pageBarLinkCellDom(text: string, pageIndex: number, current: boolean, urlForIndex: (index: number) => string): HTMLTableCellElement {
-  if (current) {
     return (
-      <td className={`ptds ${PAGE_BAR_CELL_CLASS}`}>
-        <span className={PAGE_BAR_LINK_CLASS}>{text}</span>
+      <td className={PAGE_BAR_CELL_CLASS}>
+        <a className={PAGE_BAR_LINK_CLASS} href={options.urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
+          {text}
+        </a>
       </td>
-    ) as HTMLTableCellElement;
-  }
-
-  return (
-    <td className={PAGE_BAR_CELL_CLASS}>
-      <a className={PAGE_BAR_LINK_CLASS} href={urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
-        {text}
-      </a>
-    </td>
-  ) as HTMLTableCellElement;
-}
-
-function pageBarEmptyCellDom(): HTMLTableCellElement {
-  return (
+    );
+  };
+  const emptyCell = () => (
     <td className={`${PAGE_BAR_CELL_CLASS} cursor-default`}>
       <span className={`${PAGE_BAR_LINK_CLASS} invisible`} />
     </td>
-  ) as HTMLTableCellElement;
+  );
+
+  options.element.className = `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`;
+  options.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex));
+
+  usePointerGestureElement(options.element, {
+    shouldCaptureDrag: draggable,
+    onStart: () => {
+      dragStartWindowIndex.current = windowIndex;
+    },
+    onMove: (info) => {
+      if (Math.abs(info.dx) < Math.abs(info.dy)) {
+        return;
+      }
+
+      const nextIndex = clamp(dragStartWindowIndex.current - acceleratedPageOffset(info.dx), 0, maxIndex);
+
+      if (nextIndex === windowIndex) {
+        return;
+      }
+
+      galleryPageBarWindowIndex = nextIndex;
+      setWindowIndex(nextIndex);
+    },
+    onTap: (info) => {
+      tapPageLink(options.element, info);
+    },
+  });
+
+  return (
+    <table className={PAGE_BAR_TABLE_CLASS}>
+      <tbody>
+        <tr>
+          {linkCell("<<", 0, currentIndex === 0)}
+          {currentBeforeWindow ? linkCell(String(currentIndex + 1), currentIndex, true) : emptyCell()}
+          {linkCell("<", Math.max(0, currentIndex - 1), currentIndex === 0)}
+          {slots.map((slot) => (slot ? linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex) : emptyCell()))}
+          {linkCell(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex)}
+          {currentAfterWindow ? linkCell(String(currentIndex + 1), currentIndex, true) : emptyCell()}
+          {linkCell(">>", maxIndex, currentIndex === maxIndex)}
+        </tr>
+      </tbody>
+    </table>
+  );
 }
 
-export class ScrollPageBar {
-  readonly element: HTMLDivElement;
-  private readonly dom: ReturnType<typeof scrollPageBarDom>;
-  private readonly currentIndex: number;
-  private readonly maxIndex: number;
-  private readonly urlForIndex: (index: number) => string;
-  private windowIndex: number;
-  private dragStartWindowIndex = 0;
+function tapPageLink(element: HTMLElement | null, info: PointerDragTap): void {
+  const link = info.startTarget instanceof Element ? info.startTarget.closest<HTMLAnchorElement>("a[data-page-index]") : null;
 
-  constructor(options: ScrollPageBarOptions) {
-    const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
-    const currentIndex = clamp(options.currentIndex, 0, maxIndex);
-    this.currentIndex = currentIndex;
-    this.maxIndex = maxIndex;
-    this.urlForIndex = options.urlForIndex;
-    this.windowIndex = clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex);
-    this.dom = scrollPageBarDom(options.top, this.draggable());
-    this.element = this.dom.element;
-    this.render();
-    this.installDrag();
+  if (!link || !element?.contains(link)) {
+    return;
   }
 
-  private render(): void {
-    const slots = pageSlots(this.windowIndex, this.currentIndex, this.maxIndex);
-    const firstSlotIndex = slots[0]?.pageIndex ?? this.currentIndex;
-    const lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? this.currentIndex;
-    const currentBeforeWindow = this.currentIndex < firstSlotIndex;
-    const currentAfterWindow = this.currentIndex > lastSlotIndex;
-    const row = pageBarRowDom({
-      currentAfterWindow,
-      currentBeforeWindow,
-      currentIndex: this.currentIndex,
-      maxIndex: this.maxIndex,
-      slots,
-      urlForIndex: this.urlForIndex,
-    });
-
-    this.dom.render(row, this.windowIndex);
-  }
-
-  private installDrag(): void {
-    new PointerGesture(this.element, {
-      shouldCaptureDrag: () => this.draggable(),
-      onStart: () => {
-        this.dragStartWindowIndex = this.windowIndex;
-      },
-      onMove: (info) => {
-        if (Math.abs(info.dx) < Math.abs(info.dy)) {
-          return;
-        }
-
-        const nextIndex = clamp(this.dragStartWindowIndex - acceleratedPageOffset(info.dx), 0, this.maxIndex);
-
-        if (nextIndex === this.windowIndex) {
-          return;
-        }
-
-        this.windowIndex = nextIndex;
-        galleryPageBarWindowIndex = nextIndex;
-        this.render();
-      },
-      onTap: (info) => this.tapPageLink(info),
-    });
-  }
-
-  private draggable(): boolean {
-    return this.maxIndex + 1 > 7;
-  }
-
-  private tapPageLink(info: PointerDragTap): void {
-    const link = info.startTarget instanceof Element ? info.startTarget.closest<HTMLAnchorElement>("a[data-page-index]") : null;
-
-    if (!link || !this.element.contains(link)) {
-      return;
-    }
-
-    link.click();
-  }
-}
-
-export function createScrollPageBar(options: ScrollPageBarOptions): HTMLDivElement {
-  return new ScrollPageBar(options).element;
+  link.click();
 }
 
 export function setScrollPageBarWindowIndex(index: number): void {

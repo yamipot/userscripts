@@ -16,7 +16,6 @@ declare const GM_listValues: () => string[];
 declare const GM_registerMenuCommand:
   | undefined
   | ((caption: string, commandFunc: () => void, accessKey?: string) => number | string);
-declare const GM_unregisterMenuCommand: undefined | ((menuCmdId: number | string) => void);
 
 declare namespace JSX {
   type Element = HTMLElement | DocumentFragment;

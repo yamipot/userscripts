@@ -1,13 +1,15 @@
-import type { ReaderPage } from "../Reader";
-import { PointerGesture, type PointerDragEnd, type PointerDragMove } from "../common/pointerGesture";
-import { SwipeIndicator } from "./Misc";
+import type { ReaderPage } from "../../readerTypes";
+import type { PointerDragEnd, PointerDragMove } from "../common/pointerGesture";
+import { usePointerGestureElement } from "../common/PointerGestureSurface";
+import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
+import { h } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import {
   SCROLL_PAGE_BAR_BOTTOM_CLASS,
   SCROLL_PAGE_BAR_CLASS,
   SCROLL_PAGE_BAR_TOP_CLASS,
   setScrollPageBarWindowIndex,
 } from "./ScrollPageBar";
-import { h } from "../../jsx";
 import * as eh from "../../eh";
 import { state } from "../../state";
 import { clamp, requestText } from "../../utils";
@@ -17,15 +19,16 @@ const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
 const HORIZONTAL_INTENT_RATIO = 2.2;
 const SWIPE_MAX_VERTICAL_RATIO = 0.38;
-const THUMBS_SWIPE_WRAPPER_CLASS = "ehpeek-thumbs-swipe-wrapper";
 
-let galleryThumbEnhancementErrorHandler: ((error: unknown) => void) | null = null;
+let galleryThumbEnhancementOnError: ((error: unknown) => void) | null = null;
 let galleryThumbEnhancementClickInstalled = false;
-let swipeElement: HTMLDivElement | null = null;
-let swipeIndicator: SwipeIndicator | null = null;
+let swipeElement: HTMLElement | null = null;
+let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
+let swipeIndicator: SwipeIndicatorHandle | null = null;
+let swipeIndicatorDirection: SwipeDirection = "left";
 let swipeState: SwipeState | null = null;
 let galleryNavigationLoading = false;
-const installedSwipeElements = new WeakSet<HTMLElement>();
+let replaceGalleryPageBar: ((currentIndex: number, maxIndex: number | null) => void) | null = null;
 
 type SwipeState = {
   horizontal: boolean;
@@ -73,20 +76,6 @@ export class GalleryPageProvider {
     );
   }
 
-  displayWindowAround(pageNum: number): number[] {
-    const numbers: number[] = [];
-
-    for (let offset = -this.windowSize; offset <= this.windowSize; offset += 1) {
-      const value = pageNum + offset;
-
-      if (value > 0) {
-        numbers.push(value);
-      }
-    }
-
-    return numbers;
-  }
-
   private async cachedPreviewPage(index: number): Promise<ReaderPage[]> {
     const boundedIndex = this.maxPreviewIndex === null ? index : Math.min(index, this.maxPreviewIndex);
 
@@ -119,20 +108,64 @@ export class GalleryPageProvider {
   }
 }
 
-export function installEnhanceThumbsGrids(onError: (error: unknown) => void): void {
-  galleryThumbEnhancementErrorHandler = onError;
+export function EnhanceThumbsGrids(props: {
+  enabled: boolean;
+  onError: (error: unknown) => void;
+  replaceGalleryPageBar: (currentIndex: number, maxIndex: number | null) => void;
+}) {
+  const [gestureTarget, setGestureTarget] = useState<HTMLElement | null>(null);
 
-  if (enhanceThumbsGridsEnabled()) {
-    installGalleryPageBar();
-    installThumbsGridSwipe();
-  }
+  useEffect(() => {
+    setSwipeGestureTarget = setGestureTarget;
+    replaceGalleryPageBar = props.replaceGalleryPageBar;
 
-  if (galleryThumbEnhancementClickInstalled) {
-    return;
-  }
+    if (props.enabled) {
+      galleryThumbEnhancementOnError = props.onError;
+      replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
+      setThumbsGridSwipeTarget();
 
-  galleryThumbEnhancementClickInstalled = true;
-  document.addEventListener("click", onPageBarClick, true);
+      if (!galleryThumbEnhancementClickInstalled) {
+        galleryThumbEnhancementClickInstalled = true;
+        document.addEventListener("click", onPageBarClick, true);
+      }
+    }
+
+    return () => {
+      if (setSwipeGestureTarget === setGestureTarget) {
+        setSwipeGestureTarget = null;
+      }
+      if (replaceGalleryPageBar === props.replaceGalleryPageBar) {
+        replaceGalleryPageBar = null;
+      }
+    };
+  }, [props.enabled, props.onError, props.replaceGalleryPageBar]);
+
+  usePointerGestureElement(gestureTarget, {
+    onStart: () => {
+      swipeState = { horizontal: false, cancelled: false };
+      hideSwipeIndicator();
+    },
+    onMove: (info, event) => {
+      updateSwipeState(info, event);
+      updateSwipeIndicator(info);
+    },
+    onEnd: (info, event) => {
+      navigateBySwipe(info, event);
+      swipeState = null;
+      hideSwipeIndicator();
+    },
+    onTap: (info) => {
+      clickFromStartTarget(info.startTarget, info.clientX, info.clientY);
+    },
+  });
+
+  return props.enabled ? (
+    <SwipeIndicator
+      handleRef={(handle) => {
+        swipeIndicator = handle;
+      }}
+    />
+  ) : null;
 }
 
 export async function navigateGalleryPreview(
@@ -154,28 +187,29 @@ export async function navigateGalleryPreview(
 
   if (targetPreviewIndex !== null) {
     setScrollPageBarWindowIndex(targetPreviewIndex);
-    eh.replaceGalleryPageBar(targetPreviewIndex, eh.maxPreviewPageIndex());
+    replaceGalleryPageBar?.(targetPreviewIndex, eh.maxPreviewPageIndex());
   }
 
   if (options.scrollToPageBar) {
     scrollToPageBar(options.scrollToPageBar);
   }
 
-  eh.installPreviewPlaceholder();
+  eh.showPreviewPlaceholder();
 
   try {
     const html = await requestText(url);
     const doc = new DOMParser().parseFromString(html, "text/html");
 
-    eh.replacePreviewContent(doc, url);
-    installThumbsGridSwipe();
+    eh.replacePreviewContent(doc);
+    replaceGalleryPageBar?.(eh.previewPageIndexFromUrl(url) ?? eh.previewPageIndex(), eh.maxPreviewPageIndex());
+    setThumbsGridSwipeTarget();
     if (options.scrollToPageBar) {
       scrollToPageBar(options.scrollToPageBar);
     }
   } catch (error) {
     eh.restorePreview(snapshot);
     window.history.replaceState(window.history.state, "", previousUrl);
-    eh.replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
+    replaceGalleryPageBar?.(eh.previewPageIndex(), eh.maxPreviewPageIndex());
     throw error;
   } finally {
     galleryNavigationLoading = false;
@@ -183,62 +217,20 @@ export async function navigateGalleryPreview(
   }
 }
 
-function installThumbsGridSwipe(): void {
+function setThumbsGridSwipeTarget(): void {
   if (!enhanceThumbsGridsEnabled()) {
     return;
   }
 
   const thumbs = document.querySelector<HTMLElement>("#gdt");
 
-  if (!thumbs?.parentElement) {
+  if (!thumbs) {
     return;
   }
 
-  swipeElement = installThumbsGridSwipeDom(thumbs);
+  swipeElement = thumbs;
   eh.prepareThumbsGridSwipeTargets(thumbs);
-
-  if (installedSwipeElements.has(swipeElement)) {
-    return;
-  }
-
-  installedSwipeElements.add(swipeElement);
-  new PointerGesture(swipeElement, {
-    onStart: () => {
-      swipeState = { horizontal: false, cancelled: false };
-      hideSwipeIndicator();
-    },
-    onMove: (info, event) => {
-      updateSwipeState(info, event);
-      updateSwipeIndicator(info);
-    },
-    onEnd: (info, event) => {
-      navigateBySwipe(info, event);
-      swipeState = null;
-      hideSwipeIndicator();
-    },
-    onTap: (info) => {
-      clickFromStartTarget(info.startTarget, info.clientX, info.clientY);
-    },
-  });
-}
-
-function installThumbsGridSwipeDom(thumbs: HTMLElement): HTMLDivElement {
-  const existingWrapper = thumbs.parentElement?.classList.contains(THUMBS_SWIPE_WRAPPER_CLASS)
-    ? (thumbs.parentElement as HTMLDivElement)
-    : null;
-  const wrapper = existingWrapper ?? (<div className={`${THUMBS_SWIPE_WRAPPER_CLASS} relative`} /> as HTMLDivElement);
-  const indicator = new SwipeIndicator();
-
-  swipeIndicator = indicator;
-
-  if (!existingWrapper) {
-    thumbs.before(wrapper);
-    wrapper.append(thumbs);
-  }
-
-  wrapper.querySelectorAll<HTMLElement>(":scope > .ehpeek-swipe-indicator").forEach((item) => item.remove());
-  wrapper.append(indicator.element);
-  return wrapper;
+  setSwipeGestureTarget?.(thumbs);
 }
 
 function clickFromStartTarget(startTarget: EventTarget | null, clientX: number, clientY: number): void {
@@ -290,25 +282,30 @@ function updateSwipeState(info: PointerDragMove, event: PointerEvent | MouseEven
 }
 
 function updateSwipeIndicator(info: PointerDragMove): void {
-  if (!swipeIndicator || !swipeState?.horizontal || swipeState.cancelled) {
+  if (!swipeState?.horizontal || swipeState.cancelled) {
     return;
   }
 
   const direction = info.dx < 0 ? "left" : "right";
   const availableUrl = swipeUrlForDelta(info.dx);
+  const progress = swipeProgressForDelta(info.dx);
 
   if (!availableUrl) {
-    swipeIndicator.hide();
+    swipeIndicatorDirection = direction;
+    swipeIndicator?.update({
+      blocked: true,
+      direction,
+      progress,
+    });
     return;
   }
 
-  const progress = Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
-
-  swipeIndicator.show(direction, progress);
+  swipeIndicatorDirection = direction;
+  swipeIndicator?.update({ direction, progress });
 }
 
 function hideSwipeIndicator(): void {
-  swipeIndicator?.hide();
+  swipeIndicator?.hide(swipeIndicatorDirection);
 }
 
 function navigateBySwipe(info: PointerDragEnd, event: Event): void {
@@ -330,7 +327,7 @@ function navigateBySwipe(info: PointerDragEnd, event: Event): void {
   if (url) {
     event.preventDefault();
     void navigateGalleryPreview(url, { scrollToPageBar: dx < 0 ? "top" : "bottom" }).catch((error) =>
-      galleryThumbEnhancementErrorHandler?.(error),
+      galleryThumbEnhancementOnError?.(error),
     );
   }
 }
@@ -345,6 +342,10 @@ function swipeUrlForDelta(dx: number): string | null {
   }
 
   return eh.previewUrlForIndex(nextIndex);
+}
+
+function swipeProgressForDelta(dx: number): number {
+  return Math.min(1, Math.max(0, (Math.abs(dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)));
 }
 
 function onPageBarClick(event: MouseEvent): void {
@@ -378,7 +379,7 @@ function onPageBarClick(event: MouseEvent): void {
   }
 
   void navigateGalleryPreview(url, { scrollToPageBar: pageBarScrollTarget(barItem, targetPreviewIndex) }).catch((error) =>
-    galleryThumbEnhancementErrorHandler?.(error),
+    galleryThumbEnhancementOnError?.(error),
   );
 }
 
@@ -402,10 +403,6 @@ function scrollToPageBar(target: "top" | "bottom"): void {
   const block = target === "top" ? "start" : "end";
 
   document.querySelector<HTMLElement>(selector)?.scrollIntoView({ block, behavior: "smooth" });
-}
-
-function installGalleryPageBar(): void {
-  eh.replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
 }
 
 function pageBarUrl(item: HTMLElement): string | null {

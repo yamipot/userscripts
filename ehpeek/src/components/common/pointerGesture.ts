@@ -1,5 +1,3 @@
-import { DomData } from "../../jsx";
-
 export type PointerDragStart = {
   clientX: number;
   clientY: number;
@@ -29,10 +27,22 @@ export type PointerPinchMove = PointerPinchStart & {
 
 const DEFAULT_TAP_MOVE_THRESHOLD_PX = 8;
 
+export type PointerGestureCallbacks = {
+  shouldCaptureDrag?: (event: PointerEvent | MouseEvent) => boolean;
+  shouldObserveTap?: (event: PointerEvent | MouseEvent) => boolean;
+  onStart?: (info: PointerDragStart, event: PointerEvent | MouseEvent) => void;
+  onMove?: (info: PointerDragMove, event: PointerEvent | MouseEvent) => void;
+  onEnd?: (info: PointerDragEnd, event: PointerEvent | MouseEvent) => void;
+  onTap?: (info: PointerDragTap, event: PointerEvent | MouseEvent) => void;
+  onPinchStart?: (info: PointerPinchStart, event: PointerEvent) => boolean;
+  onPinchMove?: (info: PointerPinchMove, event: PointerEvent) => void;
+  onPinchEnd?: () => void;
+  tapMoveThreshold?: number;
+};
+
 export class PointerGesture {
   private mousePointerId = -1;
   private readonly pinchPointers = new Map<number, { clientX: number; clientY: number }>();
-  private readonly dragging = new DomData<boolean>();
   private drag: {
     pointerId: number;
     pointerType: string;
@@ -59,20 +69,9 @@ export class PointerGesture {
 
   constructor(
     private readonly target: HTMLElement,
-    private readonly handlers: {
-      shouldCaptureDrag?: (event: PointerEvent | MouseEvent) => boolean;
-      shouldObserveTap?: (event: PointerEvent | MouseEvent) => boolean;
-      onStart?: (info: PointerDragStart, event: PointerEvent | MouseEvent) => void;
-      onMove?: (info: PointerDragMove, event: PointerEvent | MouseEvent) => void;
-      onEnd?: (info: PointerDragEnd, event: PointerEvent | MouseEvent) => void;
-      onTap?: (info: PointerDragTap, event: PointerEvent | MouseEvent) => void;
-      onPinchStart?: (info: PointerPinchStart, event: PointerEvent) => boolean;
-      onPinchMove?: (info: PointerPinchMove, event: PointerEvent) => void;
-      onPinchEnd?: () => void;
-      tapMoveThreshold?: number;
-    },
+    private readonly callbacks: PointerGestureCallbacks,
   ) {
-    this.dragging.bindElement(target, "dragging", false);
+    this.setDragging(false);
     target.addEventListener("pointerdown", this.onPointerDown);
     target.addEventListener("mousedown", this.onMouseDown);
     target.addEventListener("dragstart", this.onDragStart);
@@ -84,7 +83,7 @@ export class PointerGesture {
       this.drag = null;
     }
 
-    this.dragging.value = false;
+    this.setDragging(false);
     this.clearPinch();
     this.passiveTap = null;
     this.removePointerListeners();
@@ -106,7 +105,7 @@ export class PointerGesture {
 
     this.target.releasePointerCapture?.(this.drag.pointerId);
     this.drag = null;
-    this.dragging.value = false;
+    this.setDragging(false);
     this.removePointerListeners();
     this.removeMouseListeners();
   }
@@ -128,7 +127,7 @@ export class PointerGesture {
       return;
     }
 
-    if (this.handlers.shouldCaptureDrag && !this.handlers.shouldCaptureDrag(event)) {
+    if (this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event)) {
       this.beginPassiveTap(event);
       return;
     }
@@ -146,7 +145,7 @@ export class PointerGesture {
       return;
     }
 
-    if (this.handlers.shouldCaptureDrag && !this.handlers.shouldCaptureDrag(event)) {
+    if (this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event)) {
       return;
     }
 
@@ -167,10 +166,10 @@ export class PointerGesture {
       velocityY: 0,
     };
 
-    this.dragging.value = true;
+    this.setDragging(true);
     this.target.setPointerCapture?.(pointerId);
     this.addPointerListeners();
-    this.handlers.onStart?.({ pointerId, clientX, clientY }, event);
+    this.callbacks.onStart?.({ pointerId, clientX, clientY }, event);
   }
 
   private onPointerMove = (event: PointerEvent): void => {
@@ -229,7 +228,7 @@ export class PointerGesture {
     drag.lastClientY = clientY;
     drag.lastMoveTime = event.timeStamp;
 
-    this.handlers.onMove?.(
+    this.callbacks.onMove?.(
       {
         pointerId: drag.pointerId,
         clientX,
@@ -250,7 +249,7 @@ export class PointerGesture {
     }
 
     this.drag = null;
-    this.dragging.value = false;
+    this.setDragging(false);
     this.target.releasePointerCapture?.(drag.pointerId);
     this.removePointerListeners();
     this.removeMouseListeners();
@@ -267,10 +266,10 @@ export class PointerGesture {
     const isTap = Math.abs(info.dx) < this.tapMoveThreshold() && Math.abs(info.dy) < this.tapMoveThreshold();
 
     if (isTap) {
-      this.handlers.onTap?.({ ...info, startTarget: drag.startTarget }, event);
+      this.callbacks.onTap?.({ ...info, startTarget: drag.startTarget }, event);
     }
 
-    this.handlers.onEnd?.(info, event);
+    this.callbacks.onEnd?.(info, event);
   }
 
   private addPointerListeners(): void {
@@ -296,7 +295,7 @@ export class PointerGesture {
   }
 
   private beginPassiveTap(event: PointerEvent): void {
-    if (!this.handlers.shouldObserveTap?.(event)) {
+    if (!this.callbacks.shouldObserveTap?.(event)) {
       return;
     }
 
@@ -353,7 +352,7 @@ export class PointerGesture {
       return;
     }
 
-    this.handlers.onTap?.(
+    this.callbacks.onTap?.(
       {
         pointerId: event.pointerId,
         clientX: event.clientX,
@@ -388,7 +387,7 @@ export class PointerGesture {
   };
 
   private trackPinchPointerDown(event: PointerEvent): boolean {
-    if (!this.handlers.onPinchStart || event.pointerType === "mouse") {
+    if (!this.callbacks.onPinchStart || event.pointerType === "mouse") {
       return false;
     }
 
@@ -407,7 +406,7 @@ export class PointerGesture {
       return false;
     }
 
-    const started = this.handlers.onPinchStart(snapshot, event);
+    const started = this.callbacks.onPinchStart(snapshot, event);
 
     if (!started) {
       return false;
@@ -441,7 +440,7 @@ export class PointerGesture {
       return;
     }
 
-    this.handlers.onPinchMove?.(
+    this.callbacks.onPinchMove?.(
       {
         ...snapshot,
         scale: snapshot.distance / this.pinch.startDistance,
@@ -462,7 +461,7 @@ export class PointerGesture {
       return;
     }
 
-    this.handlers.onPinchEnd?.();
+    this.callbacks.onPinchEnd?.();
     this.clearPinch();
     event.preventDefault();
   };
@@ -510,7 +509,11 @@ export class PointerGesture {
   }
 
   private tapMoveThreshold(): number {
-    return this.handlers.tapMoveThreshold ?? DEFAULT_TAP_MOVE_THRESHOLD_PX;
+    return this.callbacks.tapMoveThreshold ?? DEFAULT_TAP_MOVE_THRESHOLD_PX;
+  }
+
+  private setDragging(dragging: boolean): void {
+    this.target.dataset.dragging = String(dragging);
   }
 
   private matchesPassiveTapPointer(

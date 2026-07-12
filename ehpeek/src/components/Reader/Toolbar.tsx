@@ -1,4 +1,4 @@
-import { DomData, h, type ComponentOperator } from "../../jsx";
+import { Fragment, h } from "preact";
 import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
@@ -22,258 +22,174 @@ const READER_BUTTON_CLASS = [
   "border color-button-reader cursor-pointer font-sans textsize-sm font-700 leading-1",
 ].join(" ");
 
-function toolbarDom(handlers: {
-  onReadDirectionClick: () => void;
-  onRightTapClick: () => void;
-  onModeClick: () => void;
+export type ToolbarCallbacks = {
   onCloseClick: () => void;
   onDisableReaderClick: () => void;
+  onModeClick: () => void;
+  onOpenChange: (open: boolean) => void;
+  onProgressCommit: (value: number) => void;
+  onProgressInput: (value: number) => void;
   onProgressPointerDown: (event: PointerEvent) => void;
-  onProgressInput: () => void;
-  onProgressCommit: () => void;
-}) {
-  let modeButton!: HTMLButtonElement;
-  let readDirectionButton!: HTMLButtonElement;
-  let rightTapButton!: HTMLButtonElement;
-  let pageNumberLabel!: HTMLElement;
-  let disableReaderButton!: HTMLButtonElement;
-  let progressBar!: ComponentOperator<typeof ProgressBar>;
-  const toolbarOpen = new DomData<boolean>();
+  onReadDirectionClick: () => void;
+  onRightTapClick: () => void;
+};
 
-  const topbar = (
-    <div
-      className={
-        // Base.
-        "fixed z-3 flex justify-end pointer-events-none " +
-        // Position.
-        "top-[calc(10px+env(safe-area-inset-top,0px))] right-10px " +
-        "coarse:top-[calc(8px+env(safe-area-inset-top,0px))] coarse:right-8px"
-      }
-      onClick={stopEvent} onPointerDown={stopEvent} onWheel={stopEvent}
-    >
-      <div className="flex flex-row gap-8px pointer-events-auto">
-        <button
-          type="button"
-          className={
-            "coarse:(w-68px px-16px text-16px) " +
-            READER_BUTTON_CLASS
-          }
-          hidden
-          ref={(node: HTMLButtonElement) => {
-            readDirectionButton = node;
-          }}
-          onClick={handlers.onReadDirectionClick}
-        />
-        <button
-          type="button"
-          className={
-            "coarse:(w-68px px-16px text-16px) " +
-            READER_BUTTON_CLASS
-          }
-          hidden
-          ref={(node: HTMLButtonElement) => {
-            rightTapButton = node;
-          }}
-          onClick={handlers.onRightTapClick}
-        />
-        <button
-          type="button"
-          className={READER_BUTTON_CLASS}
-          hidden
-          ref={(node: HTMLButtonElement) => {
-            modeButton = node;
-          }}
-          onClick={handlers.onModeClick}
-        />
-        <button
-          type="button"
-          className={
-            "coarse:(w-68px text-15px) uppercase " +
-            READER_BUTTON_CLASS
-          }
-          hidden
-          title={texts.reader.disableReader}
-          ref={(node: HTMLButtonElement) => {
-            disableReaderButton = node;
-          }}
-          onClick={handlers.onDisableReaderClick}
-        >
-          off
-        </button>
-        <button type="button" className={READER_BUTTON_CLASS} title={texts.reader.close} onClick={handlers.onCloseClick}>
-          X
-        </button>
-      </div>
-    </div>
-  ) as HTMLElement;
-  const pageNumber = (
-    <div
-      className={
-        // Base.
-        "fixed z-3 pointer-events-none " +
-        // Position.
-        "top-[calc(62px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 " +
-        "coarse:top-[calc(72px+env(safe-area-inset-top,0px))] " +
-        "landscape:top-[calc(54px+env(safe-area-inset-top,0px))] landscape:(left-auto right-10px translate-x-0) " +
-        "coarse-landscape:top-[calc(62px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px " +
-        // Box.
-        "min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] " +
-        "py-4px px-10px " +
-        "rounded-6px color-reader-badge color-reader-text " +
-        // Text.
-        "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
-        "text-center landscape:text-right"
-      }
-      ref={(node: HTMLElement) => {
-        pageNumberLabel = node;
-      }}
-    />
-  ) as HTMLElement;
-  const progress = (
-    <div
-      className={
-        // Base.
-        "fixed z-2 flex items-center p-0 transition-[opacity,transform] duration-160 ease-in-out " +
-        // Position.
-        "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(12px+env(safe-area-inset-bottom,0px))] left-[max(12px,env(safe-area-inset-left,0px))] " +
-        // Closed state.
-        "[&[data-open=false]]:(opacity-0 translate-y-[calc(100%+16px)] pointer-events-none)"
-      }
-      data-open={toolbarOpen.bind(false)}
-      onClick={stopEvent}
-      onPointerDown={stopEvent}
-      onWheel={stopEvent}
-    >
-      <ProgressBar
-        opRef={(operator) => {
-          progressBar = operator;
-        }}
-        className="text-xl coarse:text-3xl"
-        min={1}
-        step={1}
-        onPointerDown={handlers.onProgressPointerDown}
-        onInput={handlers.onProgressInput}
-        onCommit={handlers.onProgressCommit}
-      />
-    </div>
-  ) as HTMLElement;
+export type ToolbarState = {
+  controls: ReaderControls;
+  open: boolean;
+  progress: PageProgress;
+};
 
-  const setControlHidden = (hidden: boolean) => {
-    modeButton.hidden = hidden;
-    readDirectionButton.hidden = hidden;
-    rightTapButton.hidden = hidden;
-    disableReaderButton.hidden = hidden;
-  };
-
+export function initialToolbarState(): ToolbarState {
   return {
-    elements: [topbar, pageNumber, progress],
-    progressRange() {
-      return progressBar.range();
+    controls: {
+      mode: "scroll",
+      readDirection: "rtl",
+      rightTapAction: "previous",
     },
-    progressValue() {
-      return progressBar.value();
-    },
-    setModeButton(mode: ViewMode) {
-      const paged = mode === "paged";
-      modeButton.textContent = paged ? "⇔" : "⇕";
-      modeButton.title = paged ? texts.reader.scrollMode : texts.reader.pagedMode;
-    },
-    setReadDirectionButton(direction: ReadDirection) {
-      const rtl = direction === "rtl";
-      readDirectionButton.textContent = rtl ? "RL" : "LR";
-      readDirectionButton.title = rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft;
-      progressBar.setDirection(rtl ? "rtl" : "ltr");
-    },
-    setRightTapButton(action: RightTapAction) {
-      const previous = action === "previous";
-      rightTapButton.textContent = previous ? "R-" : "R+";
-      rightTapButton.title = previous ? texts.reader.rightTapNext : texts.reader.rightTapPrevious;
-    },
-    setPageNumber(text: string) {
-      pageNumberLabel.textContent = text;
-    },
-    setProgressMax(max: number) {
-      progressBar.setMax(max);
-    },
-    setProgressValue(value: number) {
-      progressBar.setValue(value);
-    },
-    setProgressFill(fillPercent: number) {
-      progressBar.setFill(fillPercent);
-    },
-    toggleToolbar(): boolean {
-      const open = !toolbarOpen.value;
-      toolbarOpen.value = open;
-      const hidden = !open;
-      setControlHidden(hidden);
-      return open;
+    open: false,
+    progress: {
+      pageNum: 1,
+      maxProgressPageNum: 1,
     },
   };
 }
 
-export class Toolbar {
-  readonly elements: HTMLElement[];
-  private readonly dom: ReturnType<typeof toolbarDom>;
+export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarState }) {
+  const controls = props.state.controls;
+  const progress = props.state.progress;
+  const open = props.state.open;
+  const modeButton = modeButtonInfo(controls.mode);
+  const readDirectionButton = readDirectionButtonInfo(controls.readDirection);
+  const rightTapButton = rightTapButtonInfo(controls.rightTapAction);
 
-  constructor(
-    handlers: {
-      onReadDirectionClick: () => void;
-      onRightTapClick: () => void;
-      onModeClick: () => void;
-      onCloseClick: () => void;
-      onDisableReaderClick: () => void;
-      onProgressPointerDown: (event: PointerEvent) => void;
-      onProgressInput: () => void;
-      onProgressCommit: () => void;
-    },
-    private readonly onToolbarOpenChange: (open: boolean) => void,
-  ) {
-    this.dom = toolbarDom(handlers);
-    this.elements = this.dom.elements;
+  return (
+    <>
+      <div
+        className={
+          "fixed z-3 flex justify-end pointer-events-none " +
+          "top-[calc(10px+env(safe-area-inset-top,0px))] right-10px " +
+          "coarse:top-[calc(8px+env(safe-area-inset-top,0px))] coarse:right-8px"
+        }
+        onClick={stopEvent}
+        onPointerDown={stopEvent}
+        onWheel={stopEvent}
+      >
+        <div className="flex flex-row gap-8px pointer-events-auto">
+          <button
+            type="button"
+            className={"coarse:(w-68px px-16px text-16px) " + READER_BUTTON_CLASS}
+            hidden={!open}
+            title={readDirectionButton.title}
+            onClick={props.callbacks.onReadDirectionClick}
+          >
+            {readDirectionButton.text}
+          </button>
+          <button
+            type="button"
+            className={"coarse:(w-68px px-16px text-16px) " + READER_BUTTON_CLASS}
+            hidden={!open}
+            title={rightTapButton.title}
+            onClick={props.callbacks.onRightTapClick}
+          >
+            {rightTapButton.text}
+          </button>
+          <button type="button" className={READER_BUTTON_CLASS} hidden={!open} title={modeButton.title} onClick={props.callbacks.onModeClick}>
+            {modeButton.text}
+          </button>
+          <button
+            type="button"
+            className={"coarse:(w-68px text-15px) uppercase " + READER_BUTTON_CLASS}
+            hidden={!open}
+            title={texts.reader.disableReader}
+            onClick={props.callbacks.onDisableReaderClick}
+          >
+            off
+          </button>
+          <button type="button" className={READER_BUTTON_CLASS} title={texts.reader.close} onClick={props.callbacks.onCloseClick}>
+            X
+          </button>
+        </div>
+      </div>
+      <div
+        className={
+          "fixed z-3 pointer-events-none " +
+          "top-[calc(62px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 " +
+          "coarse:top-[calc(72px+env(safe-area-inset-top,0px))] " +
+          "landscape:top-[calc(54px+env(safe-area-inset-top,0px))] landscape:(left-auto right-10px translate-x-0) " +
+          "coarse-landscape:top-[calc(62px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px " +
+          "min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] " +
+          "py-4px px-10px rounded-6px color-reader-badge color-reader-text " +
+          "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
+          "text-center landscape:text-right"
+        }
+      >
+        {pageNumberText(progress.pageNum, progress.totalPages)}
+      </div>
+      <div
+        className={
+          "fixed z-2 flex items-center p-0 transition-[opacity,transform] duration-160 ease-in-out " +
+          "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(12px+env(safe-area-inset-bottom,0px))] left-[max(12px,env(safe-area-inset-left,0px))] " +
+          "[&[data-open=false]]:(opacity-0 translate-y-[calc(100%+16px)] pointer-events-none)"
+        }
+        data-open={String(open)}
+        onClick={stopEvent}
+        onPointerDown={stopEvent}
+        onWheel={stopEvent}
+      >
+        <ProgressBar
+          className="text-xl coarse:text-3xl"
+          direction={controls.readDirection === "rtl" ? "rtl" : "ltr"}
+          fillPercent={progressFillPercent(progress)}
+          keepInputValue={progress.keepInputValue}
+          max={Math.max(1, progress.maxProgressPageNum)}
+          min={1}
+          step={1}
+          value={progress.pageNum}
+          onPointerDown={props.callbacks.onProgressPointerDown}
+          onInput={props.callbacks.onProgressInput}
+          onCommit={props.callbacks.onProgressCommit}
+        />
+      </div>
+    </>
+  );
+}
+
+function progressFillPercent(progress: PageProgress): number {
+  const min = 1;
+  const max = Math.max(1, progress.maxProgressPageNum);
+  const value = Math.min(max, Math.max(min, progress.pageNum));
+  return max > min ? ((value - min) / (max - min)) * 100 : 100;
+}
+
+function pageNumberText(pageNum: number, totalPages: number | undefined): string {
+  if (totalPages && pageNum === totalPages + 1) {
+    return texts.reader.endPage;
   }
 
-  setControls(controls: ReaderControls): void {
-    this.dom.setModeButton(controls.mode);
-    this.dom.setReadDirectionButton(controls.readDirection);
-    this.dom.setRightTapButton(controls.rightTapAction);
-  }
+  return totalPages ? `${pageNum} / ${totalPages}` : String(pageNum);
+}
 
-  setProgress(progress: PageProgress): void {
-    this.dom.setPageNumber(this.pageNumberText(progress.pageNum, progress.totalPages));
-    this.dom.setProgressMax(progress.maxProgressPageNum);
+function modeButtonInfo(mode: ViewMode): { text: string; title: string } {
+  const paged = mode === "paged";
+  return {
+    text: paged ? "⇔" : "⇕",
+    title: paged ? texts.reader.scrollMode : texts.reader.pagedMode,
+  };
+}
 
-    if (!progress.keepInputValue) {
-      this.dom.setProgressValue(progress.pageNum);
-    }
+function readDirectionButtonInfo(direction: ReadDirection): { text: string; title: string } {
+  const rtl = direction === "rtl";
+  return {
+    text: rtl ? "RL" : "LR",
+    title: rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft,
+  };
+}
 
-    this.setProgressFill(this.progressFillPercent(progress.pageNum));
-  }
-
-  progressValue(): number {
-    return this.dom.progressValue();
-  }
-
-  toggle(): boolean {
-    const open = this.dom.toggleToolbar();
-    this.onToolbarOpenChange(open);
-    return !open;
-  }
-
-  private setProgressFill(fillPercent: number): void {
-    this.dom.setProgressFill(fillPercent);
-  }
-
-  private pageNumberText(pageNum: number, totalPages: number | undefined): string {
-    if (totalPages && pageNum === totalPages + 1) {
-      return texts.reader.endPage;
-    }
-
-    return totalPages ? `${pageNum} / ${totalPages}` : String(pageNum);
-  }
-
-  private progressFillPercent(pageNum: number): number {
-    const { min, max } = this.dom.progressRange();
-    const value = Math.min(max, Math.max(min, pageNum));
-    return max > min ? ((value - min) / (max - min)) * 100 : 100;
-  }
+function rightTapButtonInfo(action: RightTapAction): { text: string; title: string } {
+  const previous = action === "previous";
+  return {
+    text: previous ? "R-" : "R+",
+    title: previous ? texts.reader.rightTapNext : texts.reader.rightTapPrevious,
+  };
 }

@@ -16,7 +16,7 @@ const SCROLL_FLING_DECAY = 0.0045;
 export class ScrollAnimator {
   private frame: number | null = null;
 
-  constructor(private readonly axis: ScrollAxis) {}
+  constructor(readonly axis: ScrollAxis) {}
 
   scrollTo(scroller: HTMLElement, target: number, motion: ScrollMotion = "instant", onComplete?: () => void): void {
     this.cancel();

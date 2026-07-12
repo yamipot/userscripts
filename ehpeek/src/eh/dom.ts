@@ -1,6 +1,4 @@
-import { SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, createScrollPageBar } from "../components/Enhance/ScrollPageBar";
-import type { ReaderPage } from "../components/Reader";
-import type { SettingsMenu } from "../components/SettingsMenu";
+import type { ReaderPage } from "../readerTypes";
 import texts from "../texts.json";
 import { normalizeUrl } from "../utils";
 import galleryRearrange from "./galleryRearrange.css";
@@ -10,6 +8,11 @@ const TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID = "ehpeek-touch-gallery-page-rearran
 export type PreviewSnapshot = {
   description: Node | null;
   thumbs: Node | null;
+};
+
+export type GalleryPageBarMount = {
+  element: HTMLDivElement;
+  top: boolean;
 };
 
 export type GallerySummaryItem = {
@@ -190,26 +193,25 @@ export function findClickedImageLink(target: EventTarget | null, extractPageType
   return null;
 }
 
-export function replaceGalleryPageBar(options: {
-  currentIndex: number;
-  maxIndex: number | null;
-  previewUrlForIndex: (index: number) => string;
-}): void {
+export function replaceGalleryPageBarMounts(topClassName: string, bottomClassName: string): GalleryPageBarMount[] {
   const originals = Array.from(document.querySelectorAll<HTMLElement>(".ptt, .ptb"));
   const topSource = originals.find((item) => item.classList.contains("ptt")) ?? originals[0];
   const bottomSource = originals.find((item) => item.classList.contains("ptb")) ?? originals[1] ?? originals[0];
+  const mounts: GalleryPageBarMount[] = [];
 
   if (topSource) {
-    replaceGalleryPageBarAt(topSource, true, options);
+    mounts.push(replaceGalleryPageBarAt(topSource, true, topClassName));
   }
 
   if (bottomSource) {
-    replaceGalleryPageBarAt(bottomSource, false, options);
+    mounts.push(replaceGalleryPageBarAt(bottomSource, false, bottomClassName));
   }
 
   for (const original of originals) {
     original.hidden = true;
   }
+
+  return mounts;
 }
 
 export function snapshotPreview(): PreviewSnapshot {
@@ -219,7 +221,7 @@ export function snapshotPreview(): PreviewSnapshot {
   };
 }
 
-export function installPreviewPlaceholder(): void {
+export function showPreviewPlaceholder(): void {
   const current = document.querySelector<HTMLElement>("#gdt");
 
   if (!current) {
@@ -269,28 +271,18 @@ export function restorePreview(snapshot: PreviewSnapshot): void {
   }
 }
 
-export function mountSettingsMenu(settingsMenu: SettingsMenu, touchTopBarMenuItemClassName: string): boolean {
-  const touchTopBarMenu = document.querySelector(".ehpeek-touch-top-bar-menu-panel");
+export function settingsMenuMountTarget(): Element | null {
   const thumbnailContainer = document.querySelector("#gdt");
   const titleContainer = document.querySelector("#gd2, h1");
   const topNav = document.querySelector("#nb");
   const anchor = thumbnailContainer ?? titleContainer;
 
-  if (touchTopBarMenu) {
-    settingsMenu.mount(touchTopBarMenu);
-    settingsMenu.root
-      .querySelector(".ehpeek-settings-trigger")
-      ?.classList.add(...touchTopBarMenuItemClassName.split(" "));
-    return true;
-  }
-
   if (topNav) {
-    settingsMenu.mount(topNav);
-    return true;
+    return topNav;
   }
 
   if (!anchor?.parentElement) {
-    return false;
+    return null;
   }
 
   const wrapper = document.createElement("div");
@@ -302,15 +294,10 @@ export function mountSettingsMenu(settingsMenu: SettingsMenu, touchTopBarMenuIte
     anchor.insertAdjacentElement("afterend", wrapper);
   }
 
-  settingsMenu.mount(wrapper);
-  return true;
+  return wrapper;
 }
 
-export function settingsMenuTriggerTagName(): "a" | "button" {
-  return document.querySelector("#nb") && !document.querySelector(".ehpeek-touch-top-bar") ? "a" : "button";
-}
-
-export function installTouchGalleryPanelPageStyle(): void {
+export function applyTouchGalleryPanelPageStyle(): void {
   if (document.getElementById(TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID)) {
     return;
   }
@@ -321,7 +308,7 @@ export function installTouchGalleryPanelPageStyle(): void {
   document.head.append(style);
 }
 
-export function mountTouchTopBar(topBar: HTMLElement): boolean {
+export function insertTouchTopBar(topBar: HTMLElement): boolean {
   const original = document.querySelector("#nb");
 
   if (!original?.parentElement) {
@@ -332,7 +319,7 @@ export function mountTouchTopBar(topBar: HTMLElement): boolean {
   return true;
 }
 
-export function mountTouchGalleryPanel(panel: HTMLElement): boolean {
+export function insertTouchGalleryPanel(panel: HTMLElement): boolean {
   const original = document.querySelector("#gmid");
   const host = original?.parentElement ?? document.querySelector("#gleft")?.parentElement;
 
@@ -391,7 +378,7 @@ export function readGalleryInfo(actionMenuItemClassName: string, tagClassName: s
     titleSub: textOf("#gj"),
     category: textOf("#gdc"),
     categoryClassName: readGalleryCategoryClassName(),
-    cover: coverUrl ? createGalleryCoverImageDom(coverUrl) : null,
+    cover: coverUrl ? galleryCoverImageElement(coverUrl) : null,
     favorite: readGalleryFavoriteInfo(),
     summary,
     actions: readGalleryActionsDom(actionMenuItemClassName),
@@ -400,31 +387,16 @@ export function readGalleryInfo(actionMenuItemClassName: string, tagClassName: s
   };
 }
 
-function replaceGalleryPageBarAt(
-  source: HTMLElement,
-  top: boolean,
-  options: {
-    currentIndex: number;
-    maxIndex: number | null;
-    previewUrlForIndex: (index: number) => string;
-  },
-): void {
-  const className = top ? "ehpeek-scroll-page-bar-top" : "ehpeek-scroll-page-bar-bottom";
-  const existing = document.querySelector<HTMLElement>(`.${className}`);
-  const initialWindowIndex = existing ? Number(existing.getAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR) || "") : undefined;
-  const pageBar = createScrollPageBar({
-    currentIndex: options.currentIndex,
-    initialWindowIndex: Number.isFinite(initialWindowIndex) ? initialWindowIndex : undefined,
-    maxIndex: options.maxIndex,
-    top,
-    urlForIndex: options.previewUrlForIndex,
-  });
+function replaceGalleryPageBarAt(source: HTMLElement, top: boolean, className: string): GalleryPageBarMount {
+  const existing = document.querySelector<HTMLDivElement>(`.${className}`);
 
   if (existing) {
-    existing.replaceWith(pageBar);
-  } else {
-    source.insertAdjacentElement("afterend", pageBar);
+    return { element: existing, top };
   }
+
+  const pageBar = document.createElement("div");
+  source.insertAdjacentElement("afterend", pageBar);
+  return { element: pageBar, top };
 }
 
 function replaceFirstElement(selector: string, doc: Document): void {
@@ -602,23 +574,25 @@ function galleryFavoriteActionUrl(): string {
   return "";
 }
 
-export function mountGalleryContinueReadingButton(button: HTMLButtonElement): void {
+export function galleryContinueReadingButtonMountTarget(): HTMLElement {
+  const host = document.createElement("div");
   const viewerOptions = document.querySelector<HTMLElement>("#gd5");
 
   if (viewerOptions) {
     viewerOptions.classList.add("ehpeek-gallery-actions");
-    viewerOptions.append(button);
-    return;
+    viewerOptions.append(host);
+    return host;
   }
 
-  document.body.append(button);
+  document.body.append(host);
+  return host;
 }
 
 function textOf(selector: string): string {
   return document.querySelector(selector)?.textContent?.trim() ?? "";
 }
 
-function createGalleryCoverImageDom(imageUrl: string): HTMLImageElement {
+function galleryCoverImageElement(imageUrl: string): HTMLImageElement {
   const image = document.createElement("img");
   image.className = "block w-full max-w-full h-full max-h-full mx-auto object-contain object-center";
   image.src = imageUrl;

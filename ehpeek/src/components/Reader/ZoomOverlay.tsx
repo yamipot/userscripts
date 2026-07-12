@@ -1,4 +1,3 @@
-import { h } from "../../jsx";
 import { clamp } from "../../utils";
 
 const MIN_SCALE = 1;
@@ -26,141 +25,126 @@ export type ZoomDragMove = {
   dy: number;
 };
 
-function zoomOverlayDom() {
-  let image!: HTMLImageElement;
-  const element = (
-    <div className="fixed inset-0 z-4 flex items-center justify-center overflow-hidden bg-[#070707] pointer-events-none" hidden style="display: none;">
-      <img
-        className="block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]"
-        ref={(node: HTMLImageElement) => {
-          image = node;
-        }}
-      />
-    </div>
-  ) as HTMLElement;
+type ZoomOverlayDom = {
+  element: HTMLElement;
+  image: HTMLImageElement;
+};
 
+function createZoomOverlayDom(): ZoomOverlayDom {
+  const element = document.createElement("div");
+  const image = document.createElement("img");
+
+  element.className = "fixed inset-0 z-4 flex items-center justify-center overflow-hidden bg-[#070707] pointer-events-none";
+  element.hidden = true;
+  element.style.display = "none";
+  image.className = "block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]";
+  element.append(image);
   return {
     element,
-    rect() {
-      return element.getBoundingClientRect();
-    },
-    setImage(source: ZoomOverlayImage) {
-      image.src = source.imageUrl;
-      image.alt = `Page ${source.pageNum}`;
-
-      if (source.width && source.height) {
-        image.width = source.width;
-        image.height = source.height;
-      } else {
-        image.removeAttribute("width");
-        image.removeAttribute("height");
-      }
-    },
-    setOpen(open: boolean) {
-      element.hidden = !open;
-      element.style.display = open ? "" : "none";
-    },
-    setTransform(offsetX: number, offsetY: number, scale: number) {
-      image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
-    },
-    clearImage() {
-      image.removeAttribute("src");
-    },
+    image,
   };
 }
 
-export class ZoomOverlay {
-  readonly element: HTMLElement;
-  private readonly dom = zoomOverlayDom();
-  private activeImage: ZoomOverlayImage | null = null;
-  private scale = 1;
-  private requestedScale = 1;
-  private offsetX = 0;
-  private offsetY = 0;
-  private pinchStartScale = 1;
-  private pinchStartOffsetX = 0;
-  private pinchStartOffsetY = 0;
-  private pinchStartCenterX = 0;
-  private pinchStartCenterY = 0;
-  private dragStartOffsetX = 0;
-  private dragStartOffsetY = 0;
+export type ZoomOverlay = ReturnType<typeof createZoomOverlay>;
 
-  constructor() {
-    this.element = this.dom.element;
-  }
+export function createZoomOverlay() {
+  const dom = createZoomOverlayDom();
+  let activeImage: ZoomOverlayImage | null = null;
+  let scale = 1;
+  let requestedScale = 1;
+  let offsetX = 0;
+  let offsetY = 0;
+  let pinchStartScale = 1;
+  let pinchStartOffsetX = 0;
+  let pinchStartOffsetY = 0;
+  let pinchStartCenterX = 0;
+  let pinchStartCenterY = 0;
+  let dragStartOffsetX = 0;
+  let dragStartOffsetY = 0;
+  const active = () => activeImage !== null;
+  const renderTransform = () => {
+    dom.image.style.transform = `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`;
+  };
+  const close = () => {
+    activeImage = null;
+    dom.element.hidden = true;
+    dom.element.style.display = "none";
+    dom.image.removeAttribute("src");
+  };
+  const startPinch = (pinch: ZoomPinchStart) => {
+    pinchStartScale = scale;
+    pinchStartOffsetX = offsetX;
+    pinchStartOffsetY = offsetY;
+    pinchStartCenterX = pinch.centerX;
+    pinchStartCenterY = pinch.centerY;
+  };
 
-  active(): boolean {
-    return this.activeImage !== null;
-  }
+  return {
+    element: dom.element,
+    active,
+    start(image: ZoomOverlayImage, pinch: ZoomPinchStart): void {
+      activeImage = image;
+      scale = 1;
+      requestedScale = 1;
+      offsetX = 0;
+      offsetY = 0;
+      dom.image.src = image.imageUrl;
+      dom.image.alt = `Page ${image.pageNum}`;
 
-  start(image: ZoomOverlayImage, pinch: ZoomPinchStart): void {
-    this.activeImage = image;
-    this.scale = 1;
-    this.requestedScale = 1;
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.dom.setImage(image);
-    this.dom.setOpen(true);
-    this.startPinch(pinch);
-    this.render();
-  }
+      if (image.width && image.height) {
+        dom.image.width = image.width;
+        dom.image.height = image.height;
+      } else {
+        dom.image.removeAttribute("width");
+        dom.image.removeAttribute("height");
+      }
 
-  startPinch(pinch: ZoomPinchStart): void {
-    this.pinchStartScale = this.scale;
-    this.pinchStartOffsetX = this.offsetX;
-    this.pinchStartOffsetY = this.offsetY;
-    this.pinchStartCenterX = pinch.centerX;
-    this.pinchStartCenterY = pinch.centerY;
-  }
+      dom.element.hidden = false;
+      dom.element.style.display = "";
+      startPinch(pinch);
+      renderTransform();
+    },
+    startPinch,
+    movePinch(pinch: ZoomPinchMove): void {
+      if (!active()) {
+        return;
+      }
 
-  movePinch(pinch: ZoomPinchMove): void {
-    if (!this.active()) {
-      return;
-    }
+      requestedScale = pinchStartScale * pinch.scale;
+      scale = clamp(requestedScale, MIN_SCALE, MAX_SCALE);
 
-    this.requestedScale = this.pinchStartScale * pinch.scale;
-    this.scale = clamp(this.requestedScale, MIN_SCALE, MAX_SCALE);
+      const rect = dom.element.getBoundingClientRect();
+      const viewportCenterX = rect.left + rect.width / 2;
+      const viewportCenterY = rect.top + rect.height / 2;
+      const ratio = scale / pinchStartScale;
+      offsetX = pinch.centerX - viewportCenterX - (pinchStartCenterX - viewportCenterX - pinchStartOffsetX) * ratio;
+      offsetY = pinch.centerY - viewportCenterY - (pinchStartCenterY - viewportCenterY - pinchStartOffsetY) * ratio;
+      renderTransform();
+    },
 
-    const rect = this.dom.rect();
-    const viewportCenterX = rect.left + rect.width / 2;
-    const viewportCenterY = rect.top + rect.height / 2;
-    const ratio = this.scale / this.pinchStartScale;
-    this.offsetX = pinch.centerX - viewportCenterX - (this.pinchStartCenterX - viewportCenterX - this.pinchStartOffsetX) * ratio;
-    this.offsetY = pinch.centerY - viewportCenterY - (this.pinchStartCenterY - viewportCenterY - this.pinchStartOffsetY) * ratio;
-    this.render();
-  }
+    endPinch(): void {
+      if (requestedScale <= CLOSE_SCALE) {
+        close();
+        return;
+      }
 
-  endPinch(): void {
-    if (this.requestedScale <= CLOSE_SCALE) {
-      this.close();
-      return;
-    }
+      renderTransform();
+    },
 
-    this.render();
-  }
+    startDrag(): void {
+      dragStartOffsetX = offsetX;
+      dragStartOffsetY = offsetY;
+    },
 
-  startDrag(): void {
-    this.dragStartOffsetX = this.offsetX;
-    this.dragStartOffsetY = this.offsetY;
-  }
+    moveDrag(move: ZoomDragMove): void {
+      if (!active()) {
+        return;
+      }
 
-  moveDrag(move: ZoomDragMove): void {
-    if (!this.active()) {
-      return;
-    }
-
-    this.offsetX = this.dragStartOffsetX + move.dx;
-    this.offsetY = this.dragStartOffsetY + move.dy;
-    this.render();
-  }
-
-  close(): void {
-    this.activeImage = null;
-    this.dom.setOpen(false);
-    this.dom.clearImage();
-  }
-
-  private render(): void {
-    this.dom.setTransform(this.offsetX, this.offsetY, this.scale);
-  }
+      offsetX = dragStartOffsetX + move.dx;
+      offsetY = dragStartOffsetY + move.dy;
+      renderTransform();
+    },
+    close,
+  };
 }

@@ -28,7 +28,6 @@ const metadata = [
   "// @grant        GM_deleteValue",
   "// @grant        GM_listValues",
   "// @grant        GM_registerMenuCommand",
-  "// @grant        GM_unregisterMenuCommand",
   "// @run-at       document-end",
   `// @updateURL    ${installUrl}`,
   `// @downloadURL  ${installUrl}`,
@@ -39,7 +38,7 @@ const metadata = [
 mkdirSync(path.join(packageDir, "dist"), { recursive: true });
 
 await build({
-  entryPoints: [path.join(packageDir, "src/main.ts")],
+  entryPoints: [path.join(packageDir, "src/main.tsx")],
   bundle: true,
   format: "iife",
   target: "es2020",

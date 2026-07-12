@@ -68,23 +68,6 @@ export default defineConfig({
   --ehp-color-track: ${ehpTheme.colors.track};
 }
 
-.ehpeek-ui-state-dot::after {
-  content: "";
-  flex: 0 0 auto;
-  width: var(--ehpeek-control-toggle-dot-size);
-  height: var(--ehpeek-control-toggle-dot-size);
-  border-radius: var(--ehpeek-control-radius-pill);
-  background: var(--ehpeek-color-state-on);
-}
-
-.ehpeek-ui-state-dot[aria-checked="false"]::after {
-  background: var(--ehpeek-color-state-off);
-}
-
-html[data-ehpeek-touch-ui="true"] .ehpeek-ui-state-dot::after {
-  width: var(--ehpeek-control-toggle-dot-touch-size);
-  height: var(--ehpeek-control-toggle-dot-touch-size);
-}
 `,
     },
   ],
@@ -101,7 +84,7 @@ html[data-ehpeek-touch-ui="true"] .ehpeek-ui-state-dot::after {
     "color-panel-reader-btn": "bg-[rgba(18,18,18,0.82)] text-[#f5f5f5] border-[rgba(255,255,255,0.18)] hover:bg-[var(--ehpeek-color-accent-hover-bg)]",
     "color-reader-badge": "bg-[rgba(15,15,15,0.34)]",
     "color-reader-text": "text-[var(--ehpeek-color-reader-text)]",
-    "color-search-swipe": "bg-[rgba(16,16,16,0.38)] text-[rgba(255,255,255,0.88)] border-[var(--ehpeek-color-border-soft)]",
+    "color-search-swipe": "bg-[rgba(64,64,64,0.88)] text-[rgba(255,255,255,0.96)] border-[rgba(255,255,255,0.34)] shadow-[0_6px_20px_rgba(0,0,0,0.42)]",
     "color-surface": "bg-[var(--ehpeek-color-surface)]",
     "color-tag": "border color-border bg-[var(--ehpeek-color-surface)] color-accent",
     "color-tag-group": "bg-[#5b3f5f] color-accent",
