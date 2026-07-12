@@ -6,6 +6,8 @@ import { normalizeUrl } from "../utils";
 
 const TOUCH_GALLERY_PANEL_PAGE_STYLE_ID = "ehpeek-touch-gallery-panel-page-style";
 const TOUCH_TOP_BAR_PAGE_STYLE_ID = "ehpeek-touch-top-bar-page-style";
+const TOUCH_TOP_BAR_MENU_ITEM_CLASS =
+  "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-[var(--ehpeek-control-touch-min-height)] py-18px px-24px touch:px-26px border-0 border-b color-border-subtle-b bg-transparent color-text text-left no-underline text-28px touch:text-30px leading-[1.2]";
 
 const TOUCH_GALLERY_PANEL_PAGE_CSS = `
   :root {
@@ -319,6 +321,9 @@ export function mountSettingsMenu(settingsMenu: SettingsMenu): boolean {
 
   if (touchTopBarMenu) {
     settingsMenu.mount(touchTopBarMenu);
+    settingsMenu.root
+      .querySelector(".ehpeek-settings-trigger")
+      ?.classList.add(...TOUCH_TOP_BAR_MENU_ITEM_CLASS.split(" "));
     return true;
   }
 
@@ -403,7 +408,7 @@ export function readTouchTopBarInfo(): TouchTopBarInfo {
   const navItems = Array.from(document.querySelectorAll<HTMLAnchorElement>("#nb a[href]")).map((link) => {
     const clone = link.cloneNode(true) as HTMLAnchorElement;
     clone.removeAttribute("id");
-    clone.className = "ehpeek-touch-top-bar-menu-item";
+    clone.className = TOUCH_TOP_BAR_MENU_ITEM_CLASS;
     return clone;
   });
 

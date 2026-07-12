@@ -8,7 +8,7 @@ export type ReadButtonInfo = {
 export function createGalleryReadButton(info: ReadButtonInfo, onClick: () => void): HTMLButtonElement {
   return readButtonDom(
     info,
-    "ehpeek-continue-reading block box-border w-full max-w-full mt-4px control-compact border color-panel-reader-btn shadow-none cursor-pointer text-center font-sans textsize-sm font-700 leading-[1.15]",
+    "ehpeek-continue-reading block box-border w-full max-w-full mt-4px control-compact color-btn shadow-none cursor-pointer text-center font-sans textsize-sm font-700 leading-[1.15]",
     "ehpeek-continue-reading-page block mt-1px opacity-72 textsize-xs font-600",
     onClick,
   );

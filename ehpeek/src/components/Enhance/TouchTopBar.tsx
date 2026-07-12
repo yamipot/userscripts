@@ -1,14 +1,12 @@
 import { h } from "../../jsx";
 import * as eh from "../../eh/dom";
-import touchTopBarCss from "./TouchTopBar.css";
 
-const STYLE_ID = "ehpeek-touch-top-bar-style";
 const TOUCH_ICON_BUTTON_CLASS = "inline-flex control-icon border-0 bg-transparent color-text text-28px leading-1 no-underline";
 
 function touchTopBarDom(info: eh.TouchTopBarInfo) {
   const menu = touchTopBarMenuDom(info.navItems);
   const root = (
-    <nav className="ehpeek-touch-top-bar relative z-[2147483640] flex box-border w-full min-h-56px items-center justify-between color-surface color-text font-sans">
+    <nav className="ehpeek-touch-top-bar relative z-[2147483640] flex box-border w-full min-h-56px items-center justify-between py-6px px-[max(16px,env(safe-area-inset-right,0px))] color-surface color-text font-sans">
       <a className={`ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`} href={info.homeHref}>
         ⌂
       </a>
@@ -31,6 +29,7 @@ function touchTopBarMenuDom(navItems: HTMLElement[]) {
   const isOpen = () => panel.hidden === false;
   const setOpen = (open: boolean) => {
     panel.hidden = !open;
+    panel.style.display = open ? "" : "none";
     button.setAttribute("aria-expanded", String(open));
   };
   const menu = (
@@ -53,6 +52,7 @@ function touchTopBarMenuDom(navItems: HTMLElement[]) {
       <div
         className="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-[2147483645] flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border color-border rounded-4px color-elevated"
         hidden
+        style="display: none;"
         ref={(node: HTMLElement) => {
           panel = node;
         }}
@@ -83,7 +83,6 @@ function touchTopBarMenuDom(navItems: HTMLElement[]) {
 
 export class TouchTopBar {
   install(): void {
-    ensureTouchTopBarStyle();
     eh.installTouchTopBarPageStyle();
 
     if (document.querySelector(".ehpeek-touch-top-bar")) {
@@ -109,15 +108,4 @@ export class TouchTopBar {
       document.body.prepend(dom.root);
     }
   }
-}
-
-function ensureTouchTopBarStyle(): void {
-  if (document.getElementById(STYLE_ID)) {
-    return;
-  }
-
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = touchTopBarCss;
-  document.head.append(style);
 }
