@@ -155,6 +155,10 @@ export class PointerGesture {
     }
 
     this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event, canDrag);
+
+    if (event.pointerType === "mouse") {
+      this.addMouseListeners();
+    }
   };
 
   private onMouseDown = (event: MouseEvent): void => {
@@ -207,7 +211,7 @@ export class PointerGesture {
   }
 
   private onPointerMove = (event: PointerEvent): void => {
-    if (!this.drag || event.pointerId !== this.drag.pointerId) {
+    if (!this.drag || event.pointerId !== this.drag.pointerId || this.drag.pointerType === "mouse") {
       return;
     }
 
