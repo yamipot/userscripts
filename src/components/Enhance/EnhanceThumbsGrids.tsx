@@ -180,6 +180,7 @@ export async function navigateGalleryPreview(
   const previousUrl = window.location.href;
   const snapshot = eh.snapshotPreview();
   const targetPreviewIndex = eh.previewPageIndexFromUrl(url);
+  const maxPreviewIndex = eh.maxPreviewPageIndex();
 
   galleryNavigationLoading = true;
   swipeElement?.setAttribute("aria-busy", "true");
@@ -188,7 +189,7 @@ export async function navigateGalleryPreview(
 
   if (targetPreviewIndex !== null) {
     setScrollPageBarWindowIndex(targetPreviewIndex);
-    replaceGalleryPageBar?.(targetPreviewIndex, eh.maxPreviewPageIndex());
+    replaceGalleryPageBar?.(targetPreviewIndex, maxPreviewIndex);
   }
 
   if (options.scrollToPageBar) {
@@ -200,9 +201,10 @@ export async function navigateGalleryPreview(
   try {
     const html = await requestText(url);
     const doc = new DOMParser().parseFromString(html, "text/html");
+    const nextMaxPreviewIndex = eh.maxPreviewPageIndex(doc, url);
 
     eh.replacePreviewContent(doc);
-    replaceGalleryPageBar?.(eh.previewPageIndexFromUrl(url) ?? eh.previewPageIndex(), eh.maxPreviewPageIndex());
+    replaceGalleryPageBar?.(eh.previewPageIndexFromUrl(url) ?? eh.previewPageIndex(), nextMaxPreviewIndex);
     setThumbsGridSwipeTarget();
     if (options.scrollToPageBar) {
       scrollToPageBar(options.scrollToPageBar);

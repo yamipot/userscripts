@@ -175,21 +175,28 @@ export function replaceSearchPageContent(doc: Document): HTMLElement | null {
 }
 
 export function maxPreviewPageIndex(root: ParentNode = document, baseUrl = window.location.href): number | null {
-  const indexes = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href*='?p='], a[href*='&p=']"))
-    .map((link) => {
-      try {
-        return Number(new URL(link.getAttribute("href") || "", baseUrl).searchParams.get("p") || "");
-      } catch {
-        return NaN;
-      }
-    })
-    .filter((value) => Number.isFinite(value) && value >= 0);
+  const range = readShowingRange(root);
 
-  if (indexes.length === 0) {
+  if (!range) {
     return null;
   }
 
-  return Math.max(...indexes);
+  let currentIndex: number;
+
+  try {
+    const value = Number(new URL(baseUrl, window.location.href).searchParams.get("p") || "0");
+    currentIndex = Number.isFinite(value) && value >= 0 ? value : 0;
+  } catch {
+    return null;
+  }
+
+  const pageSize = currentIndex === 0 ? range.end - range.start + 1 : (range.start - 1) / currentIndex;
+
+  if (!Number.isInteger(pageSize) || pageSize <= 0) {
+    return null;
+  }
+
+  return Math.max(currentIndex, Math.ceil(range.total / pageSize) - 1);
 }
 
 export function findClickedImageLink(target: EventTarget | null, extractPageType: (url: string) => PageType): HTMLAnchorElement | null {
@@ -582,14 +589,14 @@ function readGalleryFavoriteInfo(): GalleryFavoriteInfo {
   };
 }
 
-export function parseGalleryFavoriteOptions(doc: Document): GalleryFavoriteOption[] {
+export function parseGalleryFavoriteOptions(doc: Document, favorited: boolean): GalleryFavoriteOption[] {
   return Array.from(doc.querySelectorAll<HTMLInputElement>("input[name='favcat']")).map((input) => {
     const row = input.closest<HTMLElement>("div[style*='height']");
     const label = row?.textContent?.trim().replace(/\s+/g, " ") || input.value;
 
     return {
       label,
-      selected: input.checked,
+      selected: favorited && input.checked,
       value: input.value,
     };
   });

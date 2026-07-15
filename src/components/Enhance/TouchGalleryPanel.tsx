@@ -174,7 +174,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
     try {
       const html = await requestText(favorite.actionUrl);
       const doc = new DOMParser().parseFromString(html, "text/html");
-      setOptions(eh.parseGalleryFavoriteOptions(doc));
+      setOptions(eh.parseGalleryFavoriteOptions(doc, favorite.favorited));
       setLoadingState("idle");
     } catch (error) {
       console.error("[ehpeek]", error);
