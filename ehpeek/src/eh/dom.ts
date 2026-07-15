@@ -221,7 +221,7 @@ export function snapshotPreview(): PreviewSnapshot {
   };
 }
 
-export function showPreviewPlaceholder(): void {
+export function showPreviewPlaceholder(content: Node | string): void {
   const current = document.querySelector<HTMLElement>("#gdt");
 
   if (!current) {
@@ -234,7 +234,7 @@ export function showPreviewPlaceholder(): void {
   placeholder.className = "ehpeek-preview-placeholder flex items-center justify-center opacity-72";
   placeholder.style.minHeight = `${Math.max(160, Math.round(rect.height))}px`;
   placeholder.setAttribute("aria-busy", "true");
-  placeholder.textContent = texts.reader.loading;
+  placeholder.append(content);
   current.replaceWith(placeholder);
 }
 

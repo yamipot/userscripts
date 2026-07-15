@@ -1,8 +1,8 @@
 import { h } from "preact";
 import { useRef, useState } from "preact/hooks";
 import { clamp } from "../../utils";
-import type { PointerDragTap } from "../common/pointerGesture";
-import { usePointerGestureElement } from "../common/PointerGestureSurface";
+import type { PointerDragTap } from "../pointerGesture";
+import { usePointerGestureElement } from "../PointerGestureSurface";
 
 export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
 export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";

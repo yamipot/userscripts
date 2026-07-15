@@ -1,4 +1,4 @@
-import { clamp } from "../../utils";
+import { clamp } from "../utils";
 
 type ScrollAnimationMode = "none" | "native" | "raf";
 export type ScrollAxis = "x" | "y";

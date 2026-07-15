@@ -11,13 +11,13 @@ import {
   registerGlobalStyle,
   targetSummary,
 } from "../../utils";
-import type { ScrollMotion } from "../common/animation";
-import type { PointerDragEnd } from "../common/pointerGesture";
-import { usePointerGestureElement, type PointerGestureSurfaceHandle } from "../common/PointerGestureSurface";
+import type { ScrollMotion } from "../animation";
+import type { PointerDragEnd } from "../pointerGesture";
+import { usePointerGestureElement, type PointerGestureSurfaceHandle } from "../PointerGestureSurface";
 import { PagesViewport } from "./Viewport";
 import { initialToolbarState, Toolbar, type PageProgress, type ReaderControls, type ToolbarCallbacks, type ToolbarState } from "./Toolbar";
 import { createZoomOverlay, type ZoomOverlay, type ZoomOverlayImage } from "./ZoomOverlay";
-import { ExternalDomNode } from "../common/ExternalDom";
+import { ExternalDomNode } from "../ExternalDom";
 
 const VIEWER_ID = "ehpeek-reader";
 const STYLE_ID = "ehpeek-reader-style";

@@ -1,9 +1,11 @@
-import type { PointerDragEnd, PointerDragMove } from "../common/pointerGesture";
-import { usePointerGestureElement } from "../common/PointerGestureSurface";
+import type { PointerDragEnd, PointerDragMove } from "../pointerGesture";
+import { LoadingOverlay } from "../Loading";
+import { usePointerGestureElement } from "../PointerGestureSurface";
 import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
-import { h } from "preact";
+import { Fragment, h } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import * as eh from "../../eh";
+import texts from "../../texts.json";
 
 const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
@@ -12,6 +14,7 @@ const SWIPE_MAX_VERTICAL_RATIO = 0.38;
 
 let installed = false;
 let swipeElement: HTMLElement | null = null;
+let setSearchLoading: ((loading: boolean) => void) | null = null;
 let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
 let swipeIndicator: SwipeIndicatorHandle | null = null;
 let swipeIndicatorDirection: SwipeDirection = "left";
@@ -25,8 +28,10 @@ type SwipeState = {
 
 export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
   const [gestureTarget, setGestureTarget] = useState<HTMLElement | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    setSearchLoading = setLoading;
     setSwipeGestureTarget = setGestureTarget;
     setResultListSwipeTarget(props.resultList);
 
@@ -36,6 +41,10 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
     }
 
     return () => {
+      if (setSearchLoading === setLoading) {
+        setSearchLoading = null;
+      }
+
       if (setSwipeGestureTarget === setGestureTarget) {
         setSwipeGestureTarget = null;
       }
@@ -62,11 +71,14 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
   });
 
   return (
-    <SwipeIndicator
-      handleRef={(handle) => {
-        swipeIndicator = handle;
-      }}
-    />
+    <Fragment>
+      <SwipeIndicator
+        handleRef={(handle) => {
+          swipeIndicator = handle;
+        }}
+      />
+      <LoadingOverlay label={texts.reader.loading} visible={loading} />
+    </Fragment>
   );
 }
 
@@ -182,7 +194,7 @@ function navigateBySwipe(info: PointerDragEnd, event: Event): void {
 
   if (url) {
     event.preventDefault();
-    void navigateSearchPage(url, dx < 0);
+    void navigateSearchPage(url, false);
   }
 }
 
@@ -192,6 +204,7 @@ async function navigateSearchPage(url: string, scrollToTopNavigation: boolean): 
   }
 
   searchNavigationLoading = true;
+  setSearchLoading?.(true);
   swipeElement?.setAttribute("aria-busy", "true");
   scrollSearchNavigationIntoView(scrollToTopNavigation);
 
@@ -203,6 +216,7 @@ async function navigateSearchPage(url: string, scrollToTopNavigation: boolean): 
     console.error("[ehpeek]", error);
   } finally {
     searchNavigationLoading = false;
+    setSearchLoading?.(false);
     swipeElement?.removeAttribute("aria-busy");
   }
 }

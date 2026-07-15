@@ -1,6 +1,7 @@
 import type { ReaderPage } from "../../readerTypes";
-import type { PointerDragEnd, PointerDragMove } from "../common/pointerGesture";
-import { usePointerGestureElement } from "../common/PointerGestureSurface";
+import type { PointerDragEnd, PointerDragMove } from "../pointerGesture";
+import { loadingSpinnerElement } from "../Loading";
+import { usePointerGestureElement } from "../PointerGestureSurface";
 import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
 import { h } from "preact";
 import { useEffect, useState } from "preact/hooks";
@@ -12,6 +13,7 @@ import {
 } from "./ScrollPageBar";
 import * as eh from "../../eh";
 import { state } from "../../state";
+import texts from "../../texts.json";
 import { clamp, requestText } from "../../utils";
 
 const PREVIEW_CACHE_LIMIT = 10;
@@ -194,7 +196,7 @@ export async function navigateGalleryPreview(
     scrollToPageBar(options.scrollToPageBar);
   }
 
-  eh.showPreviewPlaceholder();
+  eh.showPreviewPlaceholder(loadingSpinnerElement(texts.reader.loading, "lg"));
 
   try {
     const html = await requestText(url);

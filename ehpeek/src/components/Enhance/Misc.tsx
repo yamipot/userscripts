@@ -1,5 +1,5 @@
 import { h } from "preact";
-export { ExternalDomNode as DomNode, ExternalDomNodes as DomNodes } from "../common/ExternalDom";
+export { ExternalDomNode as DomNode, ExternalDomNodes as DomNodes } from "../ExternalDom";
 
 export type ReadButtonInfo = {
   label: string;
