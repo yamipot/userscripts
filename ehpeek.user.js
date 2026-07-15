@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260715.1425
+// @version      260715.1514
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -399,7 +399,7 @@
       readRightToLeft: "Read right to left",
       rightTapPrevious: "Right tap goes to previous page",
       rightTapNext: "Right tap goes to next page",
-      disableReader: "Disable Ehpeek Reader",
+      openOriginalPage: "Open original image page",
       download: "Download",
       startReading: "Read",
       continueReading: "Continue",
@@ -526,25 +526,24 @@
       this.drag = null;
       this.suppressClick = !1;
       this.suppressClickTimer = null;
-      this.passiveTap = null;
       this.pinch = null;
       this.onDragStart = (event) => {
-        this.isDragging() && event.preventDefault();
+        this.drag?.canDrag && event.preventDefault();
       };
       this.onClick = (event) => {
         this.suppressClick && (this.suppressClick = !1, event.preventDefault(), event.stopPropagation());
       };
+      this.onContextMenu = () => {
+        this.drag?.active || (this.cancel(), this.clearPinch());
+      };
       this.onPointerDown = (event) => {
-        if (!(event.pointerType === "mouse" && event.button !== 0) && !this.trackPinchPointerDown(event) && !this.pinch) {
-          if (this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event)) {
-            this.beginPassiveTap(event);
-            return;
-          }
-          this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event);
-        }
+        if (event.pointerType === "mouse" && event.button !== 0 || this.trackPinchPointerDown(event) || this.pinch || this.drag)
+          return;
+        let canDrag = this.callbacks.shouldCaptureDrag?.(event) ?? !0;
+        (canDrag || (this.callbacks.shouldObserveTap?.(event) ?? !1)) && this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event, canDrag);
       };
       this.onMouseDown = (event) => {
-        event.button !== 0 || typeof PointerEvent < "u" || this.drag || this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event) || (this.start(this.mousePointerId, "mouse", event.clientX, event.clientY, event), this.addMouseListeners());
+        event.button !== 0 || typeof PointerEvent < "u" || this.drag || !(this.callbacks.shouldCaptureDrag?.(event) ?? !0) || (this.start(this.mousePointerId, "mouse", event.clientX, event.clientY, event, !0), this.addMouseListeners());
       };
       this.onPointerMove = (event) => {
         !this.drag || event.pointerId !== this.drag.pointerId || this.move(event.clientX, event.clientY, event);
@@ -553,19 +552,13 @@
         !this.drag || event.pointerId !== this.drag.pointerId || (this.finish(event.clientX, event.clientY, event), this.releasePinchPointer(event));
       };
       this.onPointerCancel = (event) => {
-        !this.drag || event.pointerId !== this.drag.pointerId || (this.finish(event.clientX, event.clientY, event), this.releasePinchPointer(event));
+        !this.drag || event.pointerId !== this.drag.pointerId || (this.finish(event.clientX, event.clientY, event, !0), this.releasePinchPointer(event));
       };
       this.onMouseMove = (event) => {
         !this.drag || this.drag.pointerType !== "mouse" || this.move(event.clientX, event.clientY, event);
       };
       this.onMouseUp = (event) => {
         !this.drag || this.drag.pointerType !== "mouse" || this.finish(event.clientX, event.clientY, event);
-      };
-      this.onPassiveTapMove = (event) => {
-        this.trackPassiveTap(event);
-      };
-      this.onPassiveTapEnd = (event) => {
-        this.endPassiveTap(event);
       };
       this.onPinchPointerMove = (event) => {
         if (!this.pinch || !this.pinchPointers.has(event.pointerId))
@@ -586,21 +579,22 @@
       this.onPinchPointerEnd = (event) => {
         this.pinchPointers.has(event.pointerId) && (this.pinchPointers.delete(event.pointerId), !(!this.pinch || this.pinchPointers.size >= 2) && (this.callbacks.onPinchEnd?.(), this.clearPinch(), event.preventDefault()));
       };
-      this.setDragging(!1), target.addEventListener("pointerdown", this.onPointerDown), target.addEventListener("mousedown", this.onMouseDown), target.addEventListener("dragstart", this.onDragStart), target.addEventListener("click", this.onClick, !0);
+      this.setDragging(!1), target.addEventListener("pointerdown", this.onPointerDown), target.addEventListener("mousedown", this.onMouseDown), target.addEventListener("dragstart", this.onDragStart), target.addEventListener("click", this.onClick, !0), target.addEventListener("contextmenu", this.onContextMenu);
     }
     dispose() {
-      this.drag?.captured && this.target.releasePointerCapture?.(this.drag.pointerId), this.drag = null, this.setDragging(!1), this.clearPinch(), this.passiveTap = null, this.removePointerListeners(), this.removeMouseListeners(), this.removePassiveTapListeners(), this.target.removeEventListener("pointerdown", this.onPointerDown), this.target.removeEventListener("mousedown", this.onMouseDown), this.target.removeEventListener("dragstart", this.onDragStart), this.target.removeEventListener("click", this.onClick, !0), this.suppressClickTimer !== null && (window.clearTimeout(this.suppressClickTimer), this.suppressClickTimer = null);
+      this.drag && this.releaseCapture(this.drag), this.drag = null, this.setDragging(!1), this.clearPinch(), this.removePointerListeners(), this.removeMouseListeners(), this.target.removeEventListener("pointerdown", this.onPointerDown), this.target.removeEventListener("mousedown", this.onMouseDown), this.target.removeEventListener("dragstart", this.onDragStart), this.target.removeEventListener("click", this.onClick, !0), this.target.removeEventListener("contextmenu", this.onContextMenu), this.suppressClickTimer !== null && (window.clearTimeout(this.suppressClickTimer), this.suppressClickTimer = null);
     }
     isDragging() {
       return this.drag?.active === !0;
     }
     cancel() {
-      this.drag && (this.drag.captured && this.target.releasePointerCapture?.(this.drag.pointerId), this.drag = null, this.setDragging(!1), this.removePointerListeners(), this.removeMouseListeners());
+      this.drag && (this.releaseCapture(this.drag), this.drag = null, this.setDragging(!1), this.removePointerListeners(), this.removeMouseListeners());
     }
-    start(pointerId, pointerType, clientX, clientY, event) {
+    start(pointerId, pointerType, clientX, clientY, event, canDrag) {
       this.drag = {
         active: !1,
-        captured: !1,
+        canDrag,
+        captureTarget: null,
         pointerId,
         pointerType,
         startClientX: clientX,
@@ -609,18 +603,27 @@
         lastClientY: clientY,
         lastMoveTime: event.timeStamp,
         startTarget: event.target,
+        tapCancelled: !1,
         velocityY: 0
-      }, this.addPointerListeners();
+      };
+      let captureTarget = event.target;
+      canDrag && "pointerId" in event && typeof captureTarget?.setPointerCapture == "function" && (captureTarget.setPointerCapture(pointerId), this.drag.captureTarget = captureTarget), this.addPointerListeners();
     }
     move(clientX, clientY, event) {
       let drag = this.drag;
       if (!drag)
         return;
-      if (!drag.active && this.dragIntent(clientX - drag.startClientX, clientY - drag.startClientY) === "cancel") {
+      let dx = clientX - drag.startClientX, dy = clientY - drag.startClientY;
+      if ((Math.abs(dx) >= this.tapMoveThreshold() || Math.abs(dy) >= this.tapMoveThreshold()) && (drag.tapCancelled = !0), !drag.canDrag) {
+        this.updateLastMove(drag, clientX, clientY, event);
+        return;
+      }
+      let intent = this.dragIntent(dx, dy);
+      if (!drag.active && intent === "cancel") {
         this.cancel();
         return;
       }
-      if (!drag.active && this.dragIntent(clientX - drag.startClientX, clientY - drag.startClientY) !== "start") {
+      if (!drag.active && intent !== "start") {
         this.updateLastMove(drag, clientX, clientY, event);
         return;
       }
@@ -638,11 +641,11 @@
         event
       ), event.preventDefault();
     }
-    finish(clientX, clientY, event) {
+    finish(clientX, clientY, event, cancelled = !1) {
       let drag = this.drag;
       if (!drag)
         return;
-      this.drag = null, this.setDragging(!1), drag.captured && this.target.releasePointerCapture?.(drag.pointerId), this.removePointerListeners(), this.removeMouseListeners();
+      this.drag = null, this.setDragging(!1), this.releaseCapture(drag), this.removePointerListeners(), this.removeMouseListeners();
       let info = {
         pointerId: drag.pointerId,
         clientX,
@@ -650,8 +653,14 @@
         dx: clientX - drag.startClientX,
         dy: clientY - drag.startClientY,
         velocityY: drag.velocityY
-      }, isTap = Math.abs(info.dx) < this.tapMoveThreshold() && Math.abs(info.dy) < this.tapMoveThreshold();
-      !drag.active && isTap && this.callbacks.onTap?.({ ...info, startTarget: drag.startTarget }, event), drag.active && (this.suppressNextClick(), this.callbacks.onEnd?.(info, event));
+      }, isTap = !drag.tapCancelled && Math.abs(info.dx) < this.tapMoveThreshold() && Math.abs(info.dy) < this.tapMoveThreshold();
+      if (!cancelled && !drag.active && isTap && this.callbacks.onTap?.({ ...info, startTarget: drag.startTarget }, event), drag.active) {
+        if (cancelled) {
+          this.callbacks.onEnd?.({ ...info, dx: 0, dy: 0, velocityY: 0 }, event);
+          return;
+        }
+        this.suppressNextClick(), this.callbacks.onEnd?.(info, event);
+      }
     }
     addPointerListeners() {
       document.addEventListener("pointermove", this.onPointerMove, !0), document.addEventListener("pointerup", this.onPointerUp, !0), document.addEventListener("pointercancel", this.onPointerCancel, !0);
@@ -665,46 +674,6 @@
     removeMouseListeners() {
       window.removeEventListener("mousemove", this.onMouseMove, !0), window.removeEventListener("mouseup", this.onMouseUp, !0);
     }
-    beginPassiveTap(event) {
-      this.callbacks.shouldObserveTap?.(event) && (this.passiveTap = {
-        pointerId: event.pointerId,
-        pointerType: event.pointerType,
-        startClientX: event.clientX,
-        startClientY: event.clientY,
-        lastClientX: event.clientX,
-        lastClientY: event.clientY,
-        startTarget: event.target,
-        moved: !1
-      }, this.addPassiveTapListeners());
-    }
-    trackPassiveTap(event) {
-      let tap = this.passiveTap;
-      !tap || !this.matchesPassiveTapPointer(event, tap) || (tap.lastClientX = event.clientX, tap.lastClientY = event.clientY, (Math.abs(event.clientX - tap.startClientX) >= this.tapMoveThreshold() || Math.abs(event.clientY - tap.startClientY) >= this.tapMoveThreshold()) && (tap.moved = !0));
-    }
-    endPassiveTap(event) {
-      let tap = this.passiveTap;
-      if (!tap || !this.matchesPassiveTapPointer(event, tap) || (this.passiveTap = null, this.removePassiveTapListeners(), this.releasePinchPointer(event), event.type === "pointercancel"))
-        return;
-      let dx = event.clientX - tap.startClientX, dy = event.clientY - tap.startClientY;
-      tap.moved || Math.abs(dx) >= this.tapMoveThreshold() || Math.abs(dy) >= this.tapMoveThreshold() || this.callbacks.onTap?.(
-        {
-          pointerId: event.pointerId,
-          clientX: event.clientX,
-          clientY: event.clientY,
-          dx,
-          dy,
-          velocityY: 0,
-          startTarget: tap.startTarget
-        },
-        event
-      );
-    }
-    addPassiveTapListeners() {
-      document.addEventListener("pointermove", this.onPassiveTapMove, !0), document.addEventListener("pointerup", this.onPassiveTapEnd, !0), document.addEventListener("pointercancel", this.onPassiveTapEnd, !0);
-    }
-    removePassiveTapListeners() {
-      document.removeEventListener("pointermove", this.onPassiveTapMove, !0), document.removeEventListener("pointerup", this.onPassiveTapEnd, !0), document.removeEventListener("pointercancel", this.onPassiveTapEnd, !0);
-    }
     trackPinchPointerDown(event) {
       if (!this.callbacks.onPinchStart || event.pointerType === "mouse" || (this.pinchPointers.set(event.pointerId, {
         clientX: event.clientX,
@@ -712,9 +681,9 @@
       }), this.pinch || this.pinchPointers.size !== 2))
         return !1;
       let snapshot = this.pinchSnapshot();
-      return !snapshot || !this.callbacks.onPinchStart(snapshot, event) ? !1 : (this.cancel(), this.passiveTap = null, this.removePassiveTapListeners(), this.pinch = {
+      return snapshot ? this.callbacks.onPinchStart(snapshot, event) ? (this.cancel(), this.pinch = {
         startDistance: snapshot.distance
-      }, this.addPinchListeners(), event.preventDefault(), event.stopPropagation(), !0);
+      }, this.addPinchListeners(), event.preventDefault(), event.stopPropagation(), !0) : (this.pinchPointers.delete(event.pointerId), !1) : !1;
     }
     addPinchListeners() {
       document.addEventListener("pointermove", this.onPinchPointerMove, !0), document.addEventListener("pointerup", this.onPinchPointerEnd, !0), document.addEventListener("pointercancel", this.onPinchPointerEnd, !0);
@@ -756,7 +725,7 @@
       return this.dragAxis() === "x" ? absY >= threshold && absY > absX ? "cancel" : absX >= threshold && absX >= absY * ratio ? "start" : "pending" : this.dragAxis() === "y" ? absX >= threshold && absX > absY ? "cancel" : absY >= threshold && absY >= absX * ratio ? "start" : "pending" : Math.hypot(dx, dy) >= threshold ? "start" : "pending";
     }
     activateDrag(drag, event) {
-      drag.active = !0, this.setDragging(!0), event instanceof PointerEvent && this.target.setPointerCapture && (this.target.setPointerCapture(drag.pointerId), drag.captured = !0), this.callbacks.onStart?.(
+      drag.active = !0, this.setDragging(!0), this.callbacks.onStart?.(
         {
           pointerId: drag.pointerId,
           clientX: drag.startClientX,
@@ -777,8 +746,8 @@
     setDragging(dragging) {
       this.target.dataset.dragging = String(dragging);
     }
-    matchesPassiveTapPointer(event, tap) {
-      return event.pointerId === tap.pointerId && event.pointerType === tap.pointerType;
+    releaseCapture(drag) {
+      drag.captureTarget?.hasPointerCapture(drag.pointerId) && drag.captureTarget.releasePointerCapture(drag.pointerId);
     }
   };
 
@@ -1369,12 +1338,12 @@
         "button",
         {
           type: "button",
-          className: "coarse:w-68px coarse:text-15px uppercase " + READER_BUTTON_CLASS,
+          className: "coarse:w-68px coarse:text-24px text-20px " + READER_BUTTON_CLASS,
           hidden: !open,
-          title: texts_default.reader.disableReader,
-          onClick: props.callbacks.onDisableReaderClick
+          title: texts_default.reader.openOriginalPage,
+          onClick: props.callbacks.onOpenOriginalPageClick
         },
-        "off"
+        "⏻"
       ), /* @__PURE__ */ k("button", { type: "button", className: READER_BUTTON_CLASS, title: texts_default.reader.close, onClick: props.callbacks.onCloseClick }, "X"))
     ), /* @__PURE__ */ k(
       "div",
@@ -1752,7 +1721,7 @@
         });
       }
       let startIndex = clamp(options.startIndex, 0, Math.max(0, options.pages.length - 1));
-      this.currentPageNum = pageNumForPage(options.pages[startIndex], startIndex), this.preloadWindowSize = options.preloadWindowSize ?? DEFAULT_WINDOW_SIZE, this.loadPages = options.loadPages, this.onExit = options.onExit, this.onActivePageChange = options.onActivePageChange, this.onDisableReader = options.onDisableReader, this.closeComponent = bindings.close, this.isDragging = bindings.isDragging, this.setRootComponentState = bindings.setRootState, this.setToolbarComponentState = bindings.setToolbarState, this.toolbarState = initialToolbarState(), this.rootState = {
+      this.currentPageNum = pageNumForPage(options.pages[startIndex], startIndex), this.preloadWindowSize = options.preloadWindowSize ?? DEFAULT_WINDOW_SIZE, this.loadPages = options.loadPages, this.onExit = options.onExit, this.onActivePageChange = options.onActivePageChange, this.onOpenOriginalPage = options.onOpenOriginalPage, this.closeComponent = bindings.close, this.isDragging = bindings.isDragging, this.setRootComponentState = bindings.setRootState, this.setToolbarComponentState = bindings.setToolbarState, this.toolbarState = initialToolbarState(), this.rootState = {
         readDirection: state.reader.readDirection.value,
         toolbarOpen: !1,
         viewMode: state.reader.viewMode.value
@@ -1767,9 +1736,7 @@
         onRightTapClick: () => this.toggleRightTapAction(),
         onModeClick: () => this.setMode(state.reader.viewMode.value === "paged" ? "scroll" : "paged"),
         onCloseClick: () => this.close(),
-        onDisableReaderClick: () => {
-          this.onDisableReader?.(), this.close();
-        },
+        onOpenOriginalPageClick: () => this.openOriginalPage(),
         onOpenChange: (open) => this.setRootState({ toolbarOpen: open }),
         onProgressPointerDown: this.onProgressPointerDown,
         onProgressInput: this.onProgressInput,
@@ -2074,6 +2041,10 @@
     cancelProgressNavigation() {
       this.progressNavigationTimer !== null && (window.clearTimeout(this.progressNavigationTimer), this.progressNavigationTimer = null);
     }
+    openOriginalPage() {
+      let page = this.pages.get(this.currentPageNum);
+      !page || !this.isRealPageNum(this.currentPageNum) || !this.onOpenOriginalPage || this.onOpenOriginalPage(page);
+    }
     setMode(mode) {
       mode !== state.reader.viewMode.value && (state.reader.viewMode.set(mode), this.syncReaderControls(), this.rebuildForCurrentMode());
     }
@@ -2181,7 +2152,7 @@
       return document.addEventListener("click", onClick), document.addEventListener("keydown", onKeyDown), () => {
         document.removeEventListener("click", onClick), document.removeEventListener("keydown", onKeyDown);
       };
-    }, [props.open]), props.open ? /* @__PURE__ */ k("div", { ref: menuRef, className: "ehpeek-settings-menu fixed top-24px right-24px z-[2147483646] min-w-260px touch:min-w-[min(92vw,520px)] p-8px border color-border rounded-4px color-elevated color-text textsize-md leading-[1.2]" }, /* @__PURE__ */ k(
+    }, [props.open]), props.open ? /* @__PURE__ */ k("div", { ref: menuRef, className: "ehpeek-settings-menu fixed top-24px right-24px z-[2147483646] min-w-260px p-8px border color-border rounded-4px color-elevated color-text textsize-md leading-[1.2]" }, /* @__PURE__ */ k(
       SwitchButton,
       {
         checked: [draft.readerEnabled, texts_default.settings.readerOn, texts_default.settings.readerOff],
@@ -2475,7 +2446,7 @@ body #gdt[class],
       homeHref: navItems.find((item) => item instanceof HTMLAnchorElement)?.href ?? "/"
     };
   }
-  function readGalleryInfo(actionMenuItemClassName, tagClassName) {
+  function readGalleryInfo(actionMenuItemClassName) {
     let meta = readGalleryMeta(), range2 = readShowingRange(), coverSource = document.querySelector("#gd1 img"), coverUrl = coverSource?.currentSrc || coverSource?.src || coverSource?.getAttribute("src") || backgroundImageUrl(document.querySelector("#gd1")), summary = [
       meta.get("language"),
       range2?.total ? `${range2.total} ${texts_default.reader.pages.toLowerCase()}` : void 0,
@@ -2494,7 +2465,7 @@ body #gdt[class],
       summary,
       actions: readGalleryActionsDom(actionMenuItemClassName),
       rating: readGalleryRatingDom(),
-      tagGroups: readGalleryTagGroupsDom(tagClassName)
+      tagGroups: readGalleryTagGroups()
     };
   }
   function replaceGalleryPageBarAt(source, top, className) {
@@ -2548,23 +2519,38 @@ body #gdt[class],
       return clone.removeAttribute("id"), clone.className = actionMenuItemClassName, clone;
     }).slice(0, 6);
   }
-  function readGalleryTagGroupsDom(tagClassName) {
+  function readGalleryTagGroups() {
     let rows = Array.from(document.querySelectorAll("#taglist tr"));
     if (rows.length > 0)
       return rows.map((row) => {
-        let namespace = row.querySelector(".tc, td:first-child")?.textContent?.trim().replace(/:$/, "") || "tag", tags = Array.from(row.querySelectorAll("a")).map((tag) => cloneGalleryTagDom(tag, tagClassName)).filter(Boolean).slice(0, 30);
+        let namespace = row.querySelector(".tc, td:first-child")?.textContent?.trim().replace(/:$/, "") || "tag", tags = Array.from(row.querySelectorAll("a")).map(readGalleryTag).filter((tag) => tag !== null).slice(0, 30);
         return { namespace, tags };
       }).filter((group) => group.tags.length > 0);
     let groups = /* @__PURE__ */ new Map();
     for (let tag of Array.from(document.querySelectorAll("#taglist a")).slice(0, 60)) {
-      let clone = cloneGalleryTagDom(tag, tagClassName), tags = groups.get("tag") ?? [];
-      tags.push(clone), groups.set("tag", tags);
+      let galleryTag = readGalleryTag(tag);
+      if (!galleryTag)
+        continue;
+      let tags = groups.get("tag") ?? [];
+      tags.push(galleryTag), groups.set("tag", tags);
     }
     return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
   }
-  function cloneGalleryTagDom(tag, tagClassName) {
-    let clone = tag.cloneNode(!0);
-    return clone.removeAttribute("id"), clone.className = tagClassName, clone;
+  function readGalleryTag(tag) {
+    let label = tag.textContent?.trim() ?? "";
+    if (!label || !tag.href)
+      return null;
+    let container = tag.closest("div.gt, div.gtl, div.gtw") ?? tag, tagStyle = window.getComputedStyle(tag), containerStyle = window.getComputedStyle(container);
+    return {
+      appearance: {
+        backgroundColor: containerStyle.backgroundColor,
+        borderColor: containerStyle.borderColor,
+        borderStyle: containerStyle.borderStyle,
+        color: tagStyle.color
+      },
+      href: tag.href,
+      label
+    };
   }
   function readGalleryFavoriteInfo() {
     let label = textOf("#favoritelink"), iconTitle = document.querySelector("#fav [title]")?.getAttribute("title")?.trim() ?? "", text = label || iconTitle, favorited = /^favorites?\s+\d+/i.test(text);
@@ -2656,7 +2642,7 @@ body #gdt[class],
   }
 
   // src/components/Enhance/TouchGalleryPanel.tsx
-  var TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item control-touch-menu-item text-21px leading-[1.2]", TOUCH_GALLERY_TAG_CLASS = "ehpeek-touch-gallery-tag control-tag color-tag text-23px";
+  var TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item control-touch-menu-item text-21px leading-[1.2]";
   function TouchGalleryPanel(props) {
     let rootRef = A2(null), categoryClassName = "ehpeek-touch-gallery-category min-w-0 self-center overflow-hidden text-ellipsis whitespace-nowrap py-6px px-12px text-17px font-700 leading-[1.1] uppercase " + (props.source.categoryClassName || "bg-[#34353b] color-accent");
     return h2(() => {
@@ -2695,7 +2681,15 @@ body #gdt[class],
     ), open && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-[2147483644] flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border color-border rounded-[var(--ehpeek-control-radius-md)] color-elevated" }, /* @__PURE__ */ k(ExternalDomNodes, { nodes: props.actions, clone: !0 })));
   }
   function TouchGalleryTagGroup(props) {
-    return /* @__PURE__ */ k("section", { className: "ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(88px,28%)_minmax(0,1fr)] gap-8px items-start" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-group-name control-tag-group color-tag-group text-21px" }, props.group.namespace), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tags flex flex-wrap gap-8px" }, /* @__PURE__ */ k(ExternalDomNodes, { nodes: props.group.tags, clone: !0 })));
+    return /* @__PURE__ */ k("section", { className: "ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-8px items-start" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-group-name control-tag-group color-tag-group textsize-md" }, props.group.namespace), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tags flex flex-wrap gap-8px" }, props.group.tags.map((tag) => /* @__PURE__ */ k(
+      "a",
+      {
+        className: "ehpeek-touch-gallery-tag control-tag color-tag textsize-md",
+        href: tag.href,
+        style: tag.appearance
+      },
+      tag.label
+    ))));
   }
   function TouchGalleryFavoriteButton(props) {
     let [favorite, setFavorite] = d2(() => ({ ...props.source })), [open, setOpen] = d2(!1), [loadingState, setLoadingState] = d2("idle"), [options, setOptions] = d2([]), rootRef = A2(null), favorited = favorite.favorited;
@@ -2777,7 +2771,15 @@ body #gdt[class],
         },
         props.option.value === "favdel" ? "♡" : "♥"
       ),
-      /* @__PURE__ */ k("span", null, props.option.label)
+      /* @__PURE__ */ k("span", null, props.option.label),
+      /* @__PURE__ */ k(
+        "span",
+        {
+          className: `ml-auto flex-none color-accent text-24px font-700 leading-1 ${props.option.selected ? "visible" : "invisible"}`,
+          "aria-hidden": "true"
+        },
+        "✓"
+      )
     );
   }
   async function applyFavoriteOption(actionUrl, option) {
@@ -2833,22 +2835,23 @@ body #gdt[class],
       {
         className: "ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-[2147483645] flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border color-border rounded-4px color-elevated"
       },
-      /* @__PURE__ */ k("div", { ref: navItemsRef, className: "contents" }),
-      /* @__PURE__ */ k(
-        "button",
-        {
-          type: "button",
-          className: TOUCH_TOP_BAR_MENU_ITEM_CLASS,
-          onClick: (event) => {
-            event.preventDefault(), event.stopPropagation(), setOpen(!1), props.onSettingsMenuOpen();
-          }
-        },
-        texts_default.settings.menuLabel
-      )
+      /* @__PURE__ */ k("div", { ref: navItemsRef, className: "contents" })
     ));
   }
   function TouchTopBar(props) {
-    return /* @__PURE__ */ k("nav", { className: "ehpeek-touch-top-bar relative z-[2147483640] flex box-border w-full min-h-56px items-center justify-between py-6px px-[max(16px,env(safe-area-inset-right,0px))] color-surface color-text font-sans" }, /* @__PURE__ */ k("a", { className: `ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`, href: props.info.homeHref }, "⌂"), /* @__PURE__ */ k(TouchTopBarMenu, { navItems: props.info.navItems, onSettingsMenuOpen: props.onSettingsMenuOpen }));
+    return /* @__PURE__ */ k("nav", { className: "ehpeek-touch-top-bar relative z-[2147483640] flex box-border w-full min-h-56px items-center justify-between py-6px px-[max(16px,env(safe-area-inset-right,0px))] color-surface color-text font-sans" }, /* @__PURE__ */ k("a", { className: `ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`, href: props.info.homeHref }, "⌂"), /* @__PURE__ */ k("div", { className: "flex items-center gap-2px" }, /* @__PURE__ */ k(
+      "button",
+      {
+        type: "button",
+        className: `ehpeek-touch-top-bar-settings ${TOUCH_ICON_BUTTON_CLASS}`,
+        "aria-label": texts_default.settings.openSettings,
+        title: texts_default.settings.openSettings,
+        onClick: (event) => {
+          event.stopPropagation(), props.onSettingsMenuOpen();
+        }
+      },
+      "⚙"
+    ), /* @__PURE__ */ k(TouchTopBarMenu, { navItems: props.info.navItems })));
   }
 
   // src/components/Loading.tsx
@@ -3408,19 +3411,20 @@ body #gdt[class],
 /* layer: shortcuts */
 .control-primary-action{touch-action:manipulation;min-width:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ehpeek-control-primary-gap);border-width:0px;background-color:transparent;padding-top:var(--ehpeek-control-action-padding-y);padding-bottom:var(--ehpeek-control-action-padding-y);padding-left:15px;padding-right:15px;text-align:center;color:var(--ehpeek-color-accent);text-transform:uppercase;}
 .control-scroll-hidden{scrollbar-width:none;-ms-overflow-style:none;}
+.container{width:100%;}
 .control-touch-menu-item{box-sizing:border-box;display:block;width:100%;min-height:var(--ehpeek-control-menu-item-min-height);border-width:0px;border-bottom-width:1px;border-bottom-color:var(--ehpeek-color-border-subtle);background-color:transparent;padding-top:14px;padding-bottom:14px;padding-left:18px;padding-right:18px;text-align:left;color:var(--ehpeek-color-text);text-decoration:none;}
 .control-scroll-hidden::-webkit-scrollbar{display:none;}
 .control-action{min-height:var(--ehpeek-control-action-min-height);border-radius:var(--ehpeek-control-radius-sm);padding-top:var(--ehpeek-control-action-padding-y);padding-bottom:var(--ehpeek-control-action-padding-y);padding-left:var(--ehpeek-control-action-padding-x);padding-right:var(--ehpeek-control-action-padding-x);}
-html[data-ehpeek-touch-ui="true"] .control-action,
-html[data-ehpeek-touch-ui="true"] .control-btn{min-height:var(--ehpeek-control-touch-min-height);padding-top:18px;padding-bottom:18px;padding-left:26px;padding-right:26px;}
+html[data-ehpeek-touch-ui="true"] .control-action{min-height:var(--ehpeek-control-touch-min-height);padding-top:18px;padding-bottom:18px;padding-left:var(--ehpeek-control-action-padding-x);padding-right:var(--ehpeek-control-action-padding-x);}
+html[data-ehpeek-touch-ui="true"] .control-btn{min-height:var(--ehpeek-control-touch-min-height);padding-top:18px;padding-bottom:18px;padding-left:var(--ehpeek-control-btn-padding-x);padding-right:var(--ehpeek-control-btn-padding-x);}
 .control-icon{width:var(--ehpeek-control-icon-size);height:var(--ehpeek-control-icon-size);align-items:center;justify-content:center;}
 .control-page{width:var(--ehpeek-control-page-size);height:var(--ehpeek-control-page-size);border-radius:var(--ehpeek-control-radius-md);}
 html[data-ehpeek-touch-ui="true"] .control-page{width:38px;height:38px;border-radius:var(--ehpeek-control-radius-reader);}
 .control-reader-btn{width:var(--ehpeek-control-reader-button-width);height:var(--ehpeek-control-reader-button-height);border-radius:var(--ehpeek-control-radius-reader);padding-left:var(--ehpeek-control-btn-padding-x);padding-right:var(--ehpeek-control-btn-padding-x);padding-top:0;padding-bottom:0;}
-.control-tag{max-width:100%;min-height:var(--ehpeek-control-tag-min-height);display:inline-flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:var(--ehpeek-control-radius-pill);padding-left:21px;padding-right:21px;text-decoration:none;}
-.control-tag-group{min-height:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:var(--ehpeek-control-radius-pill);padding-top:7px;padding-bottom:7px;padding-left:10px;padding-right:10px;text-align:center;text-transform:lowercase;}
+.control-tag{max-width:100%;min-height:var(--ehpeek-control-tag-min-height);display:inline-flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:10px;padding-left:21px;padding-right:21px;text-decoration:none;}
+.control-tag-group{min-height:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:10px;padding-top:7px;padding-bottom:7px;padding-left:10px;padding-right:10px;text-align:center;text-transform:lowercase;}
 .color-btn{border-width:1px;border-color:var(--ehpeek-color-border);background-color:transparent;color:var(--ehpeek-color-accent);}
-.color-tag{border-width:1px;border-color:var(--ehpeek-color-border);background-color:var(--ehpeek-color-surface);color:var(--ehpeek-color-accent);}
+.color-tag{border-width:1px;--un-border-opacity:1;border-color:rgb(152 152 152 / var(--un-border-opacity));--un-bg-opacity:1;background-color:rgb(79 83 91 / var(--un-bg-opacity));--un-text-opacity:1;color:rgb(221 221 221 / var(--un-text-opacity));}
 .color-border{border-color:var(--ehpeek-color-border);}
 .color-button-reader{border-color:var(--ehpeek-color-border-soft);--un-bg-opacity:0.88;background-color:rgba(35, 35, 35, var(--un-bg-opacity));color:var(--ehpeek-color-reader-text);}
 .color-search-swipe{--un-border-opacity:0.34;border-color:rgba(255, 255, 255, var(--un-border-opacity));--un-bg-opacity:0.88;background-color:rgba(64, 64, 64, var(--un-bg-opacity));--un-text-opacity:0.96;color:rgba(255, 255, 255, var(--un-text-opacity));--un-shadow:0 6px 20px var(--un-shadow-color, rgba(0, 0, 0, 0.42));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
@@ -3434,17 +3438,33 @@ html[data-ehpeek-touch-ui="true"] .control-page{width:38px;height:38px;border-ra
 .color-tag-group{--un-bg-opacity:1;background-color:rgb(91 63 95 / var(--un-bg-opacity));color:var(--ehpeek-color-accent);}
 .color-btn:hover{background-color:var(--ehpeek-color-accent-hover-bg);}
 .color-item-hover:hover{background-color:var(--ehpeek-color-item-hover);}
-.textsize-lg,
-html[data-ehpeek-touch-ui="true"] .textsize-md{font-size:26px;}
+.textsize-lg{font-size:26px;}
 html[data-ehpeek-touch-ui="true"] .textsize-lg{font-size:30px;}
 .textsize-md,
 html[data-ehpeek-touch-ui="true"] .textsize-sm{font-size:20px;}
+html[data-ehpeek-touch-ui="true"] .textsize-md{font-size:23px;}
 .textsize-sm,
 html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .textsize-xs{font-size:11px;}
 .color-accent{color:var(--ehpeek-color-accent);}
 .color-reader-text{color:var(--ehpeek-color-reader-text);}
 .color-text{color:var(--ehpeek-color-text);}
+.color-tag:hover{--un-text-opacity:1;color:rgb(238 238 238 / var(--un-text-opacity));}
+@media (min-width: 640px){
+.container{max-width:640px;}
+}
+@media (min-width: 768px){
+.container{max-width:768px;}
+}
+@media (min-width: 1024px){
+.container{max-width:1024px;}
+}
+@media (min-width: 1280px){
+.container{max-width:1280px;}
+}
+@media (min-width: 1536px){
+.container{max-width:1536px;}
+}
 /* layer: default */
 .\\[--progress-bar-fill\\:0\\%\\]{--progress-bar-fill:0%;}
 .\\[--progress-bar-track-direction\\:to_right\\]{--progress-bar-track-direction:to right;}
@@ -3494,7 +3514,7 @@ html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .grid{display:grid;}
 .grid-cols-\\[1fr_1fr\\]{grid-template-columns:1fr 1fr;}
 .grid-cols-\\[36\\%_minmax\\(0\\,1fr\\)\\]{grid-template-columns:36% minmax(0,1fr);}
-.grid-cols-\\[minmax\\(88px\\,28\\%\\)_minmax\\(0\\,1fr\\)\\]{grid-template-columns:minmax(88px,28%) minmax(0,1fr);}
+.grid-cols-\\[minmax\\(76px\\,20\\%\\)_minmax\\(0\\,1fr\\)\\]{grid-template-columns:minmax(76px,20%) minmax(0,1fr);}
 .grid-cols-\\[repeat\\(3\\,minmax\\(0\\,1fr\\)\\)\\]{grid-template-columns:repeat(3,minmax(0,1fr));}
 .m-0{margin:0;}
 .mx-auto{margin-left:auto;margin-right:auto;}
@@ -3502,6 +3522,7 @@ html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .mb-10px{margin-bottom:10px;}
 .mb-12px{margin-bottom:12px;}
 .ml-\\[max\\(14px\\,env\\(safe-area-inset-left\\,0px\\)\\)\\]{margin-left:max(14px,env(safe-area-inset-left,0px));}
+.ml-auto{margin-left:auto;}
 .mr-\\[max\\(14px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{margin-right:max(14px,env(safe-area-inset-right,0px));}
 .mt--18px{margin-top:-18px;}
 .mt-0{margin-top:0;}
@@ -3561,7 +3582,6 @@ html[data-ehpeek-touch-ui="true"] .touch\\:mt-8px{margin-top:8px;}
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:w-full{width:100%;}
 .w-max{width:max-content;}
 html[data-ehpeek-touch-ui="true"] .touch\\:h-\\[var\\(--ehpeek-control-toggle-dot-touch-size\\)\\]{height:var(--ehpeek-control-toggle-dot-touch-size);}
-html[data-ehpeek-touch-ui="true"] .touch\\:min-w-\\[min\\(92vw\\,520px\\)\\]{min-width:min(92vw,520px);}
 html[data-ehpeek-touch-ui="true"] .touch\\:w-\\[var\\(--ehpeek-control-toggle-dot-touch-size\\)\\]{width:var(--ehpeek-control-toggle-dot-touch-size);}
 .flex{display:flex;}
 .inline-flex{display:inline-flex;}
@@ -3610,6 +3630,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:gap-10px{gap:10px;}
 .gap-12px{gap:12px;}
 .gap-16px{gap:16px;}
 .gap-18px{gap:18px;}
+.gap-2px{gap:2px;}
 .gap-4px{gap:4px;}
 .gap-6px{gap:6px;}
 .gap-8px{gap:8px;}
@@ -3690,9 +3711,9 @@ html[data-ehpeek-touch-ui="true"] .touch\\:px-26px{padding-left:26px;padding-rig
 .text-13px{font-size:13px;}
 .text-17px{font-size:17px;}
 .text-18px{font-size:18px;}
+.text-20px{font-size:20px;}
 .text-21px{font-size:21px;}
 .text-22px{font-size:22px;}
-.text-23px{font-size:23px;}
 .text-24px{font-size:24px;}
 .text-27px{font-size:27px;}
 .text-28px{font-size:28px;}
@@ -3762,9 +3783,9 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
 .coarse\\:w-68px{width:68px;}
 .coarse\\:rounded-8px{border-radius:8px;}
 .coarse\\:px-16px{padding-left:16px;padding-right:16px;}
-.coarse\\:text-15px{font-size:15px;}
 .coarse\\:text-16px{font-size:16px;}
 .coarse\\:text-18px{font-size:18px;}
+.coarse\\:text-24px{font-size:24px;}
 .coarse\\:text-3xl{font-size:1.875rem;line-height:2.25rem;}
 }`;
 
@@ -3923,7 +3944,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
     }
   }
   if (settingsState.touchUiEnabled && pageType.type === "gallery") {
-    let touchGalleryInfo = readGalleryInfo(TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS, TOUCH_GALLERY_TAG_CLASS);
+    let touchGalleryInfo = readGalleryInfo(TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS);
     if (touchGalleryInfo.available) {
       applyTouchGalleryPanelPageStyle();
       let mount = null;
@@ -4017,8 +4038,8 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
         }
         exitIndex === landingIndex ? window.history.replaceState(window.history.state, "", galleryUrl) : window.location.replace(galleryUrl);
       },
-      onDisableReader: () => {
-        historySession.dispose(), state.reader.enabled.set(!1), installContinueReadingButton();
+      onOpenOriginalPage: (page) => {
+        historySession.dispose(), window.location.assign(page.url);
       }
     });
   }
