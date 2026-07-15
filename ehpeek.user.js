@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260715.1537
+// @version      260715.1605
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -2347,6 +2347,9 @@ body #gdt[class],
   function searchNavigationBars(root = document) {
     return Array.from(root.querySelectorAll(".searchnav"));
   }
+  function searchTopNavigationBar(root = document) {
+    return searchNavigationBars(root)[0] ?? null;
+  }
   function findSearchNavigationLink(target) {
     let link = target instanceof Element ? target.closest(
       ".searchnav a[id$='first'][href], .searchnav a[id$='prev'][href], .searchnav a[id$='next'][href], .searchnav a[id$='last'][href]"
@@ -3247,7 +3250,7 @@ body #gdt[class],
   }
   function onSearchNavigationClick(event) {
     let link = findSearchNavigationLink(event.target);
-    link && (event.preventDefault(), event.stopPropagation(), navigateSearchPage(link.href, isNextPageOrJump(link)));
+    link && (event.preventDefault(), event.stopPropagation(), navigateSearchPage(link.href));
   }
   function updateSwipeIndicator2(info) {
     if (!swipeState2?.horizontal || swipeState2.cancelled)
@@ -3273,14 +3276,14 @@ body #gdt[class],
     if (absX < SWIPE_MIN_DISTANCE2 || absY > absX * SWIPE_MAX_VERTICAL_RATIO2)
       return;
     let url = swipeUrlForDelta2(dx);
-    url && (event.preventDefault(), navigateSearchPage(url, !1));
+    url && (event.preventDefault(), navigateSearchPage(url));
   }
-  async function navigateSearchPage(url, scrollToTopNavigation) {
+  async function navigateSearchPage(url) {
     if (!searchNavigationLoading) {
-      searchNavigationLoading = !0, setSearchLoading?.(!0), swipeElement2?.setAttribute("aria-busy", "true"), scrollSearchNavigationIntoView(scrollToTopNavigation);
+      searchNavigationLoading = !0, setSearchLoading?.(!0), swipeElement2?.setAttribute("aria-busy", "true");
       try {
         let resultList = await replaceSearchPageContentFromUrl(url);
-        window.history.pushState(window.history.state, "", url), setResultListSwipeTarget(resultList);
+        window.history.pushState(window.history.state, "", url), setResultListSwipeTarget(resultList), searchTopNavigationBar()?.scrollIntoView({ block: "start", behavior: "auto" });
       } catch (error) {
         console.error("[ehpeek]", error);
       } finally {
@@ -3294,19 +3297,6 @@ body #gdt[class],
   }
   function swipeProgressForDelta2(dx) {
     return Math.min(1, Math.max(0, (Math.abs(dx) - SWIPE_INTENT_DISTANCE2) / (SWIPE_MIN_DISTANCE2 - SWIPE_INTENT_DISTANCE2)));
-  }
-  function scrollSearchNavigationIntoView(enabled) {
-    if (!enabled)
-      return;
-    let target = document.querySelector(".searchnav");
-    if (!target)
-      return;
-    let rect = target.getBoundingClientRect(), currentTop = window.scrollY, targetTop = Math.max(0, currentTop + rect.top);
-    currentTop <= targetTop || window.scrollTo({ top: targetTop, behavior: "auto" });
-  }
-  function isNextPageOrJump(link) {
-    let id = link.id.toLowerCase();
-    return id.endsWith("next") || id.endsWith("last");
   }
 
   // src/history.ts
