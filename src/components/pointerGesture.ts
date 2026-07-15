@@ -52,16 +52,6 @@ export class PointerGesture {
   private drag: GesturePointer | null = null;
   private suppressClick = false;
   private suppressClickTimer: number | null = null;
-  private passiveTap: {
-    pointerId: number;
-    pointerType: string;
-    startClientX: number;
-    startClientY: number;
-    lastClientX: number;
-    lastClientY: number;
-    startTarget: EventTarget | null;
-    moved: boolean;
-  } | null = null;
   private pinch: {
     startDistance: number;
   } | null = null;
@@ -75,24 +65,24 @@ export class PointerGesture {
     target.addEventListener("mousedown", this.onMouseDown);
     target.addEventListener("dragstart", this.onDragStart);
     target.addEventListener("click", this.onClick, true);
+    target.addEventListener("contextmenu", this.onContextMenu);
   }
 
   dispose(): void {
-    if (this.drag?.captured) {
-      this.target.releasePointerCapture?.(this.drag.pointerId);
+    if (this.drag) {
+      this.releaseCapture(this.drag);
     }
 
     this.drag = null;
     this.setDragging(false);
     this.clearPinch();
-    this.passiveTap = null;
     this.removePointerListeners();
     this.removeMouseListeners();
-    this.removePassiveTapListeners();
     this.target.removeEventListener("pointerdown", this.onPointerDown);
     this.target.removeEventListener("mousedown", this.onMouseDown);
     this.target.removeEventListener("dragstart", this.onDragStart);
     this.target.removeEventListener("click", this.onClick, true);
+    this.target.removeEventListener("contextmenu", this.onContextMenu);
 
     if (this.suppressClickTimer !== null) {
       window.clearTimeout(this.suppressClickTimer);
@@ -109,9 +99,7 @@ export class PointerGesture {
       return;
     }
 
-    if (this.drag.captured) {
-      this.target.releasePointerCapture?.(this.drag.pointerId);
-    }
+    this.releaseCapture(this.drag);
 
     this.drag = null;
     this.setDragging(false);
@@ -120,7 +108,7 @@ export class PointerGesture {
   }
 
   private onDragStart = (event: DragEvent): void => {
-    if (this.isDragging()) {
+    if (this.drag?.canDrag) {
       event.preventDefault();
     }
   };
@@ -133,6 +121,13 @@ export class PointerGesture {
     this.suppressClick = false;
     event.preventDefault();
     event.stopPropagation();
+  };
+
+  private onContextMenu = (): void => {
+    if (!this.drag?.active) {
+      this.cancel();
+      this.clearPinch();
+    }
   };
 
   private onPointerDown = (event: PointerEvent): void => {
@@ -148,12 +143,18 @@ export class PointerGesture {
       return;
     }
 
-    if (this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event)) {
-      this.beginPassiveTap(event);
+    if (this.drag) {
       return;
     }
 
-    this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event);
+    const canDrag = this.callbacks.shouldCaptureDrag?.(event) ?? true;
+    const observeTap = canDrag || (this.callbacks.shouldObserveTap?.(event) ?? false);
+
+    if (!observeTap) {
+      return;
+    }
+
+    this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event, canDrag);
   };
 
   private onMouseDown = (event: MouseEvent): void => {
@@ -161,18 +162,28 @@ export class PointerGesture {
       return;
     }
 
-    if (this.callbacks.shouldCaptureDrag && !this.callbacks.shouldCaptureDrag(event)) {
+    const canDrag = this.callbacks.shouldCaptureDrag?.(event) ?? true;
+
+    if (!canDrag) {
       return;
     }
 
-    this.start(this.mousePointerId, "mouse", event.clientX, event.clientY, event);
+    this.start(this.mousePointerId, "mouse", event.clientX, event.clientY, event, true);
     this.addMouseListeners();
   };
 
-  private start(pointerId: number, pointerType: string, clientX: number, clientY: number, event: PointerEvent | MouseEvent): void {
+  private start(
+    pointerId: number,
+    pointerType: string,
+    clientX: number,
+    clientY: number,
+    event: PointerEvent | MouseEvent,
+    canDrag: boolean,
+  ): void {
     this.drag = {
       active: false,
-      captured: false,
+      canDrag,
+      captureTarget: null,
       pointerId,
       pointerType,
       startClientX: clientX,
@@ -181,8 +192,16 @@ export class PointerGesture {
       lastClientY: clientY,
       lastMoveTime: event.timeStamp,
       startTarget: event.target,
+      tapCancelled: false,
       velocityY: 0,
     };
+
+    const captureTarget = event.target as Element | null;
+
+    if (canDrag && "pointerId" in event && typeof captureTarget?.setPointerCapture === "function") {
+      captureTarget.setPointerCapture(pointerId);
+      this.drag.captureTarget = captureTarget;
+    }
 
     this.addPointerListeners();
   }
@@ -209,7 +228,7 @@ export class PointerGesture {
       return;
     }
 
-    this.finish(event.clientX, event.clientY, event);
+    this.finish(event.clientX, event.clientY, event, true);
     this.releasePinchPointer(event);
   };
 
@@ -236,12 +255,26 @@ export class PointerGesture {
       return;
     }
 
-    if (!drag.active && this.dragIntent(clientX - drag.startClientX, clientY - drag.startClientY) === "cancel") {
+    const dx = clientX - drag.startClientX;
+    const dy = clientY - drag.startClientY;
+
+    if (Math.abs(dx) >= this.tapMoveThreshold() || Math.abs(dy) >= this.tapMoveThreshold()) {
+      drag.tapCancelled = true;
+    }
+
+    if (!drag.canDrag) {
+      this.updateLastMove(drag, clientX, clientY, event);
+      return;
+    }
+
+    const intent = this.dragIntent(dx, dy);
+
+    if (!drag.active && intent === "cancel") {
       this.cancel();
       return;
     }
 
-    if (!drag.active && this.dragIntent(clientX - drag.startClientX, clientY - drag.startClientY) !== "start") {
+    if (!drag.active && intent !== "start") {
       this.updateLastMove(drag, clientX, clientY, event);
       return;
     }
@@ -271,7 +304,7 @@ export class PointerGesture {
     event.preventDefault();
   }
 
-  private finish(clientX: number, clientY: number, event: PointerEvent | MouseEvent): void {
+  private finish(clientX: number, clientY: number, event: PointerEvent | MouseEvent, cancelled = false): void {
     const drag = this.drag;
 
     if (!drag) {
@@ -280,9 +313,7 @@ export class PointerGesture {
 
     this.drag = null;
     this.setDragging(false);
-    if (drag.captured) {
-      this.target.releasePointerCapture?.(drag.pointerId);
-    }
+    this.releaseCapture(drag);
     this.removePointerListeners();
     this.removeMouseListeners();
 
@@ -295,13 +326,18 @@ export class PointerGesture {
       velocityY: drag.velocityY,
     };
 
-    const isTap = Math.abs(info.dx) < this.tapMoveThreshold() && Math.abs(info.dy) < this.tapMoveThreshold();
+    const isTap = !drag.tapCancelled && Math.abs(info.dx) < this.tapMoveThreshold() && Math.abs(info.dy) < this.tapMoveThreshold();
 
-    if (!drag.active && isTap) {
+    if (!cancelled && !drag.active && isTap) {
       this.callbacks.onTap?.({ ...info, startTarget: drag.startTarget }, event);
     }
 
     if (drag.active) {
+      if (cancelled) {
+        this.callbacks.onEnd?.({ ...info, dx: 0, dy: 0, velocityY: 0 }, event);
+        return;
+      }
+
       this.suppressNextClick();
       this.callbacks.onEnd?.(info, event);
     }
@@ -329,98 +365,6 @@ export class PointerGesture {
     window.removeEventListener("mouseup", this.onMouseUp, true);
   }
 
-  private beginPassiveTap(event: PointerEvent): void {
-    if (!this.callbacks.shouldObserveTap?.(event)) {
-      return;
-    }
-
-    this.passiveTap = {
-      pointerId: event.pointerId,
-      pointerType: event.pointerType,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      lastClientX: event.clientX,
-      lastClientY: event.clientY,
-      startTarget: event.target,
-      moved: false,
-    };
-    this.addPassiveTapListeners();
-  }
-
-  private trackPassiveTap(event: PointerEvent): void {
-    const tap = this.passiveTap;
-
-    if (!tap || !this.matchesPassiveTapPointer(event, tap)) {
-      return;
-    }
-
-    tap.lastClientX = event.clientX;
-    tap.lastClientY = event.clientY;
-
-    if (
-      Math.abs(event.clientX - tap.startClientX) >= this.tapMoveThreshold() ||
-      Math.abs(event.clientY - tap.startClientY) >= this.tapMoveThreshold()
-    ) {
-      tap.moved = true;
-    }
-  }
-
-  private endPassiveTap(event: PointerEvent): void {
-    const tap = this.passiveTap;
-
-    if (!tap || !this.matchesPassiveTapPointer(event, tap)) {
-      return;
-    }
-
-    this.passiveTap = null;
-    this.removePassiveTapListeners();
-    this.releasePinchPointer(event);
-
-    if (event.type === "pointercancel") {
-      return;
-    }
-
-    const dx = event.clientX - tap.startClientX;
-    const dy = event.clientY - tap.startClientY;
-
-    if (tap.moved || Math.abs(dx) >= this.tapMoveThreshold() || Math.abs(dy) >= this.tapMoveThreshold()) {
-      return;
-    }
-
-    this.callbacks.onTap?.(
-      {
-        pointerId: event.pointerId,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        dx,
-        dy,
-        velocityY: 0,
-        startTarget: tap.startTarget,
-      },
-      event,
-    );
-  }
-
-  private addPassiveTapListeners(): void {
-    document.addEventListener("pointermove", this.onPassiveTapMove, true);
-    document.addEventListener("pointerup", this.onPassiveTapEnd, true);
-    document.addEventListener("pointercancel", this.onPassiveTapEnd, true);
-  }
-
-  private removePassiveTapListeners(): void {
-    document.removeEventListener("pointermove", this.onPassiveTapMove, true);
-    document.removeEventListener("pointerup", this.onPassiveTapEnd, true);
-    document.removeEventListener("pointercancel", this.onPassiveTapEnd, true);
-  }
-
-  private onPassiveTapMove = (event: PointerEvent): void => {
-    this.trackPassiveTap(event);
-  };
-
-  private onPassiveTapEnd = (event: PointerEvent): void => {
-    this.endPassiveTap(event);
-  };
-
   private trackPinchPointerDown(event: PointerEvent): boolean {
     if (!this.callbacks.onPinchStart || event.pointerType === "mouse") {
       return false;
@@ -444,12 +388,11 @@ export class PointerGesture {
     const started = this.callbacks.onPinchStart(snapshot, event);
 
     if (!started) {
+      this.pinchPointers.delete(event.pointerId);
       return false;
     }
 
     this.cancel();
-    this.passiveTap = null;
-    this.removePassiveTapListeners();
     this.pinch = {
       startDistance: snapshot.distance,
     };
@@ -587,10 +530,6 @@ export class PointerGesture {
   private activateDrag(drag: GesturePointer, event: PointerEvent | MouseEvent): void {
     drag.active = true;
     this.setDragging(true);
-    if (event instanceof PointerEvent && this.target.setPointerCapture) {
-      this.target.setPointerCapture(drag.pointerId);
-      drag.captured = true;
-    }
     this.callbacks.onStart?.(
       {
         pointerId: drag.pointerId,
@@ -627,17 +566,17 @@ export class PointerGesture {
     this.target.dataset.dragging = String(dragging);
   }
 
-  private matchesPassiveTapPointer(
-    event: PointerEvent,
-    tap: NonNullable<PointerGesture["passiveTap"]>,
-  ): boolean {
-    return event.pointerId === tap.pointerId && event.pointerType === tap.pointerType;
+  private releaseCapture(drag: GesturePointer): void {
+    if (drag.captureTarget?.hasPointerCapture(drag.pointerId)) {
+      drag.captureTarget.releasePointerCapture(drag.pointerId);
+    }
   }
 }
 
 type GesturePointer = {
   active: boolean;
-  captured: boolean;
+  canDrag: boolean;
+  captureTarget: Element | null;
   pointerId: number;
   pointerType: string;
   startClientX: number;
@@ -646,5 +585,6 @@ type GesturePointer = {
   lastClientY: number;
   lastMoveTime: number;
   startTarget: EventTarget | null;
+  tapCancelled: boolean;
   velocityY: number;
 };
