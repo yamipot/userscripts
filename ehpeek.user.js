@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260715.1514
+// @version      260715.1523
 // @description  A mobile-optimized E-H/ExH viewer
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
@@ -540,13 +540,13 @@
         if (event.pointerType === "mouse" && event.button !== 0 || this.trackPinchPointerDown(event) || this.pinch || this.drag)
           return;
         let canDrag = this.callbacks.shouldCaptureDrag?.(event) ?? !0;
-        (canDrag || (this.callbacks.shouldObserveTap?.(event) ?? !1)) && this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event, canDrag);
+        (canDrag || (this.callbacks.shouldObserveTap?.(event) ?? !1)) && (this.start(event.pointerId, event.pointerType, event.clientX, event.clientY, event, canDrag), event.pointerType === "mouse" && this.addMouseListeners());
       };
       this.onMouseDown = (event) => {
         event.button !== 0 || typeof PointerEvent < "u" || this.drag || !(this.callbacks.shouldCaptureDrag?.(event) ?? !0) || (this.start(this.mousePointerId, "mouse", event.clientX, event.clientY, event, !0), this.addMouseListeners());
       };
       this.onPointerMove = (event) => {
-        !this.drag || event.pointerId !== this.drag.pointerId || this.move(event.clientX, event.clientY, event);
+        !this.drag || event.pointerId !== this.drag.pointerId || this.drag.pointerType === "mouse" || this.move(event.clientX, event.clientY, event);
       };
       this.onPointerUp = (event) => {
         !this.drag || event.pointerId !== this.drag.pointerId || (this.finish(event.clientX, event.clientY, event), this.releasePinchPointer(event));
