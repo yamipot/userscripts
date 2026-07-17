@@ -1,8 +1,10 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260715.1605
+// @version      260717.1529
 // @description  A mobile-optimized E-H/ExH viewer
+// @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
+// @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @match        *://e-hentai.org/*
 // @match        *://exhentai.org/*
 // @grant        GM_getValue
@@ -10,6 +12,7 @@
 // @grant        GM_deleteValue
 // @grant        GM_listValues
 // @grant        GM_registerMenuCommand
+// @grant        GM_download
 // @run-at       document-end
 // @updateURL    https://github.com/yamipot/ehpeek/raw/build-master/ehpeek.user.js
 // @downloadURL  https://github.com/yamipot/ehpeek/raw/build-master/ehpeek.user.js
@@ -401,14 +404,25 @@
       rightTapNext: "Right tap goes to next page",
       openOriginalPage: "Open original image page",
       download: "Download",
+      downloadDisplayedImage: "Displayed image",
+      downloadOriginalImage: "Original image",
+      originalImageSource: "Original source provided by E-Hentai",
+      originalImageUnavailable: "Original image unavailable",
       startReading: "Read",
       continueReading: "Continue",
+      backToTop: "Back to top",
       loading: "Loading...",
       pages: "Pages",
       endPage: "End",
       end: "End of gallery. Tap to exit.",
       failedPrefix: "Failed",
       reload: "Reload"
+    },
+    navigation: {
+      favorites: "Favorites",
+      github: "Ehpeek on GitHub",
+      home: "Home",
+      menu: "Menu"
     },
     settings: {
       openSettings: "Settings",
@@ -424,8 +438,13 @@
       apply: "Apply",
       close: "Close"
     },
+    search: {
+      showCategories: "Show Categories",
+      hideCategories: "Hide Categories"
+    },
     errors: {
       imageNotFound: "Image not found",
+      downloadFailed: "Download failed",
       loadFailed: "Load failed",
       imageLoadFailed: "Image load failed",
       previewPageSizeUnknown: "Cannot determine gallery preview page size",
@@ -871,7 +890,7 @@
   var FALLBACK_ASPECT_RATIO = 1.42;
   function pagesViewportDom(options) {
     let scroller = document.createElement("div"), strip = document.createElement("main");
-    scroller.className = "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab control-scroll-hidden [&[data-dragging=true]]:cursor-grabbing [&[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:touch-none [#ehpeek-reader[data-view-mode=paged]_&]:select-none", scroller.tabIndex = -1, strip.className = "flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&]:flex-row [#ehpeek-reader[data-view-mode=paged]_&]:w-auto [#ehpeek-reader[data-view-mode=paged]_&]:h-full [#ehpeek-reader[data-view-mode=paged]_&]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&]:p-0", scroller.append(strip);
+    scroller.className = "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden [&[data-dragging=true]]:cursor-grabbing [&[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:touch-none [#ehpeek-reader[data-view-mode=paged]_&]:select-none", scroller.tabIndex = -1, strip.className = "flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&]:flex-row [#ehpeek-reader[data-view-mode=paged]_&]:w-auto [#ehpeek-reader[data-view-mode=paged]_&]:h-full [#ehpeek-reader[data-view-mode=paged]_&]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&]:p-0", scroller.append(strip);
     let setOrder = (elements, visualIndex) => {
       elements.node.style.setProperty("order", String(visualIndex)), elements.node.dataset.ehpeekIndex = String(visualIndex);
     }, setPageNum = (elements, pageNum) => {
@@ -901,34 +920,38 @@
       },
       setPageNum,
       setPlaceholder(elements, content, text) {
-        let placeholder = content.state === "error" ? errorPlaceholderDom(content.pageNum, text, options.onReloadPage) : placeholderDom(content.kind, text);
+        let placeholder = content.state === "error" ? errorPlaceholderDom(content.pageNum, text, options.onReloadPage) : placeholderDom(content, text);
         elements.frame.replaceChildren(placeholder);
       },
       setSize(elements, frameWidth, frameHeight) {
-        elements.node.style.setProperty("--ehpeek-page-height", `${frameHeight + 8}px`), elements.node.style.setProperty("--ehpeek-frame-width", `${frameWidth}px`), elements.node.style.setProperty("--ehpeek-frame-height", `${frameHeight}px`);
+        elements.node.style.setProperty("--reader-page-height", `${frameHeight + 8}px`), elements.node.style.setProperty("--reader-frame-width", `${frameWidth}px`), elements.node.style.setProperty("--reader-frame-height", `${frameHeight}px`);
       }
     };
     return { element: scroller, scroller: createPagesScroller(scroller), slots };
   }
   function slotElements() {
     let node = document.createElement("section"), frame = document.createElement("div");
-    return node.className = "ehpeek-page flex w-full h-[var(--ehpeek-page-height)] items-start justify-center pb-8px [#ehpeek-reader[data-view-mode=paged]_&]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full [#ehpeek-reader[data-view-mode=paged]_&]:items-center [#ehpeek-reader[data-view-mode=paged]_&]:p-0", frame.className = "flex w-[var(--ehpeek-frame-width)] h-[var(--ehpeek-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full", node.append(frame), { node, frame };
+    return node.className = "ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full [#ehpeek-reader[data-view-mode=paged]_&]:items-center [#ehpeek-reader[data-view-mode=paged]_&]:p-0", frame.className = "flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full", node.append(frame), { node, frame };
   }
-  function placeholderDom(kind, text) {
+  function placeholderDom(content, text) {
     let placeholder = document.createElement("div");
-    return placeholder.className = "flex w-full h-full items-center justify-center bg-[#151515] text-[rgba(245,245,245,0.72)] leading-1 text-center " + (kind === "end" ? "p-24px [direction:ltr] text-[clamp(24px,6vw,42px)] font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-850"), placeholder.textContent = text, placeholder;
+    if (placeholder.className = "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] leading-1 text-center " + (content.kind === "end" ? "p-xl [direction:ltr] text-[clamp(24px,6vw,42px)] font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 [font-variant-numeric:tabular-nums]"), content.state === "loading") {
+      let loading = document.createElement("span"), spinner = document.createElement("span"), pageNumber = document.createElement("span");
+      return loading.className = "flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden", loading.setAttribute("aria-hidden", "true"), spinner.className = "block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner", pageNumber.className = "block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]", pageNumber.textContent = text, placeholder.setAttribute("role", "status"), placeholder.setAttribute("aria-label", `${texts_default.reader.loading} ${text}`), loading.append(pageNumber, spinner), placeholder.append(loading), placeholder;
+    }
+    return placeholder.textContent = text, placeholder;
   }
   function errorPlaceholderDom(pageNum, text, onReloadPage) {
     let button = document.createElement("button"), icon = document.createElement("span"), placeholder = document.createElement("div"), message = document.createElement("div"), stop = (event) => {
       event.preventDefault(), event.stopPropagation();
     };
-    return button.className = "inline-flex w-64px h-64px items-center justify-center border border-[rgba(255,178,167,0.64)] rounded-[var(--ehpeek-control-radius-pill)] bg-[rgba(255,178,167,0.12)] text-[#ffddd8] cursor-pointer font-sans text-34px font-700 leading-1 active:scale-96 [touch-action:manipulation]", button.type = "button", button.setAttribute("aria-label", texts_default.reader.reload), icon.setAttribute("aria-hidden", "true"), icon.textContent = "↻", button.append(icon), placeholder.className = "flex w-full h-full flex-col items-center justify-center gap-18px bg-[#151515] p-24px text-[#ffb2a7] text-center text-18px font-700 leading-1", message.className = "max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]", message.textContent = text, placeholder.append(message, button), button.addEventListener("pointerdown", stop), button.addEventListener("click", (event) => {
+    return button.className = "inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans text-34px font-700 leading-1 active:scale-96 [touch-action:manipulation]", button.type = "button", button.setAttribute("aria-label", texts_default.reader.reload), icon.setAttribute("aria-hidden", "true"), icon.textContent = "↻", button.append(icon), placeholder.className = "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center text-18px font-700 leading-1", message.className = "max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]", message.textContent = text, placeholder.append(message, button), button.addEventListener("pointerdown", stop), button.addEventListener("click", (event) => {
       stop(event), onReloadPage(pageNum);
     }), placeholder;
   }
   function pageImageDom(pageNum, slotImage) {
     let image = document.createElement("img");
-    return image.className = "block w-[var(--ehpeek-frame-width)] h-[var(--ehpeek-frame-height)] object-contain select-none [-webkit-user-drag:none] [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full", image.alt = `Page ${pageNum}`, image.decoding = "async", image.loading = "eager", image.draggable = !1, image.setAttribute("fetchpriority", slotImage.highPriority ? "high" : "low"), image.src = slotImage.imageUrl, slotImage.width && slotImage.height && (image.width = slotImage.width, image.height = slotImage.height), image;
+    return image.className = "block w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] object-contain select-none [-webkit-user-drag:none] [#ehpeek-reader[data-view-mode=paged]_&]:w-full [#ehpeek-reader[data-view-mode=paged]_&]:h-full", image.alt = `Page ${pageNum}`, image.decoding = "async", image.loading = "eager", image.draggable = !1, image.setAttribute("fetchpriority", slotImage.highPriority ? "high" : "low"), image.src = slotImage.imageUrl, slotImage.width && slotImage.height && (image.width = slotImage.width, image.height = slotImage.height), image;
   }
   function createPagesScroller(element) {
     let clampedTop = (scrollTop, bounds) => bounds ? clamp(scrollTop, bounds.min ?? Number.NEGATIVE_INFINITY, bounds.max ?? Number.POSITIVE_INFINITY) : scrollTop;
@@ -1193,58 +1216,162 @@
     return slot.width && slot.height && slot.width > 0 && slot.height > 0 ? slot.height / slot.width : normalizedAspectRatio(slot.aspectRatio, FALLBACK_ASPECT_RATIO);
   }
 
-  // src/components/Misc.tsx
-  var PROGRESS_BAR_CLASS = "ehpeek-progress-bar", PROGRESS_BAR_CLASS_NAME = [
-    PROGRESS_BAR_CLASS,
-    "w-full h-[2.4em] px-[0.6em] py-0 m-0",
-    "cursor-grab active:cursor-grabbing touch-none select-none",
-    "[-webkit-appearance:none] [appearance:none]",
-    "[--progress-bar-fill:0%] [--progress-bar-track-direction:to_right]",
-    "[accent-color:var(--ehp-color-foreground)]"
-  ].join(" ");
-  registerGlobalStyle(PROGRESS_BAR_CLASS, `
-.${PROGRESS_BAR_CLASS}::-webkit-slider-runnable-track {
+  // src/components/Icon.tsx
+  function Icon(props) {
+    let definition = ICON_DEFINITIONS[props.name], filled = definition.solid || definition.fillable && props.filled, size = props.size ?? 24;
+    return /* @__PURE__ */ k(
+      "svg",
+      {
+        className: `ehpeek-icon block flex-none${props.className ? ` ${props.className}` : ""}`,
+        width: size,
+        height: size,
+        viewBox: "0 0 24 24",
+        fill: filled ? "currentColor" : "none",
+        stroke: filled ? "none" : "currentColor",
+        "stroke-width": props.strokeWidth ?? 2,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "data-icon-name": props.name,
+        "aria-hidden": "true",
+        focusable: "false"
+      },
+      definition.filledPaths?.map((path) => /* @__PURE__ */ k("path", { key: `filled-${path}`, d: path, fill: "currentColor", stroke: "none" })),
+      definition.paths.map((path) => /* @__PURE__ */ k("path", { key: path, d: path }))
+    );
+  }
+  var ICON_DEFINITIONS = {
+    "arrow-left": {
+      paths: ["M19 12H5", "m12 19-7-7 7-7"]
+    },
+    "arrow-right": {
+      paths: ["M5 12h14", "m12 5 7 7-7 7"]
+    },
+    "arrow-up": {
+      paths: ["m5 12 7-7 7 7", "M12 5v14"]
+    },
+    "arrows-horizontal": {
+      paths: ["M3 12h18", "m7 8-4 4 4 4", "m17 8 4 4-4 4"]
+    },
+    "arrows-vertical": {
+      paths: ["M12 3v18", "m8 7 4-4 4 4", "m8 17 4 4 4-4"]
+    },
+    check: {
+      paths: ["m5 12.5 4.25 4.25L19.5 6.5"]
+    },
+    "chevron-left": {
+      paths: ["m15 18-6-6 6-6"]
+    },
+    "chevron-right": {
+      paths: ["m9 18 6-6-6-6"]
+    },
+    close: {
+      paths: ["M6 6l12 12", "M18 6 6 18"]
+    },
+    download: {
+      paths: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"]
+    },
+    "external-link": {
+      paths: ["M14 4h6v6", "m20 4-9 9", "M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"]
+    },
+    heart: {
+      fillable: !0,
+      paths: ["M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"]
+    },
+    home: {
+      paths: ["m3 10.5 9-7.5 9 7.5", "M5.5 9v11h13V9", "M9.5 20v-6h5v6"]
+    },
+    menu: {
+      paths: [
+        "M12 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"
+      ],
+      solid: !0
+    },
+    "panda-peek": {
+      filledPaths: [
+        "M7.2 3.2a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z",
+        "M16.8 3.2a2.4 2.4 0 1 0 0 4.8 2.4 2.4 0 0 0 0-4.8Z",
+        "M7.6 9.8c.5-1.2 1.6-1.8 2.6-1.3s1.3 1.8.8 3-1.6 1.8-2.6 1.3-1.3-1.8-.8-3Z",
+        "M13.8 8.5c1-.5 2.1.1 2.6 1.3s.2 2.5-.8 3-2.1-.1-2.6-1.3-.2-2.5.8-3Z",
+        "M10.9 13.6c0-.6.5-.9 1.1-.9s1.1.3 1.1.9-.5 1-1.1 1-1.1-.4-1.1-1Z",
+        "M5.2 13.7a2.8 1.9 0 1 0 0 3.8 2.8 1.9 0 0 0 0-3.8Z",
+        "M18.8 14.1a2.8 1.9 0 1 0 0 3.8 2.8 1.9 0 0 0 0-3.8Z"
+      ],
+      paths: [
+        "M5 17c-.8-6.4 2.1-10.8 7-10.8s7.8 4.4 7 10.8",
+        "M12 14.6v.7c0 .7-.6 1.2-1.3 1.2m1.3-1.2c0 .7.6 1.2 1.3 1.2",
+        "M2 17h20"
+      ]
+    },
+    settings: {
+      paths: [
+        "M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4A2 2 0 0 0 4 9.9l.2.1a2 2 0 0 1 1 1.7v.6a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.6a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z",
+        "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+      ]
+    },
+    star: {
+      fillable: !0,
+      paths: ["m12 2.75 2.85 5.77 6.37.93-4.61 4.49 1.09 6.34L12 17.24 6.3 20.23l1.09-6.34-4.61-4.49 6.37-.93Z"]
+    }
+  };
+
+  // src/components/Misc.css
+  var Misc_default = `.ehpeek-progress-bar::-webkit-slider-runnable-track {
   height: 0.4em;
   border-radius: 9999px;
   background: linear-gradient(
     var(--progress-bar-track-direction),
-    var(--ehp-color-accent) 0 var(--progress-bar-fill),
-    var(--ehp-color-track) var(--progress-bar-fill) 100%
+    var(--color-accent) 0 var(--progress-bar-fill),
+    var(--color-track) var(--progress-bar-fill) 100%
   );
 }
 
-.${PROGRESS_BAR_CLASS}::-webkit-slider-thumb {
+.ehpeek-progress-bar::-webkit-slider-thumb {
   width: 1.4em;
   height: 1.4em;
   margin-top: -0.5em;
-  border: 2px solid var(--ehp-color-border);
+  border: 2px solid var(--color-border);
   border-radius: 9999px;
-  background: var(--ehp-color-foreground);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-  -webkit-appearance: none;
+  background: var(--color-text);
+  box-shadow: 0 2px 10px var(--color-shadow-control);
   appearance: none;
+  -webkit-appearance: none;
 }
 
-.${PROGRESS_BAR_CLASS}::-moz-range-track {
+.ehpeek-progress-bar::-moz-range-track,
+.ehpeek-progress-bar::-moz-range-progress {
   height: 0.4em;
   border-radius: 9999px;
-  background: var(--ehp-color-track);
 }
 
-.${PROGRESS_BAR_CLASS}::-moz-range-progress {
-  height: 0.4em;
-  border-radius: 9999px;
-  background: var(--ehp-color-accent);
+.ehpeek-progress-bar::-moz-range-track {
+  background: var(--color-track);
 }
 
-.${PROGRESS_BAR_CLASS}::-moz-range-thumb {
+.ehpeek-progress-bar::-moz-range-progress {
+  background: var(--color-accent);
+}
+
+.ehpeek-progress-bar::-moz-range-thumb {
   width: 1.4em;
   height: 1.4em;
-  border: 2px solid var(--ehp-color-border);
+  border: 2px solid var(--color-border);
   border-radius: 9999px;
-  background: var(--ehp-color-foreground);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
-}`);
+  background: var(--color-text);
+  box-shadow: 0 2px 10px var(--color-shadow-control);
+}
+`;
+
+  // src/components/Misc.tsx
+  var PROGRESS_BAR_CLASS = "ehpeek-progress-bar", PROGRESS_BAR_CLASS_NAME = [
+    PROGRESS_BAR_CLASS,
+    "w-full h-[2.4em] px-[0.6em] py-0 m-0",
+    "bg-transparent",
+    "cursor-grab active:cursor-grabbing touch-none select-none",
+    "[-webkit-appearance:none] [appearance:none]",
+    "[--progress-bar-fill:0%] [--progress-bar-track-direction:to_right]",
+    "[accent-color:var(--color-text)]"
+  ].join(" ");
+  registerGlobalStyle(PROGRESS_BAR_CLASS, Misc_default);
   function ProgressBar(props) {
     let input = A2(null);
     _2(() => {
@@ -1287,8 +1414,12 @@
 
   // src/components/Reader/Toolbar.tsx
   var READER_BUTTON_CLASS = [
-    "control-reader-btn coarse:w-68px coarse:h-60px coarse:px-16px coarse:rounded-8px coarse:text-18px",
-    "border color-button-reader cursor-pointer font-sans textsize-sm font-700 leading-1"
+    "inline-flex min-w-48px h-48px items-center justify-center px-md py-0 rounded-md coarse:min-w-64px coarse:h-64px coarse:px-lg coarse:rounded-lg coarse:text-18px",
+    "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:opacity-40 disabled:cursor-default"
+  ].join(" "), READER_ICON_SIZE = "1.4em", DOWNLOAD_OPTION_CLASS = [
+    "flex w-full min-h-lg flex-col items-start justify-center gap-xs px-lg py-md rounded-md",
+    "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer text-left",
+    "hover:bg-[var(--color-badge)] disabled:opacity-40 disabled:cursor-default"
   ].join(" ");
   function initialToolbarState() {
     return {
@@ -1297,6 +1428,8 @@
         readDirection: "rtl",
         rightTapAction: "previous"
       },
+      downloadAvailable: !1,
+      downloadDialog: null,
       open: !1,
       progress: {
         pageNum: 1,
@@ -1305,7 +1438,7 @@
     };
   }
   function Toolbar(props) {
-    let controls = props.state.controls, progress = props.state.progress, open = props.state.open, modeButton = modeButtonInfo(controls.mode), readDirectionButton = readDirectionButtonInfo(controls.readDirection), rightTapButton = rightTapButtonInfo(controls.rightTapAction);
+    let controls = props.state.controls, progress = props.state.progress, downloadDialog = props.state.downloadDialog, open = props.state.open, modeButton = modeButtonInfo(controls.mode), readDirectionButton = readDirectionButtonInfo(controls.readDirection), rightTapButton = rightTapButtonInfo(controls.rightTapAction);
     return /* @__PURE__ */ k(S, null, /* @__PURE__ */ k(
       "div",
       {
@@ -1314,41 +1447,49 @@
         onPointerDown: stopEvent,
         onWheel: stopEvent
       },
-      /* @__PURE__ */ k("div", { className: "flex flex-row gap-8px pointer-events-auto" }, /* @__PURE__ */ k(
+      /* @__PURE__ */ k("div", { className: `flex flex-row gap-md coarse:gap-lg pointer-events-auto${open ? "" : " !hidden"}` }, /* @__PURE__ */ k(
         "button",
         {
           type: "button",
-          className: "coarse:w-68px coarse:px-16px coarse:text-16px " + READER_BUTTON_CLASS,
-          hidden: !open,
-          title: readDirectionButton.title,
-          onClick: props.callbacks.onReadDirectionClick
-        },
-        readDirectionButton.text
-      ), /* @__PURE__ */ k(
-        "button",
-        {
-          type: "button",
-          className: "coarse:w-68px coarse:px-16px coarse:text-16px " + READER_BUTTON_CLASS,
-          hidden: !open,
+          className: READER_BUTTON_CLASS,
           title: rightTapButton.title,
           onClick: props.callbacks.onRightTapClick
         },
         rightTapButton.text
-      ), /* @__PURE__ */ k("button", { type: "button", className: READER_BUTTON_CLASS, hidden: !open, title: modeButton.title, onClick: props.callbacks.onModeClick }, modeButton.text), /* @__PURE__ */ k(
+      ), /* @__PURE__ */ k(
         "button",
         {
           type: "button",
-          className: "coarse:w-68px coarse:text-24px text-20px " + READER_BUTTON_CLASS,
-          hidden: !open,
+          className: READER_BUTTON_CLASS,
+          title: readDirectionButton.title,
+          onClick: props.callbacks.onReadDirectionClick
+        },
+        /* @__PURE__ */ k(Icon, { name: readDirectionButton.icon, size: READER_ICON_SIZE })
+      ), /* @__PURE__ */ k("button", { type: "button", className: READER_BUTTON_CLASS, title: modeButton.title, onClick: props.callbacks.onModeClick }, /* @__PURE__ */ k(Icon, { name: modeButton.icon, size: READER_ICON_SIZE })), /* @__PURE__ */ k(
+        "button",
+        {
+          type: "button",
+          className: READER_BUTTON_CLASS,
+          disabled: !props.state.downloadAvailable,
+          title: texts_default.reader.download,
+          onClick: props.callbacks.onDownloadClick
+        },
+        /* @__PURE__ */ k(Icon, { name: "download", size: READER_ICON_SIZE })
+      ), /* @__PURE__ */ k(
+        "button",
+        {
+          type: "button",
+          className: READER_BUTTON_CLASS,
           title: texts_default.reader.openOriginalPage,
           onClick: props.callbacks.onOpenOriginalPageClick
         },
-        "⏻"
-      ), /* @__PURE__ */ k("button", { type: "button", className: READER_BUTTON_CLASS, title: texts_default.reader.close, onClick: props.callbacks.onCloseClick }, "X"))
+        /* @__PURE__ */ k(Icon, { name: "external-link", size: READER_ICON_SIZE })
+      ), /* @__PURE__ */ k("button", { type: "button", className: READER_BUTTON_CLASS, title: texts_default.reader.close, onClick: props.callbacks.onCloseClick }, /* @__PURE__ */ k(Icon, { name: "close", size: READER_ICON_SIZE })))
     ), /* @__PURE__ */ k(
       "div",
       {
-        className: "fixed z-3 pointer-events-none top-[calc(62px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 coarse:top-[calc(72px+env(safe-area-inset-top,0px))] landscape:top-[calc(54px+env(safe-area-inset-top,0px))] landscape:left-auto landscape:right-10px landscape:translate-x-0 coarse-landscape:top-[calc(62px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] py-4px px-10px rounded-6px color-reader-badge color-reader-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap text-center landscape:text-right"
+        className: "fixed z-3 pointer-events-none top-[calc(70px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 coarse:top-[calc(80px+env(safe-area-inset-top,0px))] landscape:top-[calc(62px+env(safe-area-inset-top,0px))] landscape:left-auto landscape:right-10px landscape:translate-x-0 coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap text-center landscape:text-right",
+        hidden: controls.mode === "scroll" && !open
       },
       pageNumberText(progress.pageNum, progress.totalPages)
     ), /* @__PURE__ */ k(
@@ -1376,7 +1517,41 @@
           onCommit: props.callbacks.onProgressCommit
         }
       )
-    ));
+    ), downloadDialog ? /* @__PURE__ */ k(
+      "div",
+      {
+        className: "fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": texts_default.reader.download,
+        onClick: (event) => {
+          event.stopPropagation(), event.target === event.currentTarget && props.callbacks.onDownloadDialogClose();
+        },
+        onPointerDown: stopEvent,
+        onWheel: stopEvent
+      },
+      /* @__PURE__ */ k("div", { className: "w-full max-w-420px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl" }, /* @__PURE__ */ k("div", { className: "flex items-center justify-between gap-md mb-lg" }, /* @__PURE__ */ k("div", { className: "font-sans textsize-lg font-700" }, `${texts_default.reader.download} · ${downloadDialog.pageNum}`), /* @__PURE__ */ k(
+        "button",
+        {
+          type: "button",
+          className: READER_BUTTON_CLASS,
+          title: texts_default.reader.close,
+          "aria-label": texts_default.reader.close,
+          onClick: props.callbacks.onDownloadDialogClose
+        },
+        /* @__PURE__ */ k(Icon, { name: "close", size: READER_ICON_SIZE })
+      )), /* @__PURE__ */ k("div", { className: "grid gap-md font-sans textsize-md" }, /* @__PURE__ */ k("button", { type: "button", className: DOWNLOAD_OPTION_CLASS, onClick: props.callbacks.onDownloadCurrentClick }, /* @__PURE__ */ k("span", { className: "font-700" }, texts_default.reader.downloadDisplayedImage), /* @__PURE__ */ k("span", { className: "max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75" }, downloadDialog.currentFileName)), /* @__PURE__ */ k(
+        "button",
+        {
+          type: "button",
+          className: DOWNLOAD_OPTION_CLASS,
+          disabled: !downloadDialog.originalImageUrl,
+          onClick: props.callbacks.onDownloadOriginalClick
+        },
+        /* @__PURE__ */ k("span", { className: "font-700" }, texts_default.reader.downloadOriginalImage),
+        /* @__PURE__ */ k("span", { className: "textsize-sm opacity-75" }, downloadDialog.originalImageUrl ? texts_default.reader.originalImageSource : texts_default.reader.originalImageUnavailable)
+      )))
+    ) : null);
   }
   function progressFillPercent(progress) {
     let max = Math.max(1, progress.maxProgressPageNum), value = Math.min(max, Math.max(1, progress.pageNum));
@@ -1388,14 +1563,14 @@
   function modeButtonInfo(mode) {
     let paged = mode === "paged";
     return {
-      text: paged ? "⇔" : "⇕",
+      icon: paged ? "arrows-horizontal" : "arrows-vertical",
       title: paged ? texts_default.reader.scrollMode : texts_default.reader.pagedMode
     };
   }
   function readDirectionButtonInfo(direction) {
     let rtl = direction === "rtl";
     return {
-      text: rtl ? "RL" : "LR",
+      icon: rtl ? "arrow-left" : "arrow-right",
       title: rtl ? texts_default.reader.readLeftToRight : texts_default.reader.readRightToLeft
     };
   }
@@ -1411,7 +1586,7 @@
   var MIN_SCALE = 1, MAX_SCALE = 5, CLOSE_SCALE = 1.02;
   function createZoomOverlayDom() {
     let element = document.createElement("div"), image = document.createElement("img");
-    return element.className = "fixed inset-0 z-4 flex items-center justify-center overflow-hidden bg-[#070707] pointer-events-none", element.hidden = !0, element.style.display = "none", image.className = "block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]", element.append(image), {
+    return element.className = "fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none", element.hidden = !0, element.style.display = "none", image.className = "block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]", element.append(image), {
       element,
       image
     };
@@ -1474,6 +1649,13 @@
         };
     }, [props.nodes, props.clone]), /* @__PURE__ */ k("span", { ref: root, className: "contents" });
   }
+
+  // src/components/Reader/index.css
+  var Reader_default = `#ehpeek-reader,
+#ehpeek-reader * {
+  box-sizing: border-box;
+}
+`;
 
   // src/components/Reader/index.tsx
   var VIEWER_ID = "ehpeek-reader", STYLE_ID = "ehpeek-reader-style", DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, NEAR_LOAD_AHEAD = 3, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, DOUBLE_TAP_MS = 340, DOUBLE_TAP_DISTANCE = 36, TAP_CANCEL_DISTANCE = 8, FALLBACK_ASPECT_RATIO2 = 1.42, TwoTierImageQueue = class {
@@ -1549,14 +1731,14 @@
   function ReaderRoot(props) {
     return _2(() => {
       let previousDocumentOverflow = document.documentElement.style.overflow, previousBodyOverflow = document.body.style.overflow;
-      return ensureReaderStyle(), document.documentElement.style.overflow = "hidden", document.body.style.overflow = "hidden", () => {
+      return registerGlobalStyle(STYLE_ID, Reader_default), document.documentElement.style.overflow = "hidden", document.body.style.overflow = "hidden", () => {
         document.documentElement.style.overflow = previousDocumentOverflow, document.body.style.overflow = previousBodyOverflow;
       };
     }, []), /* @__PURE__ */ k(
       "div",
       {
         id: VIEWER_ID,
-        className: "fixed inset-0 z-[2147483647] bg-[#070707] color-reader-text font-sans text-13px leading-[1.4]",
+        className: "fixed inset-0 z-reader ehp-color-reader font-sans text-13px leading-[1.4]",
         "data-read-direction": props.readDirection,
         "data-toolbar-open": String(props.toolbarOpen),
         "data-view-mode": props.viewMode
@@ -1711,7 +1893,7 @@
           this.resizeFrame = null, this.viewport.resizePages();
         }));
       };
-      this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : void 0, this.renderWindowSize = options.renderWindowSize ?? DEFAULT_WINDOW_SIZE;
+      this.galleryId = options.galleryId, this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : void 0, this.renderWindowSize = options.renderWindowSize ?? DEFAULT_WINDOW_SIZE;
       for (let [index, page] of options.pages.entries()) {
         let pageNum = pageNumForPage(page, index);
         this.pages.set(pageNum, {
@@ -1736,6 +1918,10 @@
         onRightTapClick: () => this.toggleRightTapAction(),
         onModeClick: () => this.setMode(state.reader.viewMode.value === "paged" ? "scroll" : "paged"),
         onCloseClick: () => this.close(),
+        onDownloadClick: () => this.openDownloadDialog(),
+        onDownloadCurrentClick: () => this.downloadDisplayedImage(),
+        onDownloadDialogClose: () => this.closeDownloadDialog(),
+        onDownloadOriginalClick: () => this.downloadOriginalImage(),
         onOpenOriginalPageClick: () => this.openOriginalPage(),
         onOpenChange: (open) => this.setRootState({ toolbarOpen: open }),
         onProgressPointerDown: this.onProgressPointerDown,
@@ -1904,15 +2090,26 @@
         this.viewport.setPageError(target.pageNum, token, message);
         return;
       }
-      this.closed || (this.loadedImages.set(target.pageNum, { pageNum: target.pageNum, imageUrl, width, height }), this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image));
+      this.closed || (this.loadedImages.set(target.pageNum, {
+        pageNum: target.pageNum,
+        imageUrl,
+        originalImageUrl: loaded.originalImageUrl ?? null,
+        width,
+        height
+      }), this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image), target.pageNum === this.currentPageNum && this.updatePageNumber());
     }
     updatePageNumber() {
-      this.setToolbarProgress({
-        pageNum: this.currentPageNum,
-        totalPages: this.totalPages,
-        maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
-        keepInputValue: this.progressNavigating
-      });
+      this.toolbarState = {
+        ...this.toolbarState,
+        downloadAvailable: this.loadedImages.has(this.currentPageNum),
+        downloadDialog: this.toolbarState.downloadDialog?.pageNum === this.currentPageNum ? this.toolbarState.downloadDialog : null,
+        progress: {
+          pageNum: this.currentPageNum,
+          totalPages: this.totalPages,
+          maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
+          keepInputValue: this.progressNavigating
+        }
+      }, this.setToolbarComponentState(this.toolbarState);
     }
     notifyActivePageChange() {
       let page = this.pages.get(this.currentPageNum);
@@ -1990,6 +2187,10 @@
       return this.viewport.isHitEndPage(point) ? (this.close(), !0) : !1;
     }
     handleKeyboardClose() {
+      if (this.toolbarState.downloadDialog) {
+        this.closeDownloadDialog();
+        return;
+      }
       if (this.zoomOverlay.active()) {
         this.zoomOverlay.close();
         return;
@@ -2041,6 +2242,29 @@
     cancelProgressNavigation() {
       this.progressNavigationTimer !== null && (window.clearTimeout(this.progressNavigationTimer), this.progressNavigationTimer = null);
     }
+    openDownloadDialog() {
+      let image = this.loadedImages.get(this.currentPageNum);
+      if (!image || !this.isRealPageNum(this.currentPageNum))
+        return;
+      let downloadDialog = {
+        currentFileName: displayedImageFileName(this.galleryId, this.currentPageNum, image.imageUrl),
+        currentImageUrl: image.imageUrl,
+        originalImageUrl: image.originalImageUrl,
+        pageNum: this.currentPageNum
+      };
+      this.toolbarState = { ...this.toolbarState, downloadDialog }, this.setToolbarComponentState(this.toolbarState);
+    }
+    closeDownloadDialog() {
+      this.toolbarState.downloadDialog && (this.toolbarState = { ...this.toolbarState, downloadDialog: null }, this.setToolbarComponentState(this.toolbarState));
+    }
+    downloadDisplayedImage() {
+      let download = this.toolbarState.downloadDialog;
+      download && startImageDownload(download.currentImageUrl, download.currentFileName) && this.closeDownloadDialog();
+    }
+    downloadOriginalImage() {
+      let originalImageUrl = this.toolbarState.downloadDialog?.originalImageUrl;
+      originalImageUrl && startImageDownload(originalImageUrl) && this.closeDownloadDialog();
+    }
     openOriginalPage() {
       let page = this.pages.get(this.currentPageNum);
       !page || !this.isRealPageNum(this.currentPageNum) || !this.onOpenOriginalPage || this.onOpenOriginalPage(page);
@@ -2086,6 +2310,32 @@
       return -this.rightDragDelta();
     }
   };
+  function displayedImageFileName(galleryId, pageNum, imageUrl) {
+    return `${galleryId}-p${String(pageNum).padStart(2, "0")}.${imageFileExtension(imageUrl)}`;
+  }
+  function imageFileExtension(imageUrl) {
+    try {
+      let extension = decodeURIComponent(new URL(imageUrl).pathname.split("/").pop() ?? "").match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+      if (extension && ["avif", "bmp", "gif", "jpeg", "jpg", "png", "webp"].includes(extension))
+        return extension;
+    } catch {
+      return "jpg";
+    }
+    return "jpg";
+  }
+  function startImageDownload(url, name) {
+    try {
+      return GM_download({
+        url,
+        ...name ? { name } : {},
+        onerror: (error) => {
+          console.error("[ehpeek]", error), window.alert(texts_default.errors.downloadFailed);
+        }
+      }), !0;
+    } catch (error) {
+      return console.error("[ehpeek]", error), window.alert(texts_default.errors.downloadFailed), !1;
+    }
+  }
   async function loadImage(image) {
     if (!(image.complete && image.naturalWidth > 0)) {
       await new Promise((resolve, reject) => {
@@ -2107,19 +2357,12 @@
     let eventTarget = event.target;
     return eventTarget instanceof Element ? !!eventTarget.closest("input, textarea, select, [contenteditable='true'], [contenteditable='']") : !1;
   }
-  function ensureReaderStyle() {
-    registerGlobalStyle(STYLE_ID, `
-#ehpeek-reader,
-#ehpeek-reader * {
-  box-sizing: border-box;
-}`);
-  }
   function pointerTypeForEvent(event) {
     return "pointerType" in event ? event.pointerType : "mouse";
   }
 
   // src/components/SettingsMenu.tsx
-  var SETTINGS_ACTION_BUTTON_CLASS = "block w-full control-btn color-btn cursor-pointer font-inherit text-center textsize-md", SETTINGS_DOT_CLASS = "block flex-none w-[var(--ehpeek-control-toggle-dot-size)] h-[var(--ehpeek-control-toggle-dot-size)] touch:w-[var(--ehpeek-control-toggle-dot-touch-size)] touch:h-[var(--ehpeek-control-toggle-dot-touch-size)] rounded-[var(--ehpeek-control-radius-pill)]";
+  var SETTINGS_ACTION_BUTTON_CLASS = "block w-full min-h-lg py-sm px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98", SETTINGS_APPLY_BUTTON_COLOR = "border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-background)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108", SETTINGS_CLOSE_BUTTON_COLOR = "border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]", SETTINGS_DOT_CLASS = "block flex-none w-10px h-10px touch:w-18px touch:h-18px rounded-full";
   function SwitchButton(props) {
     let [initialChecked, labelOn, labelOff] = props.checked, [checked, setChecked] = d2(initialChecked), setValue = (value) => {
       setChecked(value), props.onChange(value);
@@ -2128,13 +2371,13 @@
       "button",
       {
         type: "button",
-        className: "flex w-full items-center justify-between gap-16px touch:gap-20px control-action border-0 border-b color-border-subtle-b bg-transparent color-text color-item-hover cursor-pointer font-inherit text-left textsize-md",
+        className: "flex w-full min-h-lg touch:min-h-xl items-center justify-between gap-lg touch:gap-xl py-md px-md touch:py-lg rounded-xs border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text ehp-color-site-item-hover cursor-pointer font-inherit text-left textsize-lg",
         onClick: (event) => {
           event.stopPropagation(), setValue(!checked);
         }
       },
       /* @__PURE__ */ k("span", null, checked ? labelOn : labelOff),
-      /* @__PURE__ */ k("span", { className: `${SETTINGS_DOT_CLASS} ${checked ? "bg-[var(--ehpeek-color-state-on)]" : "bg-[var(--ehpeek-color-state-off)]"}` })
+      /* @__PURE__ */ k("span", { className: `${SETTINGS_DOT_CLASS} ${checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}` })
     );
   }
   function SettingsMenu(props) {
@@ -2152,7 +2395,7 @@
       return document.addEventListener("click", onClick), document.addEventListener("keydown", onKeyDown), () => {
         document.removeEventListener("click", onClick), document.removeEventListener("keydown", onKeyDown);
       };
-    }, [props.open]), props.open ? /* @__PURE__ */ k("div", { ref: menuRef, className: "ehpeek-settings-menu fixed top-24px right-24px z-[2147483646] min-w-260px p-8px border color-border rounded-4px color-elevated color-text textsize-md leading-[1.2]" }, /* @__PURE__ */ k(
+    }, [props.open]), props.open ? /* @__PURE__ */ k("div", { ref: menuRef, className: "ehpeek-settings-menu fixed top-24px right-24px z-overlay min-w-260px p-sm border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-lg leading-[1.2]" }, /* @__PURE__ */ k(
       SwitchButton,
       {
         checked: [draft.readerEnabled, texts_default.settings.readerOn, texts_default.settings.readerOff],
@@ -2184,11 +2427,11 @@
           draft.touchUiEnabled = value;
         }
       }
-    ), /* @__PURE__ */ k("div", { className: "ehpeek-settings-actions grid grid-cols-[1fr_1fr] gap-8px touch:gap-10px mt-6px touch:mt-8px" }, /* @__PURE__ */ k(
+    ), /* @__PURE__ */ k("div", { className: "ehpeek-settings-actions grid grid-cols-2 gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]" }, /* @__PURE__ */ k(
       "button",
       {
         type: "button",
-        className: `ehpeek-settings-apply ${SETTINGS_ACTION_BUTTON_CLASS}`,
+        className: `ehpeek-settings-apply ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_APPLY_BUTTON_COLOR}`,
         onClick: (event) => {
           event.stopPropagation(), props.onApply({ ...draft });
         }
@@ -2198,7 +2441,7 @@
       "button",
       {
         type: "button",
-        className: `ehpeek-settings-close ${SETTINGS_ACTION_BUTTON_CLASS}`,
+        className: `ehpeek-settings-close ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_CLOSE_BUTTON_COLOR}`,
         onClick: (event) => {
           event.stopPropagation(), close();
         }
@@ -2208,10 +2451,12 @@
   }
 
   // src/eh/galleryRearrange.css
-  var galleryRearrange_default = `:root {
-  --ehpeek-touch-gallery-gutter: clamp(16px, 2.5vw, 36px);
+  var galleryRearrange_default = `/* Shared content gutter for the touch gallery page. */
+:root {
+  --touch-gallery-gutter: clamp(16px, 2.5vw, 36px);
 }
 
+/* Remove the original desktop page's minimum width and horizontal page overflow. */
 html,
 body {
   min-width: 0 !important;
@@ -2220,15 +2465,17 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Reset the original page shell and apply the active E-H/ExH page palette. */
 body {
   box-sizing: border-box;
   padding-left: 0 !important;
   padding-right: 0 !important;
-  background: #34353b !important;
+  background: var(--color-site-page) !important;
   font-size: 14px !important;
   line-height: 1.35 !important;
 }
 
+/* Align enhanced and original gallery sections to one responsive content column. */
 .ehpeek-touch-gallery-host,
 .gpc,
 body #gdt[class],
@@ -2236,7 +2483,7 @@ body #gdt[class],
 .ptt,
 .ptb {
   box-sizing: border-box !important;
-  width: calc(100% - (var(--ehpeek-touch-gallery-gutter) * 2)) !important;
+  width: calc(100% - (var(--touch-gallery-gutter) * 2)) !important;
   max-width: none !important;
   margin-left: auto !important;
   margin-right: auto !important;
@@ -2244,6 +2491,7 @@ body #gdt[class],
   padding-right: 0 !important;
 }
 
+/* Keep wide thumbnail and pagination rows scrollable inside the viewport. */
 body #gdt[class],
 .ptt,
 .ptb,
@@ -2252,6 +2500,7 @@ body #gdt[class],
   -webkit-overflow-scrolling: touch;
 }
 
+/* Give original thumbnail cells a consistent mobile-friendly width. */
 #gdt .gdtm,
 #gdt .gdtl,
 #gdt > div {
@@ -2262,6 +2511,7 @@ body #gdt[class],
   vertical-align: top;
 }
 
+/* Center thumbnails inside their enlarged cells. */
 #gdt a {
   display: flex !important;
   min-height: 150px;
@@ -2269,52 +2519,121 @@ body #gdt[class],
   justify-content: center;
 }
 
-.ehpeek-touch-gallery-rating {
+/* Establish readable base typography for the original comments section. */
+#cdiv {
+  font-size: 20px !important;
+  line-height: 1.5 !important;
+}
+
+/* Enlarge comment bodies while allowing long content to wrap safely. */
+#cdiv .c6 {
+  font-size: 20px !important;
+  line-height: 1.5 !important;
+  overflow-wrap: anywhere;
+}
+
+/* Keep comment metadata and form hints visually secondary to comment bodies. */
+#cdiv .c3,
+#cdiv .c4,
+#cdiv .c5,
+#cdiv .c7,
+#formdiv {
+  font-size: 16px !important;
+  line-height: 1.4 !important;
+}
+
+/* Space the new-comment entry point and suppress the original bracket decoration. */
+#postnewcomment {
+  margin: 16px 0 !important;
+  font-size: 0 !important;
+}
+
+/* Present the new-comment entry point as a full touch target. */
+#postnewcomment a {
+  display: inline-flex !important;
+  min-height: 52px;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid var(--color-site-border);
+  border-radius: 6px;
+  background: var(--color-site-elevated);
+  color: var(--color-site-accent);
+  font-size: 18px;
+  text-decoration: none;
+}
+
+/* Let comment form fields wrap into a vertical layout on narrow screens. */
+#cdiv form {
   display: flex !important;
-  min-height: var(--ehpeek-rating-height, auto) !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
 }
 
-.ehpeek-touch-gallery-rating-scale {
-  width: max-content;
-  max-width: none !important;
-  transform: scale(var(--ehpeek-rating-scale, 1));
-  transform-origin: left top;
+/* Make the comment editor full-width and comfortable for touch typing. */
+#cdiv textarea,
+#commenttext {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 160px !important;
+  flex: 1 0 100%;
+  padding: 16px !important;
+  border-radius: 6px !important;
+  font: inherit !important;
+  font-size: 20px !important;
+  line-height: 1.5 !important;
 }
 
-.ehpeek-touch-gallery-rating img,
-.ehpeek-touch-gallery-rating input,
-.ehpeek-touch-gallery-rating button,
-.ehpeek-touch-gallery-rating table,
-.ehpeek-touch-gallery-rating tbody,
-.ehpeek-touch-gallery-rating tr,
-.ehpeek-touch-gallery-rating td,
-.ehpeek-touch-gallery-rating > * {
-  max-width: 100%;
-  min-height: 24px;
-  height: auto;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background-color: transparent !important;
-  overflow: visible;
-  touch-action: manipulation;
+/* Normalize original form controls to the touch sizing scale. */
+#cdiv button,
+#cdiv input[type="button"],
+#cdiv input[type="submit"],
+#cdiv input[type="text"],
+#cdiv select {
+  box-sizing: border-box !important;
+  min-height: 52px !important;
+  padding: 12px 16px !important;
+  border-radius: 6px !important;
+  font: inherit !important;
+  font-size: 18px !important;
 }
 
-.ehpeek-touch-gallery-rating table {
-  border-collapse: collapse !important;
-  border-spacing: 0 !important;
+/* Let comment form actions share the available row width evenly. */
+#cdiv button,
+#cdiv input[type="button"],
+#cdiv input[type="submit"] {
+  flex: 1 1 180px;
+  cursor: pointer;
+}
+
+/* Keep short text fields useful without forcing them wider than the viewport. */
+#cdiv input[type="text"] {
+  min-width: min(100%, 240px);
 }
 `;
 
   // src/eh/dom.ts
-  var TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID = "ehpeek-touch-gallery-page-rearrange-style";
+  var TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID = "ehpeek-touch-gallery-page-rearrange-style", TOUCH_FAVORITES_PAGE_CLASS_NAME = "!min-w-0 !max-w-full !overflow-x-hidden", TOUCH_FAVORITES_CONTENT_CLASS_NAME = "box-border !min-w-0 !w-full !max-w-full !overflow-x-hidden", TOUCH_FAVORITES_NAV_CLASS_NAME = "box-border !max-w-full overflow-x-auto", TOUCH_FAVORITES_RESULTS_CLASS_NAME = "ehpeek-touch-favorites-results box-border !min-w-0 !w-full !max-w-full overflow-x-auto", TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME = "!min-w-0 !w-full !max-w-full", TOUCH_FAVORITES_CATEGORIES_CLASS_NAME = "box-border !grid !h-auto !w-full !max-w-full grid-cols-[repeat(5,minmax(0,1fr))] !p-0", TOUCH_FAVORITES_CATEGORY_CLASS_NAME = "!static !float-none !w-full !m-0", TOUCH_FAVORITES_ALL_CATEGORY_CLASS_NAME = "!col-span-full !w-[140px] justify-self-center";
   function imageAspectRatio(image) {
     let width = image?.naturalWidth || image?.width || Number(image?.getAttribute("width") || ""), height = image?.naturalHeight || image?.height || Number(image?.getAttribute("height") || "");
     return width > 0 && height > 0 ? height / width : 1.42;
+  }
+  function readImagePageInfo(root, baseUrl) {
+    let image = root.querySelector("img#img"), imageSrc = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.currentSrc || "", originalImageUrl = Array.from(root.querySelectorAll("a[href]")).map((link) => normalizeUrl(link.getAttribute("href") || "", baseUrl)).find((url) => imageUrlPath(url).includes("/fullimg")) ?? null;
+    return {
+      imageUrl: normalizeUrl(imageSrc, baseUrl),
+      originalImageUrl,
+      width: numericAttribute(image, "width"),
+      height: numericAttribute(image, "height")
+    };
+  }
+  function imageUrlPath(url) {
+    try {
+      return new URL(url).pathname.toLowerCase();
+    } catch {
+      return "";
+    }
   }
   function collectGalleryPages(extractPageType2, root = document, baseUrl = window.location.href) {
     let links = Array.from(
@@ -2331,7 +2650,7 @@ body #gdt[class],
     return pages.sort((left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER));
   }
   function readShowingRange(root = document) {
-    let match = (root.querySelector(".gpc")?.textContent ?? "").match(/([\d,]+)\s*-\s*([\d,]+)\s+of\s+([\d,]+)/i);
+    let match = (root.querySelector(".gpc")?.textContent ?? "").match(/([\d,]+)\s*-\s*([\d,]+)\D+([\d,]+)/);
     if (!match)
       return null;
     let start = Number(match[1].replace(/,/g, "")), end = Number(match[2].replace(/,/g, "")), total = Number(match[3].replace(/,/g, ""));
@@ -2349,6 +2668,49 @@ body #gdt[class],
   }
   function searchTopNavigationBar(root = document) {
     return searchNavigationBars(root)[0] ?? null;
+  }
+  function readTouchSearchPanelInfo(root = document) {
+    let searchBox = root.querySelector("#searchbox"), categories = searchBox?.querySelector("form > table"), optionLinks = searchBox?.querySelector("#advdiv")?.previousElementSibling, searchInput = searchBox?.querySelector("#f_search"), searchControls = searchInput?.parentElement, searchSubmit = searchControls?.querySelector(
+      "input[type='submit'], button[type='submit']"
+    ), clearButton = searchControls?.querySelector(
+      "input[type='button'], button[type='button']"
+    );
+    if (!searchBox || !categories || !searchInput || !(optionLinks instanceof HTMLElement) || !searchSubmit || !clearButton)
+      return null;
+    let categoryToggleMount = document.createElement("span"), searchActionMount = document.createElement("span"), clearActionMount = document.createElement("span");
+    return categoryToggleMount.className = "contents", searchActionMount.className = "contents", clearActionMount.className = "contents", {
+      categories,
+      categoryToggleMount,
+      clearActionMount,
+      clearButton,
+      clearLabel: searchActionLabel(clearButton),
+      fileSearch: root.querySelector("#fsdiv"),
+      optionLinks,
+      searchActionMount,
+      searchBox,
+      searchLabel: searchActionLabel(searchSubmit),
+      searchSubmit
+    };
+  }
+  function prepareTouchSearchPanel(info, optionClassName) {
+    let form = info.searchBox.querySelector("form"), searchInput = form?.querySelector("#f_search"), searchControls = searchInput?.parentElement, advancedPanel = form?.querySelector("#advdiv");
+    info.searchBox.className = "box-border !w-full !m-0 !p-0 !border-0 !text-left !text-16px [&_.searchadv]:box-border [&_.searchadv]:!w-full [&_.searchadv]:!pt-md [&_.searchadv]:!textsize-sm [&_.searchadv>div]:!flex-wrap [&_.searchadv>div]:!justify-start [&_.searchadv>div]:!gap-sm [&_.searchadv>div>div]:!p-sm", form && (form.removeAttribute("style"), form.className = "flex w-full flex-col gap-md m-0 p-0"), info.categories.className = "hidden !w-full !m-0 border-collapse", info.categories.hidden = !0, info.optionLinks.insertAdjacentElement("afterend", info.categories), info.categories.tBodies[0]?.classList.add("flex", "flex-wrap", "gap-xs");
+    for (let row of Array.from(info.categories.rows)) {
+      row.className = "contents";
+      for (let cell of Array.from(row.cells))
+        cell.className = "!p-0";
+    }
+    for (let category of Array.from(info.categories.querySelectorAll("[id^='cat_']"))) {
+      let colorClass = Array.from(category.classList).find((className) => /^ct(?:[1-9a])$/.test(className));
+      category.className = `${colorClass ? `${colorClass} ` : ""}flex box-border w-auto min-w-104px !h-sm items-center justify-center px-md border rounded-sm text-white text-center textsize-sm font-700 leading-[1.15] whitespace-nowrap shadow-[0_2px_6px_var(--color-shadow-control)] cursor-pointer select-none transition-opacity [touch-action:manipulation] active:opacity-70 [&[data-disabled]]:opacity-40`;
+    }
+    searchControls && (searchControls.className = "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-sm !p-0 [&>*:nth-child(n+4)]:col-span-full"), searchInput && (searchInput.className = "appearance-none !box-border !w-full !h-md min-w-0 col-start-1 row-start-1 !m-0 !py-0 px-lg border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text text-16px leading-[1.2] outline-none focus:border-[var(--color-site-accent)] focus:bg-[var(--color-site-elevated)] focus:shadow-[0_0_0_3px_var(--color-site-accent-hover)]"), info.searchSubmit.replaceWith(info.searchActionMount), info.clearButton.replaceWith(info.clearActionMount), info.optionLinks.prepend(info.categoryToggleMount), info.optionLinks.className = "flex w-full flex-wrap items-center justify-start gap-x-md gap-y-sm !p-0 !text-0";
+    for (let link of Array.from(info.optionLinks.querySelectorAll("a")))
+      link.className = optionClassName;
+    advancedPanel && (advancedPanel.className = "box-border w-full !p-0 ehp-color-site-text"), info.fileSearch && (info.fileSearch.style.removeProperty("margin-top"), info.fileSearch.className = "box-border !w-full !m-0 !mt-0 p-lg border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text !textsize-sm text-left [&_form]:flex [&_form]:flex-col [&_form]:gap-sm [&_form>div]:!p-0 [&_.searchadv>div]:!flex-wrap [&_.searchadv>div]:!justify-start [&_.searchadv>div]:!gap-sm [&_.searchadv>div>div]:!p-sm");
+  }
+  function searchActionLabel(element) {
+    return element instanceof HTMLInputElement ? element.value : element.textContent?.trim() ?? "";
   }
   function findSearchNavigationLink(target) {
     let link = target instanceof Element ? target.closest(
@@ -2423,23 +2785,72 @@ body #gdt[class],
     let wrapper = document.createElement("div");
     return wrapper.style.textAlign = "right", thumbnailContainer ? anchor.parentElement.insertBefore(wrapper, anchor) : anchor.insertAdjacentElement("afterend", wrapper), wrapper;
   }
+  function applySiteTheme() {
+    document.documentElement.dataset.ehpeekSite = window.location.hostname.endsWith("exhentai.org") ? "exhentai" : "e-hentai";
+  }
   function applyTouchGalleryPanelPageStyle() {
     if (document.getElementById(TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID))
       return;
     let style = document.createElement("style");
     style.id = TOUCH_GALLERY_PAGE_REARRANGE_STYLE_ID, style.textContent = galleryRearrange_default, document.head.append(style);
   }
+  function prepareTouchGalleryComments() {
+    let items = Array.from(document.querySelectorAll("#cdiv .c5")).map((trigger) => ({
+      trigger,
+      details: trigger.closest(".c1")?.querySelector(".c7[id^='cvotes_']") ?? null
+    })).filter((item) => item.details !== null), setExpanded = (item, expanded) => {
+      item.trigger.setAttribute("aria-expanded", String(expanded)), item.details.setAttribute("aria-hidden", String(!expanded)), item.details.style.display = expanded ? "" : "none";
+    };
+    for (let item of items) {
+      if (item.trigger.dataset.ehpeekTouchCommentScore === "true")
+        continue;
+      item.trigger.dataset.ehpeekTouchCommentScore = "true", item.trigger.classList.add("whitespace-nowrap"), item.trigger.removeAttribute("onmouseover"), item.trigger.removeAttribute("onmouseout"), item.trigger.removeAttribute("onclick"), item.trigger.setAttribute("role", "button"), item.trigger.setAttribute("tabindex", "0"), item.trigger.setAttribute("aria-controls", item.details.id), setExpanded(item, !1);
+      let toggle = (event) => {
+        event.preventDefault(), event.stopImmediatePropagation();
+        let shouldExpand = item.trigger.getAttribute("aria-expanded") !== "true";
+        for (let candidate of items)
+          setExpanded(candidate, candidate === item && shouldExpand);
+      };
+      item.trigger.addEventListener("click", toggle), item.trigger.addEventListener("keydown", (event) => {
+        (event.key === "Enter" || event.key === " ") && toggle(event);
+      });
+    }
+  }
+  function prepareTouchFavoritesPage() {
+    document.documentElement.classList.add(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" ")), document.body.classList.add(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "));
+    let categories = document.querySelector(".ido > .nosel");
+    if (categories) {
+      categories.classList.add(...TOUCH_FAVORITES_CATEGORIES_CLASS_NAME.split(" "));
+      for (let child of Array.from(categories.children))
+        child.classList.contains("fp") ? (child.classList.add(...TOUCH_FAVORITES_CATEGORY_CLASS_NAME.split(" ")), child.children.length === 0 && child.classList.add(...TOUCH_FAVORITES_ALL_CATEGORY_CLASS_NAME.split(" "))) : child.children.length === 0 && child.classList.add("!hidden");
+    }
+    for (let navigation of searchNavigationBars())
+      navigation.classList.add(...TOUCH_FAVORITES_NAV_CLASS_NAME.split(" "));
+    let resultList = searchResultList();
+    resultList?.classList.add(...TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME.split(" "));
+    let existingWrapper = resultList?.parentElement?.classList.contains("ehpeek-touch-favorites-results") ? resultList.parentElement : null, content = existingWrapper?.parentElement ?? resultList?.parentElement;
+    if (resultList?.closest(".ido")?.classList.add(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" ")), content?.classList.add(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" ")), !resultList || existingWrapper)
+      return;
+    let wrapper = document.createElement("div");
+    wrapper.className = TOUCH_FAVORITES_RESULTS_CLASS_NAME, resultList.replaceWith(wrapper), wrapper.append(resultList);
+  }
   function insertTouchTopBar(topBar) {
     let original = document.querySelector("#nb");
     return original?.parentElement ? (original.replaceWith(topBar), !0) : !1;
+  }
+  function insertTouchSearchPanel(panel) {
+    let original = document.querySelector("#searchbox");
+    return original?.parentElement ? (original.before(panel), !0) : !1;
   }
   function insertTouchGalleryPanel(panel) {
     let host = document.querySelector("#gmid")?.parentElement ?? document.querySelector("#gleft")?.parentElement;
     if (!host)
       return !1;
     host.classList.add("ehpeek-touch-gallery-host");
-    for (let child of Array.from(host.children))
-      child.hidden = !0;
+    for (let child of Array.from(host.children)) {
+      let element = child;
+      element.hidden = !0, element.classList.add("!hidden");
+    }
     return host.prepend(panel), !0;
   }
   function readTouchTopBarInfo(menuItemClassName) {
@@ -2450,7 +2861,8 @@ body #gdt[class],
     return {
       available: navItems.length > 0,
       navItems,
-      homeHref: navItems.find((item) => item instanceof HTMLAnchorElement)?.href ?? "/"
+      homeHref: navItems.find((item) => item instanceof HTMLAnchorElement)?.href ?? "/",
+      favoritesHref: new URL("/favorites.php", window.location.href).href
     };
   }
   function readGalleryInfo(actionMenuItemClassName) {
@@ -2466,12 +2878,12 @@ body #gdt[class],
       titleMain: textOf("#gn"),
       titleSub: textOf("#gj"),
       category: textOf("#gdc"),
-      categoryClassName: readGalleryCategoryClassName(),
+      categoryAppearance: readGalleryCategoryAppearance(),
       cover: coverUrl ? galleryCoverImageElement(coverUrl) : null,
       favorite: readGalleryFavoriteInfo(),
       summary,
       actions: readGalleryActionsDom(actionMenuItemClassName),
-      rating: readGalleryRatingDom(),
+      rating: readGalleryRatingInfo(),
       tagGroups: readGalleryTagGroups()
     };
   }
@@ -2509,21 +2921,37 @@ body #gdt[class],
     }).filter(([label, value]) => label && value);
     return new Map(entries);
   }
-  function readGalleryCategoryClassName() {
-    let category = document.querySelector("#gdc"), categoryStyleElement = category?.querySelector("[class*='ct']") ?? category;
-    return Array.from(categoryStyleElement?.classList ?? []).filter((className) => /^ct\d+$/i.test(className)).join(" ");
+  function readGalleryCategoryAppearance() {
+    let category = document.querySelector("#gdc"), categoryStyleElement = category?.querySelector("[class*='ct']") ?? category, style = categoryStyleElement ? window.getComputedStyle(categoryStyleElement) : null;
+    return {
+      backgroundColor: style?.backgroundColor ?? "",
+      color: style?.color ?? ""
+    };
   }
-  function readGalleryRatingDom() {
-    let element = document.querySelector("#gdr") ?? document.querySelector("#rating") ?? document.querySelector("#rating_label")?.parentElement ?? null;
-    if (!element)
-      return null;
-    let wrapper = document.createElement("div"), scaler = document.createElement("div");
-    return wrapper.className = "ehpeek-touch-gallery-rating", scaler.className = "ehpeek-touch-gallery-rating-scale", scaler.append(element), wrapper.append(scaler), wrapper;
+  function readGalleryRatingInfo() {
+    let label = textOf("#rating_label"), count = textOf("#rating_count"), script = galleryRatingScript(), value = scriptNumberValue(script, "display_rating");
+    return !label || value === null ? null : { count, label, value };
+  }
+  function galleryRatingScript() {
+    return Array.from(document.scripts).map((item) => item.textContent ?? "").find((text) => text.includes("display_rating")) ?? "";
+  }
+  function scriptNumberValue(script, name) {
+    let match = script.match(new RegExp(`\\b${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`)), value = Number(match?.[1]);
+    return match && Number.isFinite(value) ? value : null;
+  }
+  function setGalleryRating(value) {
+    let rating = Math.round(value * 2);
+    if (rating < 1 || rating > 10)
+      throw new RangeError("Gallery rating must be between 0.5 and 5 stars.");
+    let area = document.querySelectorAll('map[name="rating"] area')[rating - 1];
+    if (!area)
+      throw new Error("Gallery rating action is unavailable.");
+    area.click();
   }
   function readGalleryActionsDom(actionMenuItemClassName) {
     return Array.from(document.querySelectorAll("#gd5 a, #gd5 button, #gd5 input[type='button'], #gd5 input[type='submit']")).map((item) => {
-      let clone = item.cloneNode(!0);
-      return clone.removeAttribute("id"), clone.className = actionMenuItemClassName, clone;
+      let clone = item.cloneNode(!1);
+      return clone.removeAttribute("id"), clone.removeAttribute("style"), clone.className = actionMenuItemClassName, clone instanceof HTMLInputElement || (clone.textContent = item.textContent?.trim() || item.getAttribute("title")?.trim() || item.getAttribute("aria-label")?.trim() || ""), clone;
     }).slice(0, 6);
   }
   function readGalleryTagGroups() {
@@ -2544,17 +2972,17 @@ body #gdt[class],
     return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
   }
   function readGalleryTag(tag) {
-    let label = tag.textContent?.trim() ?? "";
+    let label = tag.textContent?.trim() || tag.getAttribute("ehs-tag")?.trim() || tag.title.trim();
     if (!label || !tag.href)
       return null;
-    let container = tag.closest("div.gt, div.gtl, div.gtw") ?? tag, tagStyle = window.getComputedStyle(tag), containerStyle = window.getComputedStyle(container);
-    return {
+    let container = tag.closest("div.gt, div.gtl, div.gtw") ?? tag, tagStyle = window.getComputedStyle(tag), containerStyle = window.getComputedStyle(container), content = document.createElement("span");
+    return content.className = "contents", content.append(...Array.from(tag.childNodes, (node) => node.cloneNode(!0))), {
       appearance: {
         backgroundColor: containerStyle.backgroundColor,
         borderColor: containerStyle.borderColor,
-        borderStyle: containerStyle.borderStyle,
         color: tagStyle.color
       },
+      content,
       href: tag.href,
       label
     };
@@ -2599,10 +3027,14 @@ body #gdt[class],
     }
     return "";
   }
+  function numericAttribute(element, attribute) {
+    let value = Number(element?.getAttribute(attribute) || "");
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
 
   // src/components/Enhance/Misc.tsx
   function ReadButton(props) {
-    let buttonClassName = props.variant === "touchGallery" ? "ehpeek-continue-reading ehpeek-touch-gallery-primary-button control-primary-action textsize-lg font-700" : "ehpeek-continue-reading block box-border w-full max-w-full mt-4px control-compact color-btn shadow-none cursor-pointer text-center font-sans textsize-sm font-700 leading-[1.15]", detailClassName = props.variant === "touchGallery" ? "ehpeek-continue-reading-page block mt-2px color-accent textsize-sm font-600 opacity-78 normal-case" : "ehpeek-continue-reading-page block mt-1px opacity-72 textsize-xs font-600";
+    let buttonClassName = props.variant === "touchGallery" ? "ehpeek-continue-reading ehpeek-touch-gallery-primary-button flex min-w-0 w-full h-full min-h-xl flex-col items-center justify-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-accent text-center uppercase [touch-action:manipulation] textsize-xl font-700" : "ehpeek-continue-reading block box-border w-full max-w-full mt-xs min-h-sm py-xs px-sm rounded-sm border ehp-color-site-border bg-transparent ehp-color-site-accent hover:bg-[var(--color-site-accent-hover)] shadow-none cursor-pointer text-center font-sans textsize-md font-700 leading-[1.15]", detailClassName = props.variant === "touchGallery" ? "ehpeek-continue-reading-page block mt-2px ehp-color-site-accent textsize-md font-600 opacity-78 normal-case" : "ehpeek-continue-reading-page block mt-1px opacity-72 textsize-sm font-600";
     return /* @__PURE__ */ k(
       "button",
       {
@@ -2632,7 +3064,7 @@ body #gdt[class],
         ref: (element) => {
           props.handleRef(element ? handleFor(element) : null);
         },
-        className: "ehpeek-swipe-indicator fixed top-1/2 z-[2147483645] flex w-42px h-108px items-center justify-center border color-search-swipe rounded-22px text-52px font-sans font-300 leading-1 pointer-events-none select-none transition-opacity duration-120 ease-in-out",
+        className: "ehpeek-swipe-indicator fixed top-1/2 z-overlay flex w-42px h-108px items-center justify-center border border-[var(--color-site-swipe-border)] rounded-full bg-[var(--color-site-swipe-background)] text-[var(--color-site-text)] shadow-[0_6px_20px_var(--color-shadow-floating)] pointer-events-none select-none transition-opacity duration-120 ease-in-out",
         "aria-hidden": "true",
         style: {
           backdropFilter: "blur(8px)",
@@ -2640,29 +3072,121 @@ body #gdt[class],
           opacity: "0",
           transform: "translate(42px, -50%)"
         }
-      }
+      },
+      /* @__PURE__ */ k(Icon, { name: "close", size: 36 }),
+      /* @__PURE__ */ k(Icon, { name: "chevron-left", size: 36 }),
+      /* @__PURE__ */ k(Icon, { name: "chevron-right", size: 36 })
     );
   }
   function updateSwipeIndicatorElement(element, state2) {
-    let clampedProgress = Math.min(1, Math.max(0, state2.progress)), pull = Math.round(48 * clampedProgress), hidden = clampedProgress <= SWIPE_INDICATOR_HIDE_PROGRESS, offset = state2.direction === "left" ? 42 - pull : pull - 42, blocked = state2.blocked === !0;
-    element.setAttribute("aria-hidden", hidden ? "true" : "false"), element.textContent = blocked ? "×" : state2.direction === "left" ? "‹" : "›", element.style.display = hidden ? "none" : "flex", element.style.left = state2.direction === "right" ? "6px" : "", element.style.opacity = String(0.35 + clampedProgress * 0.65), element.style.right = state2.direction === "left" ? "6px" : "", element.style.transform = `translate(${offset}px, -50%)`, element.style.width = "";
+    let clampedProgress = Math.min(1, Math.max(0, state2.progress)), pull = Math.round(48 * clampedProgress), hidden = clampedProgress <= SWIPE_INDICATOR_HIDE_PROGRESS, offset = state2.direction === "left" ? 42 - pull : pull - 42, iconName = state2.blocked === !0 ? "close" : state2.direction === "left" ? "chevron-left" : "chevron-right";
+    element.setAttribute("aria-hidden", hidden ? "true" : "false");
+    for (let icon of Array.from(element.querySelectorAll(".ehpeek-icon")))
+      icon.style.display = icon.dataset.iconName === iconName ? "block" : "none";
+    element.style.display = hidden ? "none" : "flex", element.style.left = state2.direction === "right" ? "6px" : "", element.style.opacity = String(0.35 + clampedProgress * 0.65), element.style.right = state2.direction === "left" ? "6px" : "", element.style.transform = `translate(${offset}px, -50%)`, element.style.width = "";
   }
 
   // src/components/Enhance/TouchGalleryPanel.tsx
-  var TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item control-touch-menu-item text-21px leading-[1.2]";
+  var TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item block box-border w-full min-h-lg py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline text-21px leading-[1.2]", RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
   function TouchGalleryPanel(props) {
-    let rootRef = A2(null), categoryClassName = "ehpeek-touch-gallery-category min-w-0 self-center overflow-hidden text-ellipsis whitespace-nowrap py-6px px-12px text-17px font-700 leading-[1.1] uppercase " + (props.source.categoryClassName || "bg-[#34353b] color-accent");
-    return h2(() => {
-      rootRef.current && prepareRatingScale(rootRef.current);
-    }, []), /* @__PURE__ */ k("section", { ref: rootRef, className: "ehpeek-touch-gallery flex box-border w-full flex-col mb-12px color-text font-sans" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-hero relative grid h-[clamp(260px,42vh,340px)] pt-18px pr-[max(16px,env(safe-area-inset-right,0px))] pb-48px pl-[max(16px,env(safe-area-inset-left,0px))] color-surface color-text" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-summary grid h-full min-h-0 grid-cols-[36%_minmax(0,1fr)] gap-18px items-start" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-cover flex self-center justify-self-center w-auto max-w-full h-full max-h-full aspect-[2/3] items-center justify-center overflow-hidden" }, /* @__PURE__ */ k(ExternalDomNode, { node: props.source.cover })), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-hero-side flex self-stretch min-w-0 min-h-0 flex-col items-start gap-10px pt-2px" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-heading flex min-w-0 min-h-0 w-full flex-col gap-6px items-start overflow-hidden" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-title-main line-clamp-4 overflow-hidden text-22px text-[clamp(22px,5.9vw,32px)] font-400 leading-[1.1] text-left break-anywhere" }, props.source.titleMain), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-title-sub line-clamp-3 overflow-hidden opacity-88 text-[clamp(17px,4.6vw,25px)] leading-[1.15] text-left break-anywhere" }, props.source.titleSub)), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-category-row flex w-full min-h-64px gap-4px items-center mt-auto" }, /* @__PURE__ */ k("div", { className: categoryClassName }, props.source.category), /* @__PURE__ */ k(ExternalDomNode, { node: props.source.rating }))))), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-[var(--ehpeek-control-primary-height)] mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-[var(--ehpeek-control-radius-sm)] color-panel-primary" }, /* @__PURE__ */ k(TouchGalleryFavoriteButton, { source: props.source.favorite }), /* @__PURE__ */ k(
+    let rating = props.source.rating, hasCover = props.source.cover !== null, [ratingValue, setRatingValue] = d2(() => rating?.value ?? 0), [ratingPreview, setRatingPreview] = d2(null), [backToTopVisible, setBackToTopVisible] = d2(!1), displayedRating = ratingPreview ?? ratingValue, selectedRating = ratingPreview ?? selectableRating(ratingValue), ratingLabel = ratingPreview ? `Rate as ${ratingPreview.toFixed(1)} stars` : rating?.label ?? "";
+    h2(() => {
+      let updateBackToTopVisibility = () => {
+        setBackToTopVisible(window.scrollY > Math.max(320, window.innerHeight * 0.5));
+      };
+      return updateBackToTopVisibility(), window.addEventListener("scroll", updateBackToTopVisibility, { passive: !0 }), () => {
+        window.removeEventListener("scroll", updateBackToTopVisibility);
+      };
+    }, []);
+    let submitRating = (value) => {
+      rating && (setGalleryRating(value), setRatingValue(value), setRatingPreview(null));
+    }, handleRatingKeyDown = (event) => {
+      if (!rating)
+        return;
+      let nextValue = ratingFromKeyboard(event.key, selectedRating);
+      if (nextValue !== null) {
+        event.preventDefault(), setRatingPreview(nextValue);
+        return;
+      }
+      (event.key === "Enter" || event.key === " ") && (event.preventDefault(), submitRating(selectedRating));
+    };
+    return /* @__PURE__ */ k("section", { className: "ehpeek-touch-gallery flex box-border w-full flex-col mb-md ehp-color-site-text font-sans" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-hero relative grid min-h-[clamp(260px,42vh,340px)] pt-lg pr-[max(16px,env(safe-area-inset-right,0px))] pb-48px pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-surface ehp-color-site-text" }, /* @__PURE__ */ k(
       "div",
       {
-        className: "ehpeek-touch-gallery-primary-actions flex min-w-0 border-l border-[rgba(255,255,255,0.12)]",
+        className: `ehpeek-touch-gallery-summary grid gap-18px items-stretch ${hasCover ? "grid-cols-[minmax(120px,38%)_minmax(0,1fr)]" : "grid-cols-1"}`
+      },
+      hasCover && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-cover flex self-center justify-self-stretch w-full max-h-full aspect-[2/3] items-center justify-center overflow-hidden rounded-3px" }, /* @__PURE__ */ k(ExternalDomNode, { node: props.source.cover })),
+      /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-hero-side flex self-stretch min-w-0 flex-col items-start gap-8px pt-2px" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-heading flex min-w-0 w-full flex-none flex-col gap-sm items-start pb-xs" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-title-main line-clamp-4 flex-none overflow-hidden text-[clamp(23px,6.2vw,34px)] font-400 leading-[1.16] text-left break-anywhere" }, props.source.titleMain), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-title-sub line-clamp-3 flex-none overflow-hidden opacity-82 text-[clamp(18px,4.8vw,26px)] leading-[1.2] text-left break-anywhere" }, props.source.titleSub)), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-category-row flex w-full flex-none flex-wrap items-center justify-start gap-x-20px gap-y-10px mt-auto pt-md" }, /* @__PURE__ */ k(
+        "div",
+        {
+          className: "ehpeek-touch-gallery-category max-w-full flex-none overflow-hidden text-ellipsis whitespace-nowrap rounded-xs py-6px px-10px ehp-color-site-page ehp-color-site-accent text-15px font-700 leading-[1.1] uppercase",
+          style: props.source.categoryAppearance
+        },
+        props.source.category
+      ), rating && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-rating flex w-auto min-w-0 flex-none flex-col items-start gap-4px" }, /* @__PURE__ */ k(
+        "div",
+        {
+          className: "ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px",
+          role: "slider",
+          tabIndex: 0,
+          "aria-label": "Rate gallery",
+          "aria-valuemin": 0.5,
+          "aria-valuemax": 5,
+          "aria-valuenow": selectedRating,
+          "aria-valuetext": `${selectedRating.toFixed(1)} stars`,
+          onPointerMove: (event) => {
+            setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget));
+          },
+          onPointerLeave: () => {
+            setRatingPreview(null);
+          },
+          onClick: (event) => {
+            event.detail > 0 && submitRating(ratingFromPointer(event.clientX, event.currentTarget));
+          },
+          onKeyDown: handleRatingKeyDown,
+          onBlur: () => {
+            setRatingPreview(null);
+          }
+        },
+        /* @__PURE__ */ k("span", { className: "ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[rgba(255,255,255,0.25)]", "aria-hidden": "true" }, RATING_STAR_INDEXES.map((index) => /* @__PURE__ */ k(Icon, { key: index, name: "star" }))),
+        /* @__PURE__ */ k(
+          "span",
+          {
+            className: "ehpeek-touch-gallery-rating-stars-fill absolute top-0 left-0 flex gap-1px overflow-hidden ehp-color-site-accent",
+            "aria-hidden": "true",
+            style: { width: `${displayedRating / 5 * 100}%` }
+          },
+          RATING_STAR_INDEXES.map((index) => /* @__PURE__ */ k(Icon, { key: index, name: "star", filled: !0 }))
+        )
+      ), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-rating-meta flex max-w-full items-center justify-start gap-6px text-[rgba(255,255,255,0.78)] text-12px leading-[1.15] whitespace-nowrap" }, /* @__PURE__ */ k(
+        "span",
+        {
+          className: "ehpeek-touch-gallery-rating-label min-w-0 overflow-hidden text-ellipsis",
+          "aria-live": "polite"
+        },
+        ratingLabel
+      ), rating.count && /* @__PURE__ */ k("span", { className: "ehpeek-touch-gallery-rating-count flex-none pl-6px border-0 border-l border-[rgba(255,255,255,0.2)] text-[rgba(255,255,255,0.58)]" }, rating.count)))))
+    )), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-87px mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-xs bg-[var(--color-site-elevated)] shadow-[0_2px_10px_var(--color-shadow-panel)]" }, /* @__PURE__ */ k(TouchGalleryFavoriteButton, { source: props.source.favorite }), /* @__PURE__ */ k(
+      "div",
+      {
+        className: "ehpeek-touch-gallery-primary-actions flex min-w-0 border-l border-[var(--color-site-border-subtle)]",
         ref: (node) => {
           props.onPrimaryActionMount(node);
         }
       }
-    )), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-content flex flex-col gap-16px pt-28px pr-[max(16px,env(safe-area-inset-right,0px))] pb-18px pl-[max(16px,env(safe-area-inset-left,0px))] bg-[#34353b]" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-meta grid grid-cols-[repeat(3,minmax(0,1fr))] gap-y-14px gap-x-18px items-center text-27px leading-[1.2] text-center" }, props.source.summary.map((item) => /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-meta-value line-clamp-2 min-w-0 overflow-hidden whitespace-normal break-normal" }, item.value)), /* @__PURE__ */ k(TouchGalleryActionsMenu, { actions: props.source.actions })), props.source.tagGroups.length > 0 && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-groups flex flex-col gap-10px pt-2px" }, props.source.tagGroups.map((group) => /* @__PURE__ */ k(TouchGalleryTagGroup, { group })))));
+    )), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-content flex flex-col gap-lg pt-xl pr-[max(16px,env(safe-area-inset-right,0px))] pb-lg pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-page ehp-color-site-text" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-meta grid grid-cols-[repeat(3,minmax(0,1fr))] gap-y-md gap-x-lg items-center text-27px leading-[1.2] text-center" }, props.source.summary.map((item) => /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-meta-value line-clamp-2 min-w-0 overflow-hidden whitespace-normal break-normal" }, item.value)), /* @__PURE__ */ k(TouchGalleryActionsMenu, { actions: props.source.actions })), props.source.tagGroups.length > 0 && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-groups flex flex-col gap-md pt-2px" }, props.source.tagGroups.map((group) => /* @__PURE__ */ k(TouchGalleryTagGroup, { group })))), backToTopVisible && /* @__PURE__ */ k(
+      "button",
+      {
+        type: "button",
+        className: "ehpeek-back-to-top fixed right-[max(16px,env(safe-area-inset-right,0px))] bottom-[calc(max(16px,env(safe-area-inset-bottom,0px))_+_52px)] z-ui inline-flex w-lg h-lg items-center justify-center rounded-full border ehp-color-site-border bg-[var(--color-site-elevated)] ehp-color-site-accent shadow-[0_4px_14px_var(--color-shadow-floating)] cursor-pointer [touch-action:manipulation] active:scale-96",
+        "aria-label": texts_default.reader.backToTop,
+        title: texts_default.reader.backToTop,
+        onClick: () => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      },
+      /* @__PURE__ */ k(Icon, { name: "arrow-up" })
+    ));
   }
   function TouchGalleryActionsMenu(props) {
     let [open, setOpen] = d2(!1), rootRef = A2(null);
@@ -2677,25 +3201,28 @@ body #gdt[class],
       "button",
       {
         type: "button",
-        className: "ehpeek-touch-gallery-actions-menu-button inline-flex control-icon items-center justify-center border-0 bg-transparent color-text text-28px leading-1",
+        className: "ehpeek-touch-gallery-actions-menu-button inline-flex w-md h-md items-center justify-center border-0 bg-transparent ehp-color-site-text",
         "aria-haspopup": "menu",
         "aria-expanded": open,
+        "aria-label": texts_default.navigation.menu,
+        title: texts_default.navigation.menu,
         onClick: (event) => {
           event.stopPropagation(), setOpen(!open);
         }
       },
-      "⋮"
-    ), open && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-[2147483644] flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border color-border rounded-[var(--ehpeek-control-radius-md)] color-elevated" }, /* @__PURE__ */ k(ExternalDomNodes, { nodes: props.actions, clone: !0 })));
+      /* @__PURE__ */ k(Icon, { name: "menu" })
+    ), open && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated" }, /* @__PURE__ */ k(ExternalDomNodes, { nodes: props.actions, clone: !0 })));
   }
   function TouchGalleryTagGroup(props) {
-    return /* @__PURE__ */ k("section", { className: "ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-8px items-start" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-group-name control-tag-group color-tag-group textsize-md" }, props.group.namespace), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tags flex flex-wrap gap-8px" }, props.group.tags.map((tag) => /* @__PURE__ */ k(
+    return /* @__PURE__ */ k("section", { className: "ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start" }, /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tag-group-name min-h-sm overflow-hidden text-ellipsis whitespace-nowrap rounded-xl bg-[var(--color-site-elevated)] py-sm px-md text-center lowercase ehp-color-site-accent textsize-lg font-600" }, props.group.namespace), /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-tags flex flex-wrap gap-sm" }, props.group.tags.map((tag) => /* @__PURE__ */ k(
       "a",
       {
-        className: "ehpeek-touch-gallery-tag control-tag color-tag textsize-md",
+        className: "ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg no-underline ehp-color-site-text textsize-lg transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent",
         href: tag.href,
-        style: tag.appearance
+        style: tag.appearance,
+        "aria-label": tag.label
       },
-      tag.label
+      /* @__PURE__ */ k(ExternalDomNode, { node: tag.content })
     ))));
   }
   function TouchGalleryFavoriteButton(props) {
@@ -2723,7 +3250,7 @@ body #gdt[class],
       "button",
       {
         type: "button",
-        className: `ehpeek-touch-gallery-primary-button ehpeek-touch-gallery-favorite-button control-primary-action textsize-lg font-700 normal-case ${favorited ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`,
+        className: `ehpeek-touch-gallery-primary-button ehpeek-touch-gallery-favorite-button flex min-w-0 w-full h-full min-h-xl flex-col items-center justify-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-accent text-center uppercase [touch-action:manipulation] textsize-xl font-700 normal-case ${favorited ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`,
         "aria-haspopup": "menu",
         "aria-expanded": open,
         onClick: (event) => {
@@ -2734,12 +3261,12 @@ body #gdt[class],
       /* @__PURE__ */ k(
         "span",
         {
-          className: `ehpeek-touch-gallery-favorite-icon block mt-2px textsize-md font-600 opacity-78 normal-case leading-[1.15] ${favorited ? "color-accent" : "text-[#111]"}`,
+          className: `ehpeek-touch-gallery-favorite-icon block mt-2px opacity-78 normal-case ${favorited ? "ehp-color-site-accent" : "ehp-color-site-text"}`,
           "aria-hidden": "true"
         },
-        favorited ? "♥" : "♡"
+        /* @__PURE__ */ k(Icon, { name: "heart", filled: favorited })
       )
-    ), open && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-[2147483644] flex w-[min(86vw,360px)] flex-col overflow-hidden border color-border rounded-[var(--ehpeek-control-radius-md)] color-elevated" }, loadingState === "loading" && /* @__PURE__ */ k(TouchGalleryFavoriteStatus, { text: "Loading..." }), loadingState === "failed" && /* @__PURE__ */ k(TouchGalleryFavoriteStatus, { text: "Failed" }), loadingState === "idle" && options.map((option) => /* @__PURE__ */ k(
+    ), open && /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-overlay flex w-[min(86vw,360px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated" }, loadingState === "loading" && /* @__PURE__ */ k(TouchGalleryFavoriteStatus, { text: "Loading..." }), loadingState === "failed" && /* @__PURE__ */ k(TouchGalleryFavoriteStatus, { text: "Failed" }), loadingState === "idle" && options.map((option) => /* @__PURE__ */ k(
       TouchGalleryFavoriteOption,
       {
         actionUrl: favorite.actionUrl,
@@ -2755,14 +3282,14 @@ body #gdt[class],
     ))));
   }
   function TouchGalleryFavoriteStatus(props) {
-    return /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-favorite-loading flex min-h-[var(--ehpeek-control-menu-item-min-height)] items-center gap-12px py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text font-inherit text-21px leading-[1.2] text-left" }, props.text);
+    return /* @__PURE__ */ k("div", { className: "ehpeek-touch-gallery-favorite-loading flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit text-21px leading-[1.2] text-left" }, props.text);
   }
   function TouchGalleryFavoriteOption(props) {
     return /* @__PURE__ */ k(
       "button",
       {
         type: "button",
-        className: `ehpeek-touch-gallery-favorite-option flex min-h-[var(--ehpeek-control-menu-item-min-height)] items-center gap-12px py-14px px-18px border-0 border-b color-border-subtle-b bg-transparent color-text font-inherit text-21px leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`,
+        className: `ehpeek-touch-gallery-favorite-option flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit text-21px leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`,
         "aria-pressed": props.option.selected,
         onClick: (event) => {
           event.stopPropagation(), applyFavoriteOption(props.actionUrl, props.option).then(props.onApplied).catch((error) => {
@@ -2773,19 +3300,19 @@ body #gdt[class],
       /* @__PURE__ */ k(
         "span",
         {
-          className: `ehpeek-touch-gallery-favorite-option-icon flex-none text-24px leading-1 ${props.option.value === "favdel" ? "text-[#111]" : "color-accent"}`,
+          className: `ehpeek-touch-gallery-favorite-option-icon flex-none ${props.option.value === "favdel" ? "ehp-color-site-text" : "ehp-color-site-accent"}`,
           "aria-hidden": "true"
         },
-        props.option.value === "favdel" ? "♡" : "♥"
+        /* @__PURE__ */ k(Icon, { name: "heart", filled: props.option.value !== "favdel" })
       ),
       /* @__PURE__ */ k("span", null, props.option.label),
       /* @__PURE__ */ k(
         "span",
         {
-          className: `ml-auto flex-none color-accent text-24px font-700 leading-1 ${props.option.selected ? "visible" : "invisible"}`,
+          className: `ml-auto flex-none ehp-color-site-accent ${props.option.selected ? "visible" : "invisible"}`,
           "aria-hidden": "true"
         },
-        "✓"
+        /* @__PURE__ */ k(Icon, { name: "check" })
       )
     );
   }
@@ -2803,16 +3330,62 @@ body #gdt[class],
     if (!response.ok)
       throw new Error(`HTTP ${response.status}`);
   }
-  function prepareRatingScale(root) {
-    let wrapper = root.querySelector(".ehpeek-touch-gallery-rating"), scaler = root.querySelector(".ehpeek-touch-gallery-rating-scale");
-    if (!wrapper || !scaler)
-      return;
-    let wrapperWidth = wrapper.getBoundingClientRect().width, scalerRect = scaler.getBoundingClientRect(), scale = scalerRect.width > 0 && wrapperWidth > 0 ? Math.min(2, Math.max(1, wrapperWidth / scalerRect.width)) : 1;
-    wrapper.style.setProperty("--ehpeek-rating-scale", String(scale)), wrapper.style.setProperty("--ehpeek-rating-height", `${Math.ceil(scalerRect.height * scale)}px`);
+  function selectableRating(value) {
+    return Math.min(5, Math.max(0.5, Math.round(value * 2) / 2));
+  }
+  function ratingFromPointer(clientX, element) {
+    let rect = element.getBoundingClientRect(), progress = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return Math.max(0.5, Math.ceil(progress * 10) / 2);
+  }
+  function ratingFromKeyboard(key, value) {
+    return key === "ArrowRight" || key === "ArrowUp" ? Math.min(5, value + 0.5) : key === "ArrowLeft" || key === "ArrowDown" ? Math.max(0.5, value - 0.5) : key === "Home" ? 0.5 : key === "End" ? 5 : null;
+  }
+
+  // src/components/Enhance/TouchSearchPanel.tsx
+  var TOUCH_SEARCH_OPTION_CLASS = "appearance-none inline-flex min-h-sm items-center px-sm border-0 rounded-sm bg-transparent ehp-color-site-accent text-left textsize-sm font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]", TOUCH_SEARCH_ACTION_CLASS = "appearance-none block box-border w-auto !h-md py-sm px-md rounded-md border cursor-pointer font-inherit text-center textsize-sm font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 [touch-action:manipulation] active:scale-98";
+  function TouchSearchPanel(props) {
+    let searchBoxHostRef = A2(null), fileSearchHostRef = A2(null);
+    return _2(() => {
+      searchBoxHostRef.current?.replaceChildren(props.source.searchBox), props.source.fileSearch && fileSearchHostRef.current?.replaceChildren(props.source.fileSearch);
+    }, [props.source]), /* @__PURE__ */ k("section", { className: "ehpeek-touch-search-panel box-border flex w-[calc(100%_-_32px)] max-w-960px flex-col gap-md mx-auto mb-lg p-lg border ehp-color-site-border rounded-lg ehp-color-site-surface ehp-color-site-text shadow-[0_8px_24px_var(--color-shadow-panel)] font-sans" }, /* @__PURE__ */ k("div", { ref: searchBoxHostRef, className: "contents" }), /* @__PURE__ */ k("div", { ref: fileSearchHostRef, className: "contents" }));
+  }
+  function TouchSearchCategoryToggle(props) {
+    let [categoriesOpen, setCategoriesOpen] = d2(!1);
+    return _2(() => {
+      props.source.categories.classList.toggle("hidden", !categoriesOpen), props.source.categories.hidden = !categoriesOpen, props.source.categories.setAttribute("aria-hidden", String(!categoriesOpen));
+    }, [categoriesOpen, props.source.categories]), /* @__PURE__ */ k(
+      "button",
+      {
+        type: "button",
+        className: TOUCH_SEARCH_OPTION_CLASS,
+        "aria-expanded": categoriesOpen,
+        "aria-label": categoriesOpen ? texts_default.search.hideCategories : texts_default.search.showCategories,
+        onClick: () => {
+          setCategoriesOpen(!categoriesOpen);
+        }
+      },
+      categoriesOpen ? texts_default.search.hideCategories : texts_default.search.showCategories
+    );
+  }
+  function TouchSearchAction(props) {
+    let originalHostRef = A2(null), search = props.action === "search", original = search ? props.source.searchSubmit : props.source.clearButton;
+    return _2(() => {
+      original.hidden = !0, originalHostRef.current?.replaceChildren(original);
+    }, [original]), /* @__PURE__ */ k(S, null, /* @__PURE__ */ k(
+      "button",
+      {
+        type: search ? "submit" : "button",
+        className: search ? `${TOUCH_SEARCH_ACTION_CLASS} col-start-2 row-start-1 border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-background)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108` : `${TOUCH_SEARCH_ACTION_CLASS} col-start-3 row-start-1 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] ehp-color-site-text hover:bg-[var(--color-site-item-hover)]`,
+        onClick: (event) => {
+          search && event.preventDefault(), original.click();
+        }
+      },
+      search ? props.source.searchLabel : props.source.clearLabel
+    ), /* @__PURE__ */ k("span", { ref: originalHostRef, className: "contents [&>*:not([hidden])]:col-span-full" }));
   }
 
   // src/components/Enhance/TouchTopBar.tsx
-  var TOUCH_ICON_BUTTON_CLASS = "inline-flex control-icon border-0 bg-transparent color-text text-28px leading-1 no-underline", TOUCH_TOP_BAR_MENU_ITEM_CLASS = "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-[var(--ehpeek-control-touch-min-height)] py-18px px-24px touch:px-26px border-0 border-b color-border-subtle-b bg-transparent color-text text-left no-underline text-28px touch:text-30px leading-[1.2]";
+  var TOUCH_ICON_BUTTON_CLASS = "inline-flex w-md h-md items-center justify-center border-0 bg-transparent ehp-color-site-text no-underline", TOUCH_TOP_BAR_MENU_ITEM_CLASS = "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-xl py-lg px-xl touch:px-xl border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline text-28px touch:text-30px leading-[1.2]";
   function TouchTopBarMenu(props) {
     let [open, setOpen] = d2(!1), rootRef = A2(null), navItemsRef = A2(null);
     return h2(() => {
@@ -2832,21 +3405,52 @@ body #gdt[class],
         className: `ehpeek-touch-top-bar-menu-button ${TOUCH_ICON_BUTTON_CLASS}`,
         "aria-haspopup": "menu",
         "aria-expanded": open,
+        "aria-label": texts_default.navigation.menu,
+        title: texts_default.navigation.menu,
         onClick: (event) => {
           event.stopPropagation(), setOpen(!open);
         }
       },
-      "⋮"
+      /* @__PURE__ */ k(Icon, { name: "menu" })
     ), open && /* @__PURE__ */ k(
       "div",
       {
-        className: "ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-[2147483645] flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border color-border rounded-4px color-elevated"
+        className: "ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated"
       },
       /* @__PURE__ */ k("div", { ref: navItemsRef, className: "contents" })
     ));
   }
   function TouchTopBar(props) {
-    return /* @__PURE__ */ k("nav", { className: "ehpeek-touch-top-bar relative z-[2147483640] flex box-border w-full min-h-56px items-center justify-between py-6px px-[max(16px,env(safe-area-inset-right,0px))] color-surface color-text font-sans" }, /* @__PURE__ */ k("a", { className: `ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`, href: props.info.homeHref }, "⌂"), /* @__PURE__ */ k("div", { className: "flex items-center gap-2px" }, /* @__PURE__ */ k(
+    return /* @__PURE__ */ k("nav", { className: "ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-56px items-center justify-between py-sm pl-[max(16px,env(safe-area-inset-left,0px))] pr-[max(16px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans" }, /* @__PURE__ */ k(
+      "a",
+      {
+        className: `ehpeek-touch-top-bar-project ${TOUCH_ICON_BUTTON_CLASS}`,
+        href: "https://github.com/yamipot/ehpeek",
+        target: "_blank",
+        rel: "noopener noreferrer",
+        "aria-label": texts_default.navigation.github,
+        title: texts_default.navigation.github
+      },
+      /* @__PURE__ */ k(Icon, { name: "panda-peek", size: 36, strokeWidth: 1.8 })
+    ), /* @__PURE__ */ k("div", { className: "flex items-center gap-xs" }, /* @__PURE__ */ k(
+      "a",
+      {
+        className: `ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`,
+        href: props.info.homeHref,
+        "aria-label": texts_default.navigation.home,
+        title: texts_default.navigation.home
+      },
+      /* @__PURE__ */ k(Icon, { name: "home" })
+    ), /* @__PURE__ */ k(
+      "a",
+      {
+        className: `ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`,
+        href: props.info.favoritesHref,
+        "aria-label": texts_default.navigation.favorites,
+        title: texts_default.navigation.favorites
+      },
+      /* @__PURE__ */ k(Icon, { name: "heart" })
+    ), /* @__PURE__ */ k(
       "button",
       {
         type: "button",
@@ -2857,23 +3461,23 @@ body #gdt[class],
           event.stopPropagation(), props.onSettingsMenuOpen();
         }
       },
-      "⚙"
+      /* @__PURE__ */ k(Icon, { name: "settings" })
     ), /* @__PURE__ */ k(TouchTopBarMenu, { navItems: props.info.navItems })));
   }
 
   // src/components/Loading.tsx
   function LoadingSpinner(props) {
-    let sizeClass = props.size === "lg" ? "w-34px h-34px border-4" : "w-24px h-24px border-3";
-    return /* @__PURE__ */ k("span", { className: "inline-flex items-center justify-center gap-10px color-reader-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ k(
+    let sizeClass = props.size === "lg" ? "w-sm h-sm border-4" : "w-xs h-xs border-3";
+    return /* @__PURE__ */ k("span", { className: "inline-flex items-center justify-center gap-md ehp-color-text", role: "status", "aria-live": "polite" }, /* @__PURE__ */ k(
       "span",
       {
-        className: `${sizeClass} inline-block box-border animate-spin rounded-full border-solid border-[rgba(255,255,255,0.28)] border-t-[var(--ehpeek-color-accent)]`,
+        className: `${sizeClass} inline-block box-border animate-spin rounded-full border-solid ehp-color-spinner`,
         "aria-hidden": "true"
       }
     ), /* @__PURE__ */ k("span", null, props.label));
   }
   function LoadingOverlay(props) {
-    return props.visible ? /* @__PURE__ */ k("div", { className: "fixed left-1/2 top-1/2 z-[2147483644] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[var(--ehpeek-control-radius-reader)] border color-search-swipe px-18px py-14px pointer-events-none select-none" }, /* @__PURE__ */ k(LoadingSpinner, { label: props.label })) : null;
+    return props.visible ? /* @__PURE__ */ k("div", { className: "fixed left-1/2 top-1/2 z-overlay flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-md border border-[var(--color-border)] bg-[var(--color-elevated)] px-lg py-md text-[var(--color-text)] shadow-[0_6px_20px_var(--color-shadow-floating)] pointer-events-none select-none" }, /* @__PURE__ */ k(LoadingSpinner, { label: props.label })) : null;
   }
   function loadingSpinnerElement(label, size) {
     let host = document.createElement("span");
@@ -2881,11 +3485,19 @@ body #gdt[class],
   }
 
   // src/components/Enhance/ScrollPageBar.tsx
-  var SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar", SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top", SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom", SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR = "data-ehpeek-window-index", DRAG_PIXEL_STEP = 18, PAGE_BAR_BOTTOM_CLASS = "mt-0 mb-10px", PAGE_BAR_CELL_CLASS = "control-page p-0 cursor-pointer text-center align-middle select-none", PAGE_BAR_CLASS = "w-max mx-auto touch-pan-y [&[data-dragging=true]]:select-none", PAGE_BAR_LINK_CLASS = "flex control-page items-center justify-center box-border px-0 py-0 border border-current bg-transparent textsize-sm font-inherit no-underline hover:no-underline active:no-underline", PAGE_BAR_TABLE_CLASS = "border-separate border-spacing-4px touch:border-spacing-6px", PAGE_BAR_TOP_CLASS = "mt-2px mb-0", galleryPageBarWindowIndex = null;
+  var SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar", SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top", SCROLL_PAGE_BAR_BOTTOM_CLASS = "ehpeek-scroll-page-bar-bottom", SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR = "data-ehpeek-window-index", DRAG_PIXEL_STEP = 18, PAGE_BAR_BOTTOM_CLASS = "mt-0 mb-10px", PAGE_BAR_CELL_CLASS = "!w-sm !h-sm touch:!w-md touch:!h-md !p-0 rounded-sm touch:rounded-md cursor-pointer text-center align-middle select-none", PAGE_BAR_CLASS = "w-max mx-auto touch-pan-y [&[data-dragging=true]]:select-none", PAGE_BAR_LINK_CLASS = "flex !w-sm !h-sm touch:!w-md touch:!h-md items-center justify-center box-border !p-0 rounded-sm touch:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline", PAGE_BAR_LINK_COLOR_CLASS = "!border-transparent !bg-transparent !text-[var(--color-site-text)] visited:!text-[var(--color-site-text)] hover:!bg-[var(--color-site-item-hover)] hover:!text-[var(--color-site-text)] active:!text-[var(--color-site-text)]", PAGE_BAR_CURRENT_COLOR_CLASS = "!border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)]", PAGE_BAR_DISABLED_COLOR_CLASS = "!border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)] opacity-40 cursor-default", PAGE_BAR_TABLE_CLASS = "border-separate border-spacing-4px touch:border-spacing-6px", PAGE_BAR_TOP_CLASS = "mt-2px mb-0", galleryPageBarWindowIndex = null;
   function ScrollPageBar(options) {
     let maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex), currentIndex = clamp(options.currentIndex, 0, maxIndex), [windowIndex, setWindowIndex] = d2(
       () => clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex)
-    ), dragStartWindowIndex = A2(windowIndex), draggable = () => maxIndex + 1 > 7, slots = pageSlots(windowIndex, currentIndex, maxIndex), firstSlotIndex = slots[0]?.pageIndex ?? currentIndex, lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? currentIndex, currentBeforeWindow = currentIndex < firstSlotIndex, currentAfterWindow = currentIndex > lastSlotIndex, linkCell = (text, pageIndex, current) => current ? /* @__PURE__ */ k("td", { className: `ptds ${PAGE_BAR_CELL_CLASS}` }, /* @__PURE__ */ k("span", { className: PAGE_BAR_LINK_CLASS }, text)) : /* @__PURE__ */ k("td", { className: PAGE_BAR_CELL_CLASS }, /* @__PURE__ */ k("a", { className: PAGE_BAR_LINK_CLASS, href: options.urlForIndex(pageIndex), "data-page-index": String(pageIndex) }, text)), emptyCell = () => /* @__PURE__ */ k("td", { className: `${PAGE_BAR_CELL_CLASS} cursor-default` }, /* @__PURE__ */ k("span", { className: `${PAGE_BAR_LINK_CLASS} invisible` }));
+    ), dragStartWindowIndex = A2(windowIndex), draggable = () => maxIndex + 1 > 7, slots = pageSlots(windowIndex, currentIndex, maxIndex), firstSlotIndex = slots[0]?.pageIndex ?? currentIndex, lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? currentIndex, currentBeforeWindow = currentIndex < firstSlotIndex, currentAfterWindow = currentIndex > lastSlotIndex, linkCell = (text, pageIndex, itemState = "link") => itemState !== "link" ? /* @__PURE__ */ k("td", { className: PAGE_BAR_CELL_CLASS }, /* @__PURE__ */ k(
+      "span",
+      {
+        className: `${PAGE_BAR_LINK_CLASS} ${itemState === "current" ? PAGE_BAR_CURRENT_COLOR_CLASS : PAGE_BAR_DISABLED_COLOR_CLASS}`,
+        "aria-current": itemState === "current" ? "page" : void 0,
+        "aria-disabled": itemState === "disabled" ? "true" : void 0
+      },
+      text
+    )) : /* @__PURE__ */ k("td", { className: PAGE_BAR_CELL_CLASS }, /* @__PURE__ */ k("a", { className: `${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS}`, href: options.urlForIndex(pageIndex), "data-page-index": String(pageIndex) }, text)), emptyCell = () => /* @__PURE__ */ k("td", { className: `${PAGE_BAR_CELL_CLASS} cursor-default` }, /* @__PURE__ */ k("span", { className: `${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS} invisible` }));
     return options.element.className = `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`, options.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex)), usePointerGestureElement(options.element, {
       shouldCaptureDrag: draggable,
       dragAxis: "x",
@@ -2898,7 +3510,9 @@ body #gdt[class],
         let nextIndex = clamp(dragStartWindowIndex.current - acceleratedPageOffset(info.dx), 0, maxIndex);
         nextIndex !== windowIndex && (galleryPageBarWindowIndex = nextIndex, setWindowIndex(nextIndex));
       }
-    }), /* @__PURE__ */ k("table", { className: PAGE_BAR_TABLE_CLASS }, /* @__PURE__ */ k("tbody", null, /* @__PURE__ */ k("tr", null, linkCell("<<", 0, currentIndex === 0), currentBeforeWindow ? linkCell(String(currentIndex + 1), currentIndex, !0) : emptyCell(), linkCell("<", Math.max(0, currentIndex - 1), currentIndex === 0), slots.map((slot) => slot ? linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex) : emptyCell()), linkCell(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex), currentAfterWindow ? linkCell(String(currentIndex + 1), currentIndex, !0) : emptyCell(), linkCell(">>", maxIndex, currentIndex === maxIndex))));
+    }), /* @__PURE__ */ k("table", { className: PAGE_BAR_TABLE_CLASS }, /* @__PURE__ */ k("tbody", null, /* @__PURE__ */ k("tr", null, linkCell("<<", 0, currentIndex === 0 ? "disabled" : "link"), currentBeforeWindow ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell(), linkCell("<", Math.max(0, currentIndex - 1), currentIndex === 0 ? "disabled" : "link"), slots.map(
+      (slot) => slot ? linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex ? "current" : "link") : emptyCell()
+    ), linkCell(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex ? "disabled" : "link"), currentAfterWindow ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell(), linkCell(">>", maxIndex, currentIndex === maxIndex ? "disabled" : "link"))));
   }
   function setScrollPageBarWindowIndex(index) {
     galleryPageBarWindowIndex = Math.max(0, Math.round(index));
@@ -2949,7 +3563,10 @@ body #gdt[class],
             pageNum
           };
       }
-      return parsed.pathname === "/" || parsed.pathname.startsWith("/tag/") || parsed.pathname === "/watched" ? {
+      return parsed.pathname === "/favorites.php" ? {
+        type: "favorites",
+        url: parsed.href
+      } : parsed.pathname === "/" || parsed.pathname.startsWith("/tag/") || parsed.pathname === "/watched" ? {
         type: "search",
         url: parsed.href
       } : {
@@ -3038,21 +3655,13 @@ body #gdt[class],
     return findClickedImageLink(target, extractPageType);
   }
   async function loadEhImagePage(page) {
-    let html = await requestText(page.url), image = new DOMParser().parseFromString(html, "text/html").querySelector("img#img"), imageSrc = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.currentSrc || "", imageUrl = imageSrc ? normalizeUrl(imageSrc, page.url) : "";
-    if (!imageUrl)
+    let html = await requestText(page.url), doc = new DOMParser().parseFromString(html, "text/html"), info = readImagePageInfo(doc, page.url);
+    if (!info.imageUrl)
       throw new Error(texts_default.errors.imageNotFound);
-    return {
-      imageUrl,
-      width: numericAttribute(image, "width"),
-      height: numericAttribute(image, "height")
-    };
+    return info;
   }
   function replacePreviewContent2(doc) {
     replacePreviewContent(doc);
-  }
-  function numericAttribute(element, attribute) {
-    let value = Number(element?.getAttribute(attribute) || "");
-    return Number.isFinite(value) && value > 0 ? value : null;
   }
 
   // src/components/Enhance/EnhanceThumbsGrids.tsx
@@ -3283,7 +3892,7 @@ body #gdt[class],
       searchNavigationLoading = !0, setSearchLoading?.(!0), swipeElement2?.setAttribute("aria-busy", "true");
       try {
         let resultList = await replaceSearchPageContentFromUrl(url);
-        window.history.pushState(window.history.state, "", url), setResultListSwipeTarget(resultList), searchTopNavigationBar()?.scrollIntoView({ block: "start", behavior: "auto" });
+        window.history.pushState(window.history.state, "", url), document.documentElement.dataset.ehpeekTouchUi === "true" && extractPageType(url).type === "favorites" && prepareTouchFavoritesPage(), setResultListSwipeTarget(resultList), searchTopNavigationBar()?.scrollIntoView({ block: "start", behavior: "auto" });
       } catch (error) {
         console.error("[ehpeek]", error);
       } finally {
@@ -3356,94 +3965,135 @@ body #gdt[class],
     GM_setValue(HISTORY_COUNT_KEY, Math.max(0, records.length - 1e3));
   }
 
+  // src/integrations/EhSyringe.ts
+  var ROOT_CLASS = "ehs-injected", TRANSLATED_LANGUAGE = "zh-hans", INITIALIZED_SELECTOR = "#eh-syringe-popup-button", SEARCH_SUBMIT_SELECTOR = "#searchbox button[ehs-input][type='submit']", CLEAR_BUTTON_SELECTOR = "#searchbox button[ehs-input][type='button']", initialUiReady = null;
+  function waitForInitialUi() {
+    return initialUiReady ?? (initialUiReady = waitFor(() => !isInjected() || !!document.querySelector(INITIALIZED_SELECTOR))), initialUiReady;
+  }
+  function waitForSearchUi() {
+    return waitFor(() => !isTranslatingUi() || searchUiReady());
+  }
+  function waitFor(ready) {
+    return ready() ? Promise.resolve() : new Promise((resolve) => {
+      let observer = new MutationObserver(() => {
+        ready() && (observer.disconnect(), resolve());
+      });
+      observer.observe(document.documentElement, {
+        childList: !0,
+        subtree: !0
+      });
+    });
+  }
+  function isInjected() {
+    return document.documentElement.classList.contains(ROOT_CLASS);
+  }
+  function isTranslatingUi() {
+    let root = document.documentElement;
+    return isInjected() && root.lang.toLowerCase() === TRANSLATED_LANGUAGE;
+  }
+  function searchUiReady() {
+    return !!(document.querySelector(SEARCH_SUBMIT_SELECTOR) && document.querySelector(CLEAR_BUTTON_SELECTOR));
+  }
+
   // ehpeek-uno-css:ehpeek:uno.css
   var ehpeek_uno_default = `/* layer: preflights */
 *,::before,::after{--un-rotate:0;--un-rotate-x:0;--un-rotate-y:0;--un-rotate-z:0;--un-scale-x:1;--un-scale-y:1;--un-scale-z:1;--un-skew-x:0;--un-skew-y:0;--un-translate-x:0;--un-translate-y:0;--un-translate-z:0;--un-pan-x: ;--un-pan-y: ;--un-pinch-zoom: ;--un-scroll-snap-strictness:proximity;--un-ordinal: ;--un-slashed-zero: ;--un-numeric-figure: ;--un-numeric-spacing: ;--un-numeric-fraction: ;--un-border-spacing-x:0;--un-border-spacing-y:0;--un-ring-offset-shadow:0 0 rgb(0 0 0 / 0);--un-ring-shadow:0 0 rgb(0 0 0 / 0);--un-shadow-inset: ;--un-shadow:0 0 rgb(0 0 0 / 0);--un-ring-inset: ;--un-ring-offset-width:0px;--un-ring-offset-color:#fff;--un-ring-width:0px;--un-ring-color:rgb(147 197 253 / 0.5);--un-blur: ;--un-brightness: ;--un-contrast: ;--un-drop-shadow: ;--un-grayscale: ;--un-hue-rotate: ;--un-invert: ;--un-saturate: ;--un-sepia: ;--un-backdrop-blur: ;--un-backdrop-brightness: ;--un-backdrop-contrast: ;--un-backdrop-grayscale: ;--un-backdrop-hue-rotate: ;--un-backdrop-invert: ;--un-backdrop-opacity: ;--un-backdrop-saturate: ;--un-backdrop-sepia: ;}::backdrop{--un-rotate:0;--un-rotate-x:0;--un-rotate-y:0;--un-rotate-z:0;--un-scale-x:1;--un-scale-y:1;--un-scale-z:1;--un-skew-x:0;--un-skew-y:0;--un-translate-x:0;--un-translate-y:0;--un-translate-z:0;--un-pan-x: ;--un-pan-y: ;--un-pinch-zoom: ;--un-scroll-snap-strictness:proximity;--un-ordinal: ;--un-slashed-zero: ;--un-numeric-figure: ;--un-numeric-spacing: ;--un-numeric-fraction: ;--un-border-spacing-x:0;--un-border-spacing-y:0;--un-ring-offset-shadow:0 0 rgb(0 0 0 / 0);--un-ring-shadow:0 0 rgb(0 0 0 / 0);--un-shadow-inset: ;--un-shadow:0 0 rgb(0 0 0 / 0);--un-ring-inset: ;--un-ring-offset-width:0px;--un-ring-offset-color:#fff;--un-ring-width:0px;--un-ring-color:rgb(147 197 253 / 0.5);--un-blur: ;--un-brightness: ;--un-contrast: ;--un-drop-shadow: ;--un-grayscale: ;--un-hue-rotate: ;--un-invert: ;--un-saturate: ;--un-sepia: ;--un-backdrop-blur: ;--un-backdrop-brightness: ;--un-backdrop-contrast: ;--un-backdrop-grayscale: ;--un-backdrop-hue-rotate: ;--un-backdrop-invert: ;--un-backdrop-opacity: ;--un-backdrop-saturate: ;--un-backdrop-sepia: ;}
-
-:root {
-  --ehpeek-color-accent: #f0b35a;
-  --ehpeek-color-border: #8d7454;
-  --ehpeek-color-border-soft: rgba(255, 255, 255, 0.18);
-  --ehpeek-color-border-subtle: rgba(255, 255, 255, 0.1);
-  --ehpeek-color-accent-hover-bg: rgba(240, 179, 90, 0.12);
-  --ehpeek-color-elevated: #3f4249;
-  --ehpeek-color-item-hover: rgba(255, 255, 255, 0.08);
-  --ehpeek-color-reader-text: #f3f3f3;
-  --ehpeek-color-state-off: #8c8f96;
-  --ehpeek-color-state-on: #4ec46a;
-  --ehpeek-color-surface: #4f535b;
-  --ehpeek-color-text: #f1f1f1;
-  --ehpeek-control-action-min-height: 52px;
-  --ehpeek-control-action-padding-x: 12px;
-  --ehpeek-control-action-padding-y: 10px;
-  --ehpeek-control-btn-padding-x: 10px;
-  --ehpeek-control-btn-padding-y: 7px;
-  --ehpeek-control-compact-padding-x: 8px;
-  --ehpeek-control-compact-padding-y: 4px;
-  --ehpeek-control-icon-size: 44px;
-  --ehpeek-control-menu-item-min-height: 56px;
-  --ehpeek-control-page-size: 34px;
-  --ehpeek-control-primary-height: 87px;
-  --ehpeek-control-primary-gap: 10px;
-  --ehpeek-control-radius-pill: 999px;
-  --ehpeek-control-radius-md: 4px;
-  --ehpeek-control-radius-reader: 6px;
-  --ehpeek-control-radius-sm: 3px;
-  --ehpeek-control-reader-button-height: 40px;
-  --ehpeek-control-reader-button-width: 46px;
-  --ehpeek-control-tag-min-height: 51px;
-  --ehpeek-control-toggle-dot-size: 10px;
-  --ehpeek-control-toggle-dot-touch-size: 18px;
-  --ehpeek-control-touch-min-height: 80px;
-  --ehp-color-accent: #4da3ff;
-  --ehp-color-border: rgba(15, 15, 15, 0.92);
-  --ehp-color-foreground: #f3f3f3;
-  --ehp-color-track: rgba(255, 255, 255, 0.34);
-}
-
-
 /* layer: shortcuts */
-.control-primary-action{touch-action:manipulation;min-width:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--ehpeek-control-primary-gap);border-width:0px;background-color:transparent;padding-top:var(--ehpeek-control-action-padding-y);padding-bottom:var(--ehpeek-control-action-padding-y);padding-left:15px;padding-right:15px;text-align:center;color:var(--ehpeek-color-accent);text-transform:uppercase;}
-.control-scroll-hidden{scrollbar-width:none;-ms-overflow-style:none;}
+.scrollbar-hidden{scrollbar-width:none;-ms-overflow-style:none;}
 .container{width:100%;}
-.control-touch-menu-item{box-sizing:border-box;display:block;width:100%;min-height:var(--ehpeek-control-menu-item-min-height);border-width:0px;border-bottom-width:1px;border-bottom-color:var(--ehpeek-color-border-subtle);background-color:transparent;padding-top:14px;padding-bottom:14px;padding-left:18px;padding-right:18px;text-align:left;color:var(--ehpeek-color-text);text-decoration:none;}
-.control-scroll-hidden::-webkit-scrollbar{display:none;}
-.control-action{min-height:var(--ehpeek-control-action-min-height);border-radius:var(--ehpeek-control-radius-sm);padding-top:var(--ehpeek-control-action-padding-y);padding-bottom:var(--ehpeek-control-action-padding-y);padding-left:var(--ehpeek-control-action-padding-x);padding-right:var(--ehpeek-control-action-padding-x);}
-html[data-ehpeek-touch-ui="true"] .control-action{min-height:var(--ehpeek-control-touch-min-height);padding-top:18px;padding-bottom:18px;padding-left:var(--ehpeek-control-action-padding-x);padding-right:var(--ehpeek-control-action-padding-x);}
-html[data-ehpeek-touch-ui="true"] .control-btn{min-height:var(--ehpeek-control-touch-min-height);padding-top:18px;padding-bottom:18px;padding-left:var(--ehpeek-control-btn-padding-x);padding-right:var(--ehpeek-control-btn-padding-x);}
-.control-icon{width:var(--ehpeek-control-icon-size);height:var(--ehpeek-control-icon-size);align-items:center;justify-content:center;}
-.control-page{width:var(--ehpeek-control-page-size);height:var(--ehpeek-control-page-size);border-radius:var(--ehpeek-control-radius-md);}
-html[data-ehpeek-touch-ui="true"] .control-page{width:38px;height:38px;border-radius:var(--ehpeek-control-radius-reader);}
-.control-reader-btn{width:var(--ehpeek-control-reader-button-width);height:var(--ehpeek-control-reader-button-height);border-radius:var(--ehpeek-control-radius-reader);padding-left:var(--ehpeek-control-btn-padding-x);padding-right:var(--ehpeek-control-btn-padding-x);padding-top:0;padding-bottom:0;}
-.control-tag{max-width:100%;min-height:var(--ehpeek-control-tag-min-height);display:inline-flex;align-items:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:10px;padding-left:21px;padding-right:21px;text-decoration:none;}
-.control-tag-group{min-height:34px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:10px;padding-top:7px;padding-bottom:7px;padding-left:10px;padding-right:10px;text-align:center;text-transform:lowercase;}
-.color-btn{border-width:1px;border-color:var(--ehpeek-color-border);background-color:transparent;color:var(--ehpeek-color-accent);}
-.color-tag{border-width:1px;--un-border-opacity:1;border-color:rgb(152 152 152 / var(--un-border-opacity));--un-bg-opacity:1;background-color:rgb(79 83 91 / var(--un-bg-opacity));--un-text-opacity:1;color:rgb(221 221 221 / var(--un-text-opacity));}
-.color-border{border-color:var(--ehpeek-color-border);}
-.color-button-reader{border-color:var(--ehpeek-color-border-soft);--un-bg-opacity:0.88;background-color:rgba(35, 35, 35, var(--un-bg-opacity));color:var(--ehpeek-color-reader-text);}
-.color-search-swipe{--un-border-opacity:0.34;border-color:rgba(255, 255, 255, var(--un-border-opacity));--un-bg-opacity:0.88;background-color:rgba(64, 64, 64, var(--un-bg-opacity));--un-text-opacity:0.96;color:rgba(255, 255, 255, var(--un-text-opacity));--un-shadow:0 6px 20px var(--un-shadow-color, rgba(0, 0, 0, 0.42));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
-.color-border-subtle-b{border-bottom-color:var(--ehpeek-color-border-subtle);}
-.control-btn{border-radius:var(--ehpeek-control-radius-sm);padding-top:var(--ehpeek-control-btn-padding-y);padding-bottom:var(--ehpeek-control-btn-padding-y);padding-left:var(--ehpeek-control-btn-padding-x);padding-right:var(--ehpeek-control-btn-padding-x);}
-.control-compact{border-radius:var(--ehpeek-control-radius-md);padding-top:var(--ehpeek-control-compact-padding-y);padding-bottom:var(--ehpeek-control-compact-padding-y);padding-left:var(--ehpeek-control-compact-padding-x);padding-right:var(--ehpeek-control-compact-padding-x);}
-.color-elevated{background-color:var(--ehpeek-color-elevated);--un-shadow:0 8px 24px var(--un-shadow-color, rgba(0, 0, 0, 0.38));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
-.color-panel-primary{background-color:var(--ehpeek-color-elevated);--un-shadow:0 2px 10px var(--un-shadow-color, rgba(0, 0, 0, 0.32));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
-.color-reader-badge{--un-bg-opacity:0.34;background-color:rgba(15, 15, 15, var(--un-bg-opacity));}
-.color-surface{background-color:var(--ehpeek-color-surface);}
-.color-tag-group{--un-bg-opacity:1;background-color:rgb(91 63 95 / var(--un-bg-opacity));color:var(--ehpeek-color-accent);}
-.color-btn:hover{background-color:var(--ehpeek-color-accent-hover-bg);}
-.color-item-hover:hover{background-color:var(--ehpeek-color-item-hover);}
-.textsize-lg{font-size:26px;}
-html[data-ehpeek-touch-ui="true"] .textsize-lg{font-size:30px;}
+.z-overlay{z-index:1100;}
+.z-reader{z-index:1200;}
+.z-ui{z-index:1000;}
+.mb-lg{margin-bottom:16px;}
+.mb-md{margin-bottom:12px;}
+.mt-md{margin-top:12px;}
+.mt-xs{margin-top:4px;}
+.scrollbar-hidden::-webkit-scrollbar{display:none;}
+.h-lg{height:52px;}
+.\\!h-md,
+html[data-ehpeek-touch-ui="true"] .touch\\:\\!h-md{height:40px !important;}
+.h-md{height:40px;}
+.\\!h-sm{height:32px !important;}
+.h-sm{height:32px;}
+.h-xs{height:24px;}
+.min-h-lg{min-height:52px;}
+.min-h-sm{min-height:32px;}
+.min-h-xl,
+html[data-ehpeek-touch-ui="true"] .touch\\:min-h-xl{min-height:80px;}
+.w-lg{width:52px;}
+.w-md{width:40px;}
+html[data-ehpeek-touch-ui="true"] .touch\\:\\!w-md{width:40px !important;}
+.\\!w-sm{width:32px !important;}
+.w-sm{width:32px;}
+.w-xs{width:24px;}
+.gap-lg{gap:16px;}
+.gap-md{gap:12px;}
+.\\[\\&_\\.searchadv\\>div\\]\\:\\!gap-sm .searchadv>div{gap:8px !important;}
+.\\[\\&_form\\]\\:gap-sm form,
+.gap-sm{gap:8px;}
+.gap-xl,
+html[data-ehpeek-touch-ui="true"] .touch\\:gap-xl{gap:24px;}
+.gap-xs{gap:4px;}
+.gap-x-lg{column-gap:16px;}
+.gap-x-md{column-gap:12px;}
+.gap-y-md{row-gap:12px;}
+.gap-y-sm{row-gap:8px;}
+.ehp-color-site-border{border-color:var(--color-site-border);}
+.ehp-color-spinner{border-color:var(--color-border);border-top-color:var(--color-accent);}
+.ehp-color-site-border-subtle-b{border-bottom-color:var(--color-site-border-subtle);}
+.rounded-lg{border-radius:8px;}
+.rounded-md,
+html[data-ehpeek-touch-ui="true"] .touch\\:rounded-md{border-radius:6px;}
+.rounded-sm{border-radius:4px;}
+.rounded-xl{border-radius:10px;}
+.rounded-xs{border-radius:3px;}
+.focus-visible\\:rounded-xs:focus-visible{border-radius:3px;}
+.ehp-color-reader{background-color:var(--color-background);color:var(--color-text);}
+.ehp-color-site-elevated{background-color:var(--color-site-elevated);--un-shadow:0 8px 24px var(--un-shadow-color, var(--color-shadow-elevated));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.ehp-color-site-page{background-color:var(--color-site-page);}
+.ehp-color-site-surface{background-color:var(--color-site-surface);}
+.p-lg{padding:16px;}
+.\\[\\&_\\.searchadv\\>div\\>div\\]\\:\\!p-sm .searchadv>div>div{padding:8px !important;}
+.p-sm{padding:8px;}
+.p-xl{padding:24px;}
+.px-lg{padding-left:16px;padding-right:16px;}
+.px-md{padding-left:12px;padding-right:12px;}
+.px-sm{padding-left:8px;padding-right:8px;}
+.px-xl,
+html[data-ehpeek-touch-ui="true"] .touch\\:px-xl{padding-left:24px;padding-right:24px;}
+.py-lg,
+html[data-ehpeek-touch-ui="true"] .touch\\:py-lg{padding-top:16px;padding-bottom:16px;}
+.py-md{padding-top:12px;padding-bottom:12px;}
+.py-sm{padding-top:8px;padding-bottom:8px;}
+.py-xs{padding-top:4px;padding-bottom:4px;}
+.pb-lg{padding-bottom:16px;}
+.pb-sm{padding-bottom:8px;}
+.pb-xs{padding-bottom:4px;}
+.pt-lg{padding-top:16px;}
+.\\[\\&_\\.searchadv\\]\\:\\!pt-md .searchadv{padding-top:12px !important;}
+.pt-md{padding-top:12px;}
+.pt-xl{padding-top:24px;}
+.textsize-lg,
+html[data-ehpeek-touch-ui="true"] .textsize-md{font-size:20px;}
+html[data-ehpeek-touch-ui="true"] .textsize-lg{font-size:23px;}
 .textsize-md,
-html[data-ehpeek-touch-ui="true"] .textsize-sm{font-size:20px;}
-html[data-ehpeek-touch-ui="true"] .textsize-md{font-size:23px;}
-.textsize-sm,
-html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
-.textsize-xs{font-size:11px;}
-.color-accent{color:var(--ehpeek-color-accent);}
-.color-reader-text{color:var(--ehpeek-color-reader-text);}
-.color-text{color:var(--ehpeek-color-text);}
-.color-tag:hover{--un-text-opacity:1;color:rgb(238 238 238 / var(--un-text-opacity));}
+html[data-ehpeek-touch-ui="true"] .textsize-sm{font-size:14px;}
+.\\!textsize-sm,
+.\\[\\&_\\.searchadv\\]\\:\\!textsize-sm .searchadv{font-size:11px !important;}
+.textsize-sm{font-size:11px;}
+html[data-ehpeek-touch-ui="true"] .\\!textsize-sm,
+html[data-ehpeek-touch-ui="true"] .\\[\\&_\\.searchadv\\]\\:\\!textsize-sm .searchadv{font-size:14px !important;}
+.textsize-xl{font-size:26px;}
+html[data-ehpeek-touch-ui="true"] .textsize-xl{font-size:30px;}
+.ehp-color-site-accent{color:var(--color-site-accent);}
+.ehp-color-site-text{color:var(--color-site-text);}
+.ehp-color-text{color:var(--color-text);}
+.hover\\:ehp-color-site-accent:hover{color:var(--color-site-accent);}
+@media (pointer: coarse){
+.coarse\\:gap-lg{gap:16px;}
+.coarse\\:rounded-lg{border-radius:8px;}
+.coarse\\:px-lg{padding-left:16px;padding-right:16px;}
+}
 @media (min-width: 640px){
 .container{max-width:640px;}
 }
@@ -3463,10 +4113,12 @@ html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .\\[--progress-bar-fill\\:0\\%\\]{--progress-bar-fill:0%;}
 .\\[--progress-bar-track-direction\\:to_right\\]{--progress-bar-track-direction:to right;}
 .\\[-webkit-appearance\\:none\\]{-webkit-appearance:none;}
+.\\[-webkit-tap-highlight-color\\:transparent\\]{-webkit-tap-highlight-color:transparent;}
 .\\[-webkit-user-drag\\:none\\]{-webkit-user-drag:none;}
-.\\[accent-color\\:var\\(--ehp-color-foreground\\)\\]{accent-color:var(--ehp-color-foreground);}
+.\\[accent-color\\:var\\(--color-text\\)\\]{accent-color:var(--color-text);}
 .\\[appearance\\:none\\]{appearance:none;}
 .\\[direction\\:ltr\\]{direction:ltr;}
+.\\[font-variant-numeric\\:tabular-nums\\]{font-variant-numeric:tabular-nums;}
 .\\[touch-action\\:manipulation\\]{touch-action:manipulation;}
 .\\[unicode-bidi\\:plaintext\\]{unicode-bidi:plaintext;}
 .pointer-events-auto{pointer-events:auto;}
@@ -3477,44 +4129,66 @@ html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .absolute{position:absolute;}
 .fixed{position:fixed;}
 .relative{position:relative;}
+.\\!static{position:static !important;}
 .inset-0{inset:0;}
 .bottom-\\[calc\\(12px\\+env\\(safe-area-inset-bottom\\,0px\\)\\)\\]{bottom:calc(12px + env(safe-area-inset-bottom,0px));}
+.bottom-\\[calc\\(max\\(16px\\,env\\(safe-area-inset-bottom\\,0px\\)\\)_\\+_52px\\)\\]{bottom:calc(max(16px,env(safe-area-inset-bottom,0px)) + 52px);}
 .left-\\[max\\(12px\\,env\\(safe-area-inset-left\\,0px\\)\\)\\]{left:max(12px,env(safe-area-inset-left,0px));}
 .left-0{left:0;}
 .left-1\\/2{left:50%;}
 .right-\\[max\\(12px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{right:max(12px,env(safe-area-inset-right,0px));}
+.right-\\[max\\(16px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{right:max(16px,env(safe-area-inset-right,0px));}
 .right-0{right:0;}
 .right-10px{right:10px;}
 .right-24px{right:24px;}
 .right-auto{right:auto;}
 .top-\\[calc\\(100\\%\\+8px\\)\\]{top:calc(100% + 8px);}
 .top-\\[calc\\(10px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(10px + env(safe-area-inset-top,0px));}
-.top-\\[calc\\(62px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(62px + env(safe-area-inset-top,0px));}
+.top-\\[calc\\(70px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(70px + env(safe-area-inset-top,0px));}
+.top-0{top:0;}
 .top-1\\/2{top:50%;}
 .top-24px{top:24px;}
 .top-48px{top:48px;}
 .line-clamp-2{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;}
 .line-clamp-3{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;}
 .line-clamp-4{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;}
-.z-\\[2147483640\\]{z-index:2147483640;}
-.z-\\[2147483644\\]{z-index:2147483644;}
-.z-\\[2147483645\\]{z-index:2147483645;}
-.z-\\[2147483646\\]{z-index:2147483646;}
-.z-\\[2147483647\\]{z-index:2147483647;}
 .z-1{z-index:1;}
 .z-2{z-index:2;}
 .z-3{z-index:3;}
 .z-4{z-index:4;}
+.\\!grid{display:grid !important;}
 .grid{display:grid;}
+.\\!col-span-full{grid-column:1/-1 !important;}
+.\\[\\&\\>\\*\\:not\\(\\[hidden\\]\\)\\]\\:col-span-full>*:not([hidden]),
+.\\[\\&\\>\\*\\:nth-child\\(n\\+4\\)\\]\\:col-span-full>*:nth-child(n+4){grid-column:1/-1;}
+.col-start-1{grid-column-start:1;}
+.col-start-2{grid-column-start:2;}
+.col-start-3{grid-column-start:3;}
+.row-start-1{grid-row-start:1;}
 .grid-cols-\\[1fr_1fr\\]{grid-template-columns:1fr 1fr;}
-.grid-cols-\\[36\\%_minmax\\(0\\,1fr\\)\\]{grid-template-columns:36% minmax(0,1fr);}
+.grid-cols-\\[minmax\\(0\\,1fr\\)_auto_auto\\]{grid-template-columns:minmax(0,1fr) auto auto;}
+.grid-cols-\\[minmax\\(120px\\,38\\%\\)_minmax\\(0\\,1fr\\)\\]{grid-template-columns:minmax(120px,38%) minmax(0,1fr);}
 .grid-cols-\\[minmax\\(76px\\,20\\%\\)_minmax\\(0\\,1fr\\)\\]{grid-template-columns:minmax(76px,20%) minmax(0,1fr);}
 .grid-cols-\\[repeat\\(3\\,minmax\\(0\\,1fr\\)\\)\\]{grid-template-columns:repeat(3,minmax(0,1fr));}
+.grid-cols-\\[repeat\\(5\\,minmax\\(0\\,1fr\\)\\)\\]{grid-template-columns:repeat(5,minmax(0,1fr));}
+.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr));}
+.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+.\\!float-none{float:none !important;}
+.\\!m-0{margin:0 !important;}
 .m-0{margin:0;}
+.m12{margin:3rem;}
+.m15{margin:3.75rem;}
+.m17{margin:4.25rem;}
+.m20{margin:5rem;}
+.m3{margin:0.75rem;}
+.m5{margin:1.25rem;}
+.m7{margin:1.75rem;}
+.m8{margin:2rem;}
+.m9{margin:2.25rem;}
 .mx-auto{margin-left:auto;margin-right:auto;}
+.\\!mt-0{margin-top:0 !important;}
 .mb-0{margin-bottom:0;}
 .mb-10px{margin-bottom:10px;}
-.mb-12px{margin-bottom:12px;}
 .ml-\\[max\\(14px\\,env\\(safe-area-inset-left\\,0px\\)\\)\\]{margin-left:max(14px,env(safe-area-inset-left,0px));}
 .ml-auto{margin-left:auto;}
 .mr-\\[max\\(14px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{margin-right:max(14px,env(safe-area-inset-right,0px));}
@@ -3522,24 +4196,28 @@ html[data-ehpeek-touch-ui="true"] .textsize-xs{font-size:14px;}
 .mt-0{margin-top:0;}
 .mt-1px{margin-top:1px;}
 .mt-2px{margin-top:2px;}
-.mt-4px{margin-top:4px;}
-.mt-6px{margin-top:6px;}
 .mt-auto{margin-top:auto;}
-html[data-ehpeek-touch-ui="true"] .touch\\:mt-8px{margin-top:8px;}
+.\\!box-border{box-sizing:border-box !important;}
+.\\[\\&_\\.searchadv\\]\\:box-border .searchadv,
 .box-border{box-sizing:border-box;}
 .block{display:block;}
 .inline-block{display:inline-block;}
 .contents{display:contents;}
+.\\!hidden{display:none !important;}
 .hidden{display:none;}
 .aspect-\\[2\\/3\\]{aspect-ratio:2/3;}
+.\\!h-auto{height:auto !important;}
+.\\!max-w-full{max-width:100% !important;}
+.\\!min-w-0{min-width:0 !important;}
+.\\!w-\\[140px\\]{width:140px !important;}
+.\\!w-full,
+.\\[\\&_\\.searchadv\\]\\:\\!w-full .searchadv{width:100% !important;}
 .h-\\[2\\.4em\\]{height:2.4em;}
-.h-\\[clamp\\(260px\\,42vh\\,340px\\)\\]{height:clamp(260px,42vh,340px);}
-.h-\\[var\\(--ehpeek-control-toggle-dot-size\\)\\]{height:var(--ehpeek-control-toggle-dot-size);}
-.h-\\[var\\(--ehpeek-frame-height\\)\\]{height:var(--ehpeek-frame-height);}
-.h-\\[var\\(--ehpeek-page-height\\)\\]{height:var(--ehpeek-page-height);}
+.h-\\[var\\(--reader-frame-height\\)\\]{height:var(--reader-frame-height);}
+.h-\\[var\\(--reader-page-height\\)\\]{height:var(--reader-page-height);}
 .h-108px{height:108px;}
-.h-24px{height:24px;}
-.h-34px{height:34px;}
+.h-10px{height:10px;}
+.h-48px{height:48px;}
 .h-64px{height:64px;}
 .h-full,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:h-full{height:100%;}
@@ -3548,26 +4226,25 @@ html[data-ehpeek-touch-ui="true"] .touch\\:mt-8px{margin-top:8px;}
 .max-h-screen{max-height:100vh;}
 .max-w-\\[min\\(78vw\\,320px\\)\\]{max-width:min(78vw,320px);}
 .max-w-\\[min\\(86vw\\,760px\\)\\]{max-width:min(86vw,760px);}
+.max-w-420px{max-width:420px;}
+.max-w-960px{max-width:960px;}
 .max-w-full{max-width:100%;}
 .max-w-none{max-width:none;}
 .max-w-screen{max-width:100vw;}
-.min-h-\\[var\\(--ehpeek-control-menu-item-min-height\\)\\]{min-height:var(--ehpeek-control-menu-item-min-height);}
-.min-h-\\[var\\(--ehpeek-control-primary-height\\)\\]{min-height:var(--ehpeek-control-primary-height);}
-.min-h-\\[var\\(--ehpeek-control-touch-min-height\\)\\]{min-height:var(--ehpeek-control-touch-min-height);}
-.min-h-0,
-#ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:min-h-0{min-height:0;}
+.min-h-\\[clamp\\(260px\\,42vh\\,340px\\)\\]{min-height:clamp(260px,42vh,340px);}
 .min-h-56px{min-height:56px;}
-.min-h-64px{min-height:64px;}
+.min-h-87px{min-height:87px;}
 .min-h-full{min-height:100%;}
 .min-w-0{min-width:0;}
+.min-w-104px{min-width:104px;}
 .min-w-260px{min-width:260px;}
 .min-w-285px{min-width:285px;}
+.min-w-48px{min-width:48px;}
 .min-w-64px{min-width:64px;}
+.w-\\[calc\\(100\\%_-_32px\\)\\]{width:calc(100% - 32px);}
 .w-\\[min\\(86vw\\,360px\\)\\]{width:min(86vw,360px);}
-.w-\\[var\\(--ehpeek-control-toggle-dot-size\\)\\]{width:var(--ehpeek-control-toggle-dot-size);}
-.w-\\[var\\(--ehpeek-frame-width\\)\\]{width:var(--ehpeek-frame-width);}
-.w-24px{width:24px;}
-.w-34px{width:34px;}
+.w-\\[var\\(--reader-frame-width\\)\\]{width:var(--reader-frame-width);}
+.w-10px{width:10px;}
 .w-42px{width:42px;}
 .w-64px{width:64px;}
 .w-auto,
@@ -3575,15 +4252,19 @@ html[data-ehpeek-touch-ui="true"] .touch\\:mt-8px{margin-top:8px;}
 .w-full,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:w-full{width:100%;}
 .w-max{width:max-content;}
-html[data-ehpeek-touch-ui="true"] .touch\\:h-\\[var\\(--ehpeek-control-toggle-dot-touch-size\\)\\]{height:var(--ehpeek-control-toggle-dot-touch-size);}
-html[data-ehpeek-touch-ui="true"] .touch\\:w-\\[var\\(--ehpeek-control-toggle-dot-touch-size\\)\\]{width:var(--ehpeek-control-toggle-dot-touch-size);}
+#ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:min-h-0{min-height:0;}
+html[data-ehpeek-touch-ui="true"] .touch\\:h-18px{height:18px;}
+html[data-ehpeek-touch-ui="true"] .touch\\:w-18px{width:18px;}
+.\\[\\&_form\\]\\:flex form,
 .flex{display:flex;}
 .inline-flex{display:inline-flex;}
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:flex-\\[0_0_100\\%\\]{flex:0 0 100%;}
 .flex-none{flex:none;}
 .flex-row,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:flex-row{flex-direction:row;}
+.\\[\\&_form\\]\\:flex-col form,
 .flex-col{flex-direction:column;}
+.\\[\\&_\\.searchadv\\>div\\]\\:\\!flex-wrap .searchadv>div{flex-wrap:wrap !important;}
 .flex-wrap{flex-wrap:wrap;}
 .table{display:table;}
 .border-collapse{border-collapse:collapse;}
@@ -3595,10 +4276,12 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
 .-translate-y-1\\/2{--un-translate-y:-50%;transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
 .\\[\\&\\[data-open\\=false\\]\\]\\:translate-y-\\[calc\\(100\\%\\+16px\\)\\][data-open=false]{--un-translate-y:calc(100% + 16px);transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
 .active\\:scale-96:active{--un-scale-x:0.96;--un-scale-y:0.96;transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
+.active\\:scale-98:active{--un-scale-x:0.98;--un-scale-y:0.98;transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
 .transform{transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .animate-spin{animation:spin 1s linear infinite;}
 .cursor-default{cursor:default;}
+.disabled\\:cursor-default:disabled{cursor:default;}
 .cursor-pointer{cursor:pointer;}
 .cursor-grab{cursor:grab;}
 .\\[\\&\\[data-dragging\\=true\\]\\]\\:cursor-grabbing[data-dragging=true]{cursor:grabbing;}
@@ -3610,31 +4293,33 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
 .select-none,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:select-none{-webkit-user-select:none;user-select:none;}
 .resize{resize:both;}
+.appearance-none{-webkit-appearance:none;appearance:none;}
 .items-start{align-items:flex-start;}
 .items-center,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:items-center{align-items:center;}
+.items-stretch{align-items:stretch;}
 .self-center{align-self:center;}
 .self-stretch{align-self:stretch;}
+.\\[\\&_\\.searchadv\\>div\\]\\:\\!justify-start .searchadv>div{justify-content:flex-start !important;}
+.justify-start{justify-content:flex-start;}
 .justify-end{justify-content:flex-end;}
 .justify-center{justify-content:center;}
 .justify-between{justify-content:space-between;}
 .justify-self-center{justify-self:center;}
-.gap-10px,
-html[data-ehpeek-touch-ui="true"] .touch\\:gap-10px{gap:10px;}
-.gap-12px{gap:12px;}
-.gap-16px{gap:16px;}
+.justify-self-stretch{justify-self:stretch;}
 .gap-18px{gap:18px;}
-.gap-2px{gap:2px;}
+.gap-1px{gap:1px;}
 .gap-4px{gap:4px;}
 .gap-6px{gap:6px;}
 .gap-8px{gap:8px;}
-html[data-ehpeek-touch-ui="true"] .touch\\:gap-20px{gap:20px;}
-.gap-x-18px{column-gap:18px;}
-.gap-y-14px{row-gap:14px;}
+.gap-x-20px{column-gap:20px;}
+.gap-y-10px{row-gap:10px;}
 .overflow-auto{overflow:auto;}
 .overflow-hidden,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:overflow-hidden{overflow:hidden;}
 .overflow-visible{overflow:visible;}
+.\\!overflow-x-hidden{overflow-x:hidden !important;}
+.overflow-x-auto{overflow-x:auto;}
 .overscroll-contain{overscroll-behavior:contain;}
 .scroll-auto{scroll-behavior:auto;}
 .text-ellipsis{text-overflow:ellipsis;}
@@ -3642,110 +4327,152 @@ html[data-ehpeek-touch-ui="true"] .touch\\:gap-20px{gap:20px;}
 .whitespace-nowrap{white-space:nowrap;}
 .break-normal{overflow-wrap:normal;word-break:normal;}
 .break-anywhere{overflow-wrap:anywhere;}
+.\\!border{border-width:1px !important;}
+.\\!border-0{border-width:0px !important;}
 .border{border-width:1px;}
 .border-0{border-width:0px;}
 .border-3{border-width:3px;}
-.border-4{border-width:4px;}
+.border-4,
+.border-4px{border-width:4px;}
 .border-b{border-bottom-width:1px;}
 .border-l{border-left-width:1px;}
-.border-\\[rgba\\(255\\,178\\,167\\,0\\.64\\)\\]{--un-border-opacity:0.64;border-color:rgba(255, 178, 167, var(--un-border-opacity));}
-.border-\\[rgba\\(255\\,255\\,255\\,0\\.12\\)\\]{--un-border-opacity:0.12;border-color:rgba(255, 255, 255, var(--un-border-opacity));}
-.border-\\[rgba\\(255\\,255\\,255\\,0\\.28\\)\\]{--un-border-opacity:0.28;border-color:rgba(255, 255, 255, var(--un-border-opacity));}
-.border-current{border-color:currentColor;}
-.border-t-\\[var\\(--ehpeek-color-accent\\)\\]{border-top-color:var(--ehpeek-color-accent);}
-.rounded-\\[var\\(--ehpeek-control-radius-md\\)\\]{border-radius:var(--ehpeek-control-radius-md);}
-.rounded-\\[var\\(--ehpeek-control-radius-pill\\)\\]{border-radius:var(--ehpeek-control-radius-pill);}
-.rounded-\\[var\\(--ehpeek-control-radius-reader\\)\\]{border-radius:var(--ehpeek-control-radius-reader);}
-.rounded-\\[var\\(--ehpeek-control-radius-sm\\)\\]{border-radius:var(--ehpeek-control-radius-sm);}
-.rounded-22px{border-radius:22px;}
-.rounded-4px{border-radius:4px;}
-.rounded-6px{border-radius:6px;}
+.border-t{border-top-width:1px;}
+.\\!border-transparent{border-color:transparent !important;}
+.border-\\[rgba\\(255\\,255\\,255\\,0\\.2\\)\\]{--un-border-opacity:0.2;border-color:rgba(255, 255, 255, var(--un-border-opacity));}
+.border-\\[var\\(--color-accent\\)\\]{border-color:var(--color-accent);}
+.border-\\[var\\(--color-border\\)\\]{border-color:var(--color-border);}
+.border-\\[var\\(--color-danger-border\\)\\]{border-color:var(--color-danger-border);}
+.border-\\[var\\(--color-site-border-subtle\\)\\]{border-color:var(--color-site-border-subtle);}
+.border-\\[var\\(--color-site-swipe-border\\)\\]{border-color:var(--color-site-swipe-border);}
+.hover\\:border-\\[var\\(--color-site-border\\)\\]:hover{border-color:var(--color-site-border);}
+.focus\\:border-\\[var\\(--color-site-accent\\)\\]:focus{border-color:var(--color-site-accent);}
+.border-t-\\[var\\(--color-site-border-subtle\\)\\]{border-top-color:var(--color-site-border-subtle);}
+.rounded-3px{border-radius:3px;}
 .rounded-full{border-radius:9999px;}
 .border-solid{border-style:solid;}
-.bg-\\[\\#070707\\]{--un-bg-opacity:1;background-color:rgb(7 7 7 / var(--un-bg-opacity));}
-.bg-\\[\\#151515\\]{--un-bg-opacity:1;background-color:rgb(21 21 21 / var(--un-bg-opacity));}
-.bg-\\[\\#34353b\\]{--un-bg-opacity:1;background-color:rgb(52 53 59 / var(--un-bg-opacity));}
-.bg-\\[rgba\\(255\\,178\\,167\\,0\\.12\\)\\]{--un-bg-opacity:0.12;background-color:rgba(255, 178, 167, var(--un-bg-opacity));}
-.bg-\\[var\\(--ehpeek-color-state-off\\)\\]{background-color:var(--ehpeek-color-state-off);}
-.bg-\\[var\\(--ehpeek-color-state-on\\)\\]{background-color:var(--ehpeek-color-state-on);}
+.\\!bg-\\[color-mix\\(in_srgb\\,var\\(--color-site-page\\)_82\\%\\,black\\)\\]{background-color:color-mix(in srgb,var(--color-site-page) 82%,black) !important;}
+.\\!bg-transparent{background-color:transparent !important;}
+.bg-\\[var\\(--color-accent\\)\\]{background-color:var(--color-accent);}
+.bg-\\[var\\(--color-background\\)\\]{background-color:var(--color-background);}
+.bg-\\[var\\(--color-badge\\)\\]{background-color:var(--color-badge);}
+.bg-\\[var\\(--color-control\\)\\]{background-color:var(--color-control);}
+.bg-\\[var\\(--color-danger-soft\\)\\]{background-color:var(--color-danger-soft);}
+.bg-\\[var\\(--color-elevated\\)\\]{background-color:var(--color-elevated);}
+.bg-\\[var\\(--color-site-elevated\\)\\]{background-color:var(--color-site-elevated);}
+.bg-\\[var\\(--color-site-surface\\)\\]{background-color:var(--color-site-surface);}
+.bg-\\[var\\(--color-site-swipe-background\\)\\]{background-color:var(--color-site-swipe-background);}
+.bg-\\[var\\(--color-state-off\\)\\]{background-color:var(--color-state-off);}
+.bg-\\[var\\(--color-state-on\\)\\]{background-color:var(--color-state-on);}
+.bg-\\[var\\(--color-surface\\)\\]{background-color:var(--color-surface);}
+.bg-black\\/65{background-color:rgb(0 0 0 / 0.65);}
 .bg-transparent{background-color:transparent;}
+.hover\\:\\!bg-\\[var\\(--color-site-item-hover\\)\\]:hover{background-color:var(--color-site-item-hover) !important;}
+.hover\\:bg-\\[var\\(--color-badge\\)\\]:hover{background-color:var(--color-badge);}
+.hover\\:bg-\\[var\\(--color-site-accent-hover\\)\\]:hover{background-color:var(--color-site-accent-hover);}
+.hover\\:bg-\\[var\\(--color-site-item-hover\\)\\]:hover{background-color:var(--color-site-item-hover);}
+.focus\\:bg-\\[var\\(--color-site-elevated\\)\\]:focus{background-color:var(--color-site-elevated);}
+.active\\:bg-\\[var\\(--color-site-accent-hover\\)\\]:active{background-color:var(--color-site-accent-hover);}
 .object-contain{object-fit:contain;}
 .object-center{object-position:center;}
+.\\!p-0,
+.\\[\\&_form\\>div\\]\\:\\!p-0 form>div{padding:0 !important;}
 .p-0,
 #ehpeek-reader[data-view-mode=paged] .\\[\\#ehpeek-reader\\[data-view-mode\\=paged\\]_\\&\\]\\:p-0{padding:0;}
-.p-24px{padding:24px;}
-.p-8px{padding:8px;}
+.\\!py-0{padding-top:0 !important;padding-bottom:0 !important;}
 .px{padding-left:1rem;padding-right:1rem;}
 .px-\\[0\\.6em\\]{padding-left:0.6em;padding-right:0.6em;}
-.px-\\[max\\(16px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{padding-left:max(16px,env(safe-area-inset-right,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
 .px-0{padding-left:0;padding-right:0;}
 .px-10px{padding-left:10px;padding-right:10px;}
-.px-12px{padding-left:12px;padding-right:12px;}
-.px-18px{padding-left:18px;padding-right:18px;}
-.px-24px{padding-left:24px;padding-right:24px;}
 .py-0{padding-top:0;padding-bottom:0;}
-.py-14px{padding-top:14px;padding-bottom:14px;}
-.py-18px{padding-top:18px;padding-bottom:18px;}
-.py-4px{padding-top:4px;padding-bottom:4px;}
 .py-56px{padding-top:56px;padding-bottom:56px;}
 .py-6px{padding-top:6px;padding-bottom:6px;}
-html[data-ehpeek-touch-ui="true"] .touch\\:px-26px{padding-left:26px;padding-right:26px;}
-.pb-18px{padding-bottom:18px;}
 .pb-48px{padding-bottom:48px;}
 .pb-72px{padding-bottom:72px;}
-.pb-8px{padding-bottom:8px;}
 .pl-\\[max\\(16px\\,env\\(safe-area-inset-left\\,0px\\)\\)\\]{padding-left:max(16px,env(safe-area-inset-left,0px));}
+.pl-6px{padding-left:6px;}
 .pr-\\[max\\(16px\\,env\\(safe-area-inset-right\\,0px\\)\\)\\]{padding-right:max(16px,env(safe-area-inset-right,0px));}
-.pt-18px{padding-top:18px;}
-.pt-28px{padding-top:28px;}
 .pt-2px{padding-top:2px;}
 .text-center{text-align:center;}
+.\\!text-left{text-align:left !important;}
 .text-left{text-align:left;}
 .align-middle{vertical-align:middle;}
+.\\!text-0{font-size:0 !important;}
+.\\!text-16px{font-size:16px !important;}
+.text-12px{font-size:12px;}
 .text-13px{font-size:13px;}
-.text-17px{font-size:17px;}
+.text-15px{font-size:15px;}
+.text-16px{font-size:16px;}
 .text-18px{font-size:18px;}
-.text-20px{font-size:20px;}
 .text-21px{font-size:21px;}
-.text-22px{font-size:22px;}
-.text-24px{font-size:24px;}
 .text-27px{font-size:27px;}
 .text-28px{font-size:28px;}
 .text-34px{font-size:34px;}
-.text-52px{font-size:52px;}
 .text-xl{font-size:1.25rem;line-height:1.75rem;}
 html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
-.text-\\[\\#111\\]{--un-text-opacity:1;color:rgb(17 17 17 / var(--un-text-opacity));}
-.text-\\[\\#ffb2a7\\]{--un-text-opacity:1;color:rgb(255 178 167 / var(--un-text-opacity));}
-.text-\\[\\#ffddd8\\]{--un-text-opacity:1;color:rgb(255 221 216 / var(--un-text-opacity));}
-.text-\\[clamp\\(17px\\,4\\.6vw\\,25px\\)\\]{font-size:clamp(17px,4.6vw,25px);}
-.text-\\[clamp\\(22px\\,5\\.9vw\\,32px\\)\\]{font-size:clamp(22px,5.9vw,32px);}
+.\\!text-\\[var\\(--color-site-text\\)\\]{color:var(--color-site-text) !important;}
+.text-\\[clamp\\(18px\\,4\\.8vw\\,26px\\)\\]{font-size:clamp(18px,4.8vw,26px);}
+.text-\\[clamp\\(23px\\,6\\.2vw\\,34px\\)\\]{font-size:clamp(23px,6.2vw,34px);}
 .text-\\[clamp\\(24px\\,6vw\\,42px\\)\\]{font-size:clamp(24px,6vw,42px);}
 .text-\\[clamp\\(88px\\,25vw\\,180px\\)\\]{font-size:clamp(88px,25vw,180px);}
-.text-\\[rgba\\(245\\,245\\,245\\,0\\.72\\)\\]{--un-text-opacity:0.72;color:rgba(245, 245, 245, var(--un-text-opacity));}
-.font-300{font-weight:300;}
+.text-\\[rgba\\(255\\,255\\,255\\,0\\.25\\)\\]{--un-text-opacity:0.25;color:rgba(255, 255, 255, var(--un-text-opacity));}
+.text-\\[rgba\\(255\\,255\\,255\\,0\\.58\\)\\]{--un-text-opacity:0.58;color:rgba(255, 255, 255, var(--un-text-opacity));}
+.text-\\[rgba\\(255\\,255\\,255\\,0\\.78\\)\\]{--un-text-opacity:0.78;color:rgba(255, 255, 255, var(--un-text-opacity));}
+.text-\\[var\\(--color-background\\)\\]{color:var(--color-background);}
+.text-\\[var\\(--color-danger\\)\\]{color:var(--color-danger);}
+.text-\\[var\\(--color-muted\\)\\]{color:var(--color-muted);}
+.text-\\[var\\(--color-site-text\\)\\]{color:var(--color-site-text);}
+.text-\\[var\\(--color-text\\)\\]{color:var(--color-text);}
+.text-white{--un-text-opacity:1;color:rgb(255 255 255 / var(--un-text-opacity));}
+.visited\\:\\!text-\\[var\\(--color-site-text\\)\\]:visited{color:var(--color-site-text) !important;}
+.hover\\:\\!text-\\[var\\(--color-site-text\\)\\]:hover{color:var(--color-site-text) !important;}
+.active\\:\\!text-\\[var\\(--color-site-text\\)\\]:active{color:var(--color-site-text) !important;}
 .font-400{font-weight:400;}
 .font-600{font-weight:600;}
 .font-700{font-weight:700;}
 .font-850{font-weight:850;}
 .leading-\\[1\\.1\\]{line-height:1.1;}
 .leading-\\[1\\.15\\]{line-height:1.15;}
+.leading-\\[1\\.16\\]{line-height:1.16;}
 .leading-\\[1\\.2\\]{line-height:1.2;}
 .leading-\\[1\\.3\\]{line-height:1.3;}
 .leading-\\[1\\.4\\]{line-height:1.4;}
+.leading-\\[1\\]{line-height:1;}
 .leading-1{line-height:0.25rem;}
 .font-inherit{font-family:inherit;}
+.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
 .font-sans{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";}
 .uppercase{text-transform:uppercase;}
+.lowercase{text-transform:lowercase;}
 .normal-case{text-transform:none;}
 .no-underline{text-decoration:none;}
 .hover\\:no-underline:hover{text-decoration:none;}
 .active\\:no-underline:active{text-decoration:none;}
+.\\[\\&\\[data-disabled\\]\\]\\:opacity-40[data-disabled],
+.opacity-40{opacity:0.4;}
 .\\[\\&\\[data-open\\=false\\]\\]\\:opacity-0[data-open=false]{opacity:0;}
 .opacity-72{opacity:0.72;}
+.opacity-75{opacity:0.75;}
 .opacity-78{opacity:0.78;}
-.opacity-88{opacity:0.88;}
+.opacity-82{opacity:0.82;}
+.active\\:opacity-70:active{opacity:0.7;}
+.disabled\\:opacity-40:disabled{opacity:0.4;}
+.shadow-\\[0_2px_10px_var\\(--color-shadow-panel\\)\\]{--un-shadow:0 2px 10px var(--un-shadow-color, var(--color-shadow-panel));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-\\[0_2px_6px_var\\(--color-shadow-control\\)\\]{--un-shadow:0 2px 6px var(--un-shadow-color, var(--color-shadow-control));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-\\[0_2px_8px_var\\(--color-shadow-panel\\)\\]{--un-shadow:0 2px 8px var(--un-shadow-color, var(--color-shadow-panel));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-\\[0_4px_14px_var\\(--color-shadow-floating\\)\\]{--un-shadow:0 4px 14px var(--un-shadow-color, var(--color-shadow-floating));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-\\[0_6px_20px_var\\(--color-shadow-floating\\)\\]{--un-shadow:0 6px 20px var(--un-shadow-color, var(--color-shadow-floating));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-\\[0_8px_24px_var\\(--color-shadow-panel\\)\\]{--un-shadow:0 8px 24px var(--un-shadow-color, var(--color-shadow-panel));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .shadow-none{--un-shadow:0 0 var(--un-shadow-color, rgb(0 0 0 / 0));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.shadow-xl{--un-shadow:var(--un-shadow-inset) 0 20px 25px -5px var(--un-shadow-color, rgb(0 0 0 / 0.1)),var(--un-shadow-inset) 0 8px 10px -6px var(--un-shadow-color, rgb(0 0 0 / 0.1));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.focus\\:shadow-\\[0_0_0_3px_var\\(--color-site-accent-hover\\)\\]:focus{--un-shadow:0 0 0 3px var(--un-shadow-color, var(--color-site-accent-hover));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
+.focus-visible\\:outline-2:focus-visible{outline-width:2px;}
+.focus-visible\\:outline-\\[var\\(--color-site-accent\\)\\]:focus-visible{outline-color:var(--color-site-accent);}
+.focus-visible\\:outline-offset-3px:focus-visible{outline-offset:3px;}
+.focus-visible\\:outline:focus-visible{outline-style:solid;}
+.outline-none{outline:2px solid transparent;outline-offset:2px;}
+.hover\\:brightness-108:hover{--un-brightness:brightness(1.08);filter:var(--un-blur) var(--un-brightness) var(--un-contrast) var(--un-drop-shadow) var(--un-grayscale) var(--un-hue-rotate) var(--un-invert) var(--un-saturate) var(--un-sepia);}
+.transition-\\[border-color\\,background-color\\,color\\]{transition-property:border-color,background-color,color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
+.transition-\\[filter\\,transform\\,box-shadow\\]{transition-property:filter,transform,box-shadow;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[opacity\\,transform\\]{transition-property:opacity,transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .duration-120{transition-duration:120ms;}
@@ -3758,7 +4485,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
 @media (orientation: landscape){
 .landscape\\:left-auto{left:auto;}
 .landscape\\:right-10px{right:10px;}
-.landscape\\:top-\\[calc\\(54px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(54px + env(safe-area-inset-top,0px));}
+.landscape\\:top-\\[calc\\(62px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(62px + env(safe-area-inset-top,0px));}
 .landscape\\:max-w-\\[calc\\(100vw-20px\\)\\]{max-width:calc(100vw - 20px);}
 .landscape\\:min-w-0{min-width:0;}
 .landscape\\:translate-x-0{--un-translate-x:0;transform:translateX(var(--un-translate-x)) translateY(var(--un-translate-y)) translateZ(var(--un-translate-z)) rotate(var(--un-rotate)) rotateX(var(--un-rotate-x)) rotateY(var(--un-rotate-y)) rotateZ(var(--un-rotate-z)) skewX(var(--un-skew-x)) skewY(var(--un-skew-y)) scaleX(var(--un-scale-x)) scaleY(var(--un-scale-y)) scaleZ(var(--un-scale-z));}
@@ -3766,28 +4493,78 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
 }
 @media (orientation: landscape) and (pointer: coarse){
 .coarse-landscape\\:right-8px{right:8px;}
-.coarse-landscape\\:top-\\[calc\\(62px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(62px + env(safe-area-inset-top,0px));}
+.coarse-landscape\\:top-\\[calc\\(74px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(74px + env(safe-area-inset-top,0px));}
 .coarse-landscape\\:max-w-\\[calc\\(100vw-16px\\)\\]{max-width:calc(100vw - 16px);}
 }
 @media (pointer: coarse){
 .coarse\\:right-8px{right:8px;}
-.coarse\\:top-\\[calc\\(72px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(72px + env(safe-area-inset-top,0px));}
+.coarse\\:top-\\[calc\\(80px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(80px + env(safe-area-inset-top,0px));}
 .coarse\\:top-\\[calc\\(8px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(8px + env(safe-area-inset-top,0px));}
-.coarse\\:h-60px{height:60px;}
-.coarse\\:w-68px{width:68px;}
-.coarse\\:rounded-8px{border-radius:8px;}
-.coarse\\:px-16px{padding-left:16px;padding-right:16px;}
-.coarse\\:text-16px{font-size:16px;}
+.coarse\\:h-64px{height:64px;}
+.coarse\\:min-w-64px{min-width:64px;}
 .coarse\\:text-18px{font-size:18px;}
-.coarse\\:text-24px{font-size:24px;}
 .coarse\\:text-3xl{font-size:1.875rem;line-height:2.25rem;}
 }`;
 
+  // src/theme.css
+  var theme_default = `:root {
+  --color-background: #070707;
+  --color-surface: #151515;
+  --color-elevated: #232323;
+  --color-text: #f3f3f3;
+  --color-accent: #4da3ff;
+  --color-danger: #ffb2a7;
+  --color-state-on: #4ec46a;
+  --color-state-off: #8c8f96;
+  --color-shadow: #000000;
+
+  --color-muted: color-mix(in srgb, var(--color-text) 72%, transparent);
+  --color-border: color-mix(in srgb, var(--color-text) 18%, transparent);
+  --color-track: color-mix(in srgb, var(--color-text) 34%, var(--color-background));
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  --color-danger-border: color-mix(in srgb, var(--color-danger) 64%, transparent);
+  --color-control: color-mix(in srgb, var(--color-elevated) 88%, transparent);
+  --color-badge: color-mix(in srgb, var(--color-background) 34%, transparent);
+  --color-shadow-panel: color-mix(in srgb, var(--color-shadow) 32%, transparent);
+  --color-shadow-elevated: color-mix(in srgb, var(--color-shadow) 38%, transparent);
+  --color-shadow-control: color-mix(in srgb, var(--color-shadow) 40%, transparent);
+  --color-shadow-floating: color-mix(in srgb, var(--color-shadow) 42%, transparent);
+
+  --color-site-accent-hover: color-mix(in srgb, var(--color-site-accent) 12%, transparent);
+  --color-site-border-subtle: color-mix(in srgb, var(--color-site-border) 16%, transparent);
+  --color-site-item-hover: color-mix(in srgb, var(--color-site-text) 8%, transparent);
+  --color-site-swipe-background: color-mix(in srgb, var(--color-site-elevated) 94%, transparent);
+  --color-site-swipe-border: color-mix(in srgb, var(--color-site-border) 38%, transparent);
+}
+
+:root[data-ehpeek-site="e-hentai"] {
+  --color-site-page: #e3e0d1;
+  --color-site-surface: #edebdf;
+  --color-site-elevated: #f3f0e0;
+  --color-site-text: #5c0d11;
+  --color-site-accent: #8f4701;
+  --color-site-border: #5c0d12;
+}
+
+:root[data-ehpeek-site="exhentai"] {
+  --color-site-page: #34353b;
+  --color-site-surface: #4f535b;
+  --color-site-elevated: #3f4249;
+  --color-site-text: #f1f1f1;
+  --color-site-accent: #f0b35a;
+  --color-site-border: #8d7454;
+}
+`;
+
   // src/main.tsx
-  var READER_WINDOW_SIZE = 10, UNO_STYLE_ID = "ehpeek-uno-style";
+  var READER_WINDOW_SIZE = 10, THEME_STYLE_ID = "ehpeek-theme-style", UNO_STYLE_ID = "ehpeek-uno-style";
   if (ehpeek_uno_default && !document.getElementById(UNO_STYLE_ID)) {
     let style = document.createElement("style");
     style.id = UNO_STYLE_ID, style.textContent = ehpeek_uno_default, document.head.append(style);
+  }
+  if (theme_default && !document.getElementById(THEME_STYLE_ID)) {
+    let style = document.createElement("style");
+    style.id = THEME_STYLE_ID, style.textContent = theme_default, document.head.append(style);
   }
   function settingsMenuState() {
     return {
@@ -3816,6 +4593,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
     };
   }
   var pageType = extractPageType(), initialSettingsState = settingsMenuState();
+  applySiteTheme();
   initialSettingsState.touchUiEnabled && (document.documentElement.dataset.ehpeekTouchUi = "true");
   var settingsMenuOpen = !1, settingsState = initialSettingsState, settingsMenuHost = document.createElement("div");
   document.body.append(settingsMenuHost);
@@ -3908,7 +4686,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
           "a",
           {
             href: "#",
-            className: "textsize-sm font-inherit",
+            className: "textsize-md font-inherit",
             onClick: (event) => {
               event.preventDefault(), event.stopPropagation(), setSettingsMenuOpen(!0);
             }
@@ -3919,7 +4697,9 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
       );
     }
   }
-  if (settingsState.touchUiEnabled && !document.querySelector(".ehpeek-touch-top-bar")) {
+  function installTouchTopBar() {
+    if (document.querySelector(".ehpeek-touch-top-bar"))
+      return;
     let info = readTouchTopBarInfo(TOUCH_TOP_BAR_MENU_ITEM_CLASS);
     if (info.available) {
       let mount = document.createElement("div");
@@ -3937,12 +4717,19 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
       );
     }
   }
-  if (settingsState.touchUiEnabled && pageType.type === "gallery") {
+  async function installTouchTopBarWhenReady() {
+    await waitForInitialUi(), installTouchTopBar();
+  }
+  settingsState.touchUiEnabled && installTouchTopBarWhenReady();
+  settingsState.touchUiEnabled && pageType.type === "favorites" && prepareTouchFavoritesPage();
+  function installTouchGalleryPanel() {
+    if (document.querySelector(".ehpeek-touch-gallery"))
+      return;
     let touchGalleryInfo = readGalleryInfo(TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS);
     if (touchGalleryInfo.available) {
-      applyTouchGalleryPanelPageStyle();
-      let mount = null;
-      document.querySelector(".ehpeek-touch-gallery") || (mount = document.createElement("div"), insertTouchGalleryPanel(mount) || document.body.prepend(mount)), mount && R(
+      applyTouchGalleryPanelPageStyle(), prepareTouchGalleryComments();
+      let mount = document.createElement("div");
+      insertTouchGalleryPanel(mount) || document.body.prepend(mount), R(
         /* @__PURE__ */ k(
           TouchGalleryPanel,
           {
@@ -3956,6 +4743,23 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
       );
     }
   }
+  async function installTouchGalleryPanelWhenReady() {
+    await waitForInitialUi(), installTouchGalleryPanel();
+  }
+  settingsState.touchUiEnabled && pageType.type === "gallery" && installTouchGalleryPanelWhenReady();
+  function installTouchSearchPanel() {
+    if (document.querySelector(".ehpeek-touch-search-panel"))
+      return !0;
+    let touchSearchInfo = readTouchSearchPanelInfo();
+    if (!touchSearchInfo)
+      return !1;
+    let mount = document.createElement("div");
+    return insertTouchSearchPanel(mount) ? (prepareTouchSearchPanel(touchSearchInfo, TOUCH_SEARCH_OPTION_CLASS), R(/* @__PURE__ */ k(TouchSearchPanel, { source: touchSearchInfo }), mount), R(/* @__PURE__ */ k(TouchSearchCategoryToggle, { source: touchSearchInfo }), touchSearchInfo.categoryToggleMount), R(/* @__PURE__ */ k(TouchSearchAction, { action: "search", source: touchSearchInfo }), touchSearchInfo.searchActionMount), R(/* @__PURE__ */ k(TouchSearchAction, { action: "clear", source: touchSearchInfo }), touchSearchInfo.clearActionMount), !0) : !1;
+  }
+  async function installTouchSearchPanelWhenReady() {
+    await waitForSearchUi(), installTouchSearchPanel();
+  }
+  settingsState.touchUiEnabled && pageType.type === "search" && installTouchSearchPanelWhenReady();
   installContinueReadingButton();
   if (pageType.type === "gallery") {
     let host = document.createElement("div");
@@ -3971,7 +4775,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
       host
     );
   }
-  if (pageType.type === "search" && settingsState.enhanceSearchGridsEnabled) {
+  if ((pageType.type === "search" || pageType.type === "favorites") && settingsState.enhanceSearchGridsEnabled) {
     let resultList = searchResultList();
     if (resultList && searchPageNavigation()) {
       let host = document.createElement("div");
@@ -3994,11 +4798,10 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
     ), startUrl = normalizeUrl(startPageUrl), startPageNum = preferredPageNum ?? peekPageFromHash() ?? galleryPageNumber(startUrl);
     if (!startPageNum)
       throw new Error(texts_default.errors.imageNotFound);
-    let pages = [landingPages.find((page) => page.pageNum === startPageNum || page.url === startUrl) ?? {
-      url: startUrl,
-      aspectRatio: 1.42,
-      pageNum: startPageNum
-    }], startIndex = 0, lastPageNum = startPageNum, historySession = new ReaderHistorySession({
+    let seedPage = landingPages.find((page) => page.pageNum === startPageNum) ?? (await provider.loadDisplayPages([startPageNum]))[0];
+    if (!seedPage || seedPage.pageNum !== startPageNum)
+      throw new Error(texts_default.errors.imageNotFound);
+    let pages = [seedPage], startIndex = 0, lastPageNum = startPageNum, historySession = new ReaderHistorySession({
       galleryId: pageType2.galleryId,
       token: pageType2.token,
       galleryUrl: previewUrlForIndex(landingIndex),
@@ -4009,6 +4812,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:text-30px{font-size:30px;}
       return;
     }
     openFullscreenReader({
+      galleryId: pageType2.galleryId,
       pages,
       startIndex,
       renderWindowSize: READER_WINDOW_SIZE,
