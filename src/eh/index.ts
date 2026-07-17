@@ -270,26 +270,15 @@ export function findClickedImageLink(target: EventTarget | null): HTMLAnchorElem
 export async function loadEhImagePage(page: ReaderPage): Promise<LoadedReaderPage> {
   const html = await requestText(page.url);
   const doc = new DOMParser().parseFromString(html, "text/html");
-  const image = doc.querySelector<HTMLImageElement>("img#img");
-  const imageSrc = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.currentSrc || "";
-  const imageUrl = imageSrc ? normalizeUrl(imageSrc, page.url) : "";
+  const info = dom.readImagePageInfo(doc, page.url);
 
-  if (!imageUrl) {
+  if (!info.imageUrl) {
     throw new Error(texts.errors.imageNotFound);
   }
 
-  return {
-    imageUrl,
-    width: numericAttribute(image, "width"),
-    height: numericAttribute(image, "height"),
-  };
+  return info;
 }
 
 export function replacePreviewContent(doc: Document): void {
   dom.replacePreviewContent(doc);
-}
-
-function numericAttribute(element: Element | null, attribute: string): number | null {
-  const value = Number(element?.getAttribute(attribute) || "");
-  return Number.isFinite(value) && value > 0 ? value : null;
 }

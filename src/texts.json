@@ -10,6 +10,10 @@
     "rightTapNext": "Right tap goes to next page",
     "openOriginalPage": "Open original image page",
     "download": "Download",
+    "downloadDisplayedImage": "Displayed image",
+    "downloadOriginalImage": "Original image",
+    "originalImageSource": "Original source provided by E-Hentai",
+    "originalImageUnavailable": "Original image unavailable",
     "startReading": "Read",
     "continueReading": "Continue",
     "backToTop": "Back to top",
@@ -41,6 +45,7 @@
   },
   "errors": {
     "imageNotFound": "Image not found",
+    "downloadFailed": "Download failed",
     "loadFailed": "Load failed",
     "imageLoadFailed": "Image load failed",
     "previewPageSizeUnknown": "Cannot determine gallery preview page size",

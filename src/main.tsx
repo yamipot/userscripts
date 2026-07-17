@@ -385,6 +385,7 @@ async function openReader(startPageUrl: string, preferredPageNum?: number): Prom
   }
 
   openFullscreenReader({
+    galleryId: pageType.galleryId,
     pages,
     startIndex,
     renderWindowSize: READER_WINDOW_SIZE,

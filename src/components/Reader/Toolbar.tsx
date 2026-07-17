@@ -2,6 +2,7 @@ import { Fragment, h } from "preact";
 import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
+import { Icon, type IconName } from "../Icon";
 import { ProgressBar } from "../Misc";
 
 export type ReaderControls = {
@@ -19,11 +20,29 @@ export type PageProgress = {
 
 const READER_BUTTON_CLASS = [
   "inline-flex min-w-lg h-lg items-center justify-center px-md py-0 rounded-md coarse:(min-w-64px h-64px px-lg rounded-lg text-18px)",
-  "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1",
+  "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:(opacity-40 cursor-default)",
 ].join(" ");
+const READER_ICON_SIZE = "1.4em";
+
+const DOWNLOAD_OPTION_CLASS = [
+  "flex w-full min-h-lg flex-col items-start justify-center gap-xs px-lg py-md rounded-md",
+  "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer text-left",
+  "hover:bg-[var(--color-badge)] disabled:(opacity-40 cursor-default)",
+].join(" ");
+
+export type ReaderDownloadDialog = {
+  currentFileName: string;
+  currentImageUrl: string;
+  originalImageUrl: string | null;
+  pageNum: number;
+};
 
 export type ToolbarCallbacks = {
   onCloseClick: () => void;
+  onDownloadClick: () => void;
+  onDownloadCurrentClick: () => void;
+  onDownloadDialogClose: () => void;
+  onDownloadOriginalClick: () => void;
   onModeClick: () => void;
   onOpenOriginalPageClick: () => void;
   onOpenChange: (open: boolean) => void;
@@ -36,6 +55,8 @@ export type ToolbarCallbacks = {
 
 export type ToolbarState = {
   controls: ReaderControls;
+  downloadAvailable: boolean;
+  downloadDialog: ReaderDownloadDialog | null;
   open: boolean;
   progress: PageProgress;
 };
@@ -47,6 +68,8 @@ export function initialToolbarState(): ToolbarState {
       readDirection: "rtl",
       rightTapAction: "previous",
     },
+    downloadAvailable: false,
+    downloadDialog: null,
     open: false,
     progress: {
       pageNum: 1,
@@ -58,6 +81,7 @@ export function initialToolbarState(): ToolbarState {
 export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarState }) {
   const controls = props.state.controls;
   const progress = props.state.progress;
+  const downloadDialog = props.state.downloadDialog;
   const open = props.state.open;
   const modeButton = modeButtonInfo(controls.mode);
   const readDirectionButton = readDirectionButtonInfo(controls.readDirection);
@@ -80,34 +104,44 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
             type="button"
             className={READER_BUTTON_CLASS}
             hidden={!open}
-            title={readDirectionButton.title}
-            onClick={props.callbacks.onReadDirectionClick}
-          >
-            {readDirectionButton.text}
-          </button>
-          <button
-            type="button"
-            className={READER_BUTTON_CLASS}
-            hidden={!open}
             title={rightTapButton.title}
             onClick={props.callbacks.onRightTapClick}
           >
             {rightTapButton.text}
           </button>
+          <button
+            type="button"
+            className={READER_BUTTON_CLASS}
+            hidden={!open}
+            title={readDirectionButton.title}
+            onClick={props.callbacks.onReadDirectionClick}
+          >
+            <Icon name={readDirectionButton.icon} size={READER_ICON_SIZE} />
+          </button>
           <button type="button" className={READER_BUTTON_CLASS} hidden={!open} title={modeButton.title} onClick={props.callbacks.onModeClick}>
-            {modeButton.text}
+            <Icon name={modeButton.icon} size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
-            className={"coarse:text-24px text-20px " + READER_BUTTON_CLASS}
+            className={READER_BUTTON_CLASS}
+            disabled={!props.state.downloadAvailable}
+            hidden={!open}
+            title={texts.reader.download}
+            onClick={props.callbacks.onDownloadClick}
+          >
+            <Icon name="download" size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            className={READER_BUTTON_CLASS}
             hidden={!open}
             title={texts.reader.openOriginalPage}
             onClick={props.callbacks.onOpenOriginalPageClick}
           >
-            ⏻
+            <Icon name="external-link" size={READER_ICON_SIZE} />
           </button>
           <button type="button" className={READER_BUTTON_CLASS} title={texts.reader.close} onClick={props.callbacks.onCloseClick}>
-            X
+            <Icon name="close" size={READER_ICON_SIZE} />
           </button>
         </div>
       </div>
@@ -151,6 +185,56 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           onCommit={props.callbacks.onProgressCommit}
         />
       </div>
+      {downloadDialog ? (
+        <div
+          className="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label={texts.reader.download}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            if (event.target === event.currentTarget) {
+              props.callbacks.onDownloadDialogClose();
+            }
+          }}
+          onPointerDown={stopEvent}
+          onWheel={stopEvent}
+        >
+          <div className="w-full max-w-420px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl">
+            <div className="flex items-center justify-between gap-md mb-lg">
+              <div className="font-sans textsize-lg font-700">{`${texts.reader.download} · ${downloadDialog.pageNum}`}</div>
+              <button
+                type="button"
+                className={READER_BUTTON_CLASS}
+                title={texts.reader.close}
+                aria-label={texts.reader.close}
+                onClick={props.callbacks.onDownloadDialogClose}
+              >
+                <Icon name="close" size={READER_ICON_SIZE} />
+              </button>
+            </div>
+            <div className="grid gap-md font-sans textsize-md">
+              <button type="button" className={DOWNLOAD_OPTION_CLASS} onClick={props.callbacks.onDownloadCurrentClick}>
+                <span className="font-700">{texts.reader.downloadDisplayedImage}</span>
+                <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75">
+                  {downloadDialog.currentFileName}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={DOWNLOAD_OPTION_CLASS}
+                disabled={!downloadDialog.originalImageUrl}
+                onClick={props.callbacks.onDownloadOriginalClick}
+              >
+                <span className="font-700">{texts.reader.downloadOriginalImage}</span>
+                <span className="textsize-sm opacity-75">
+                  {downloadDialog.originalImageUrl ? texts.reader.originalImageSource : texts.reader.originalImageUnavailable}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -170,18 +254,18 @@ function pageNumberText(pageNum: number, totalPages: number | undefined): string
   return totalPages ? `${pageNum} / ${totalPages}` : String(pageNum);
 }
 
-function modeButtonInfo(mode: ViewMode): { text: string; title: string } {
+function modeButtonInfo(mode: ViewMode): { icon: IconName; title: string } {
   const paged = mode === "paged";
   return {
-    text: paged ? "⇔" : "⇕",
+    icon: paged ? "arrows-horizontal" : "arrows-vertical",
     title: paged ? texts.reader.scrollMode : texts.reader.pagedMode,
   };
 }
 
-function readDirectionButtonInfo(direction: ReadDirection): { text: string; title: string } {
+function readDirectionButtonInfo(direction: ReadDirection): { icon: IconName; title: string } {
   const rtl = direction === "rtl";
   return {
-    text: rtl ? "RL" : "LR",
+    icon: rtl ? "arrow-left" : "arrow-right",
     title: rtl ? texts.reader.readLeftToRight : texts.reader.readRightToLeft,
   };
 }

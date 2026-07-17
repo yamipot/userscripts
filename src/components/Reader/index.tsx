@@ -15,7 +15,15 @@ import type { ScrollMotion } from "../animation";
 import type { PointerDragEnd } from "../pointerGesture";
 import { usePointerGestureElement, type PointerGestureSurfaceHandle } from "../PointerGestureSurface";
 import { PagesViewport } from "./Viewport";
-import { initialToolbarState, Toolbar, type PageProgress, type ReaderControls, type ToolbarCallbacks, type ToolbarState } from "./Toolbar";
+import {
+  initialToolbarState,
+  Toolbar,
+  type PageProgress,
+  type ReaderControls,
+  type ReaderDownloadDialog,
+  type ToolbarCallbacks,
+  type ToolbarState,
+} from "./Toolbar";
 import { createZoomOverlay, type ZoomOverlay, type ZoomOverlayImage } from "./ZoomOverlay";
 import { ExternalDomNode } from "../ExternalDom";
 import readerCss from "./index.css";
@@ -35,6 +43,7 @@ const TAP_CANCEL_DISTANCE = 8;
 const FALLBACK_ASPECT_RATIO = 1.42;
 
 export type FullscreenReaderOptions = {
+  galleryId: number;
   pages: ReaderPage[];
   startIndex: number;
   loadPage: (page: ReaderPage, index: number) => Promise<LoadedReaderPage>;
@@ -115,6 +124,10 @@ type LoadTarget = {
   pageNum: number;
   page: ReaderPage;
   index: number;
+};
+
+type LoadedReaderImage = ZoomOverlayImage & {
+  originalImageUrl: string | null;
 };
 
 class TwoTierImageQueue<Target extends { pageNum: number }, Loaded> {
@@ -490,7 +503,8 @@ class ReaderSession {
   private toolbarState: ToolbarState;
   private rootState: ReaderRootState;
   private readonly pages = new Map<number, ReaderPage>();
-  private readonly loadedImages = new Map<number, ZoomOverlayImage>();
+  private readonly loadedImages = new Map<number, LoadedReaderImage>();
+  private readonly galleryId: number;
   private currentPageNum: number;
   private direction: Direction = 1;
   private readonly totalPages: number | undefined;
@@ -528,6 +542,7 @@ class ReaderSession {
   private closed = false;
 
   constructor(options: FullscreenReaderOptions, bindings: ReaderSessionBindings) {
+    this.galleryId = options.galleryId;
     this.totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : undefined;
     this.renderWindowSize = options.renderWindowSize ?? DEFAULT_WINDOW_SIZE;
     for (const [index, page] of options.pages.entries()) {
@@ -569,6 +584,10 @@ class ReaderSession {
       onRightTapClick: () => this.toggleRightTapAction(),
       onModeClick: () => this.setMode(state.reader.viewMode.value === "paged" ? "scroll" : "paged"),
       onCloseClick: () => this.close(),
+      onDownloadClick: () => this.openDownloadDialog(),
+      onDownloadCurrentClick: () => this.downloadDisplayedImage(),
+      onDownloadDialogClose: () => this.closeDownloadDialog(),
+      onDownloadOriginalClick: () => this.downloadOriginalImage(),
       onOpenOriginalPageClick: () => this.openOriginalPage(),
       onOpenChange: (open) => this.setRootState({ toolbarOpen: open }),
       onProgressPointerDown: this.onProgressPointerDown,
@@ -893,18 +912,35 @@ class ReaderSession {
     }
 
     if (!this.closed) {
-      this.loadedImages.set(target.pageNum, { pageNum: target.pageNum, imageUrl, width, height });
+      this.loadedImages.set(target.pageNum, {
+        pageNum: target.pageNum,
+        imageUrl,
+        originalImageUrl: loaded.originalImageUrl ?? null,
+        width,
+        height,
+      });
       this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image);
+
+      if (target.pageNum === this.currentPageNum) {
+        this.updatePageNumber();
+      }
     }
   }
 
   private updatePageNumber(): void {
-    this.setToolbarProgress({
-      pageNum: this.currentPageNum,
-      totalPages: this.totalPages,
-      maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
-      keepInputValue: this.progressNavigating,
-    });
+    this.toolbarState = {
+      ...this.toolbarState,
+      downloadAvailable: this.loadedImages.has(this.currentPageNum),
+      downloadDialog:
+        this.toolbarState.downloadDialog?.pageNum === this.currentPageNum ? this.toolbarState.downloadDialog : null,
+      progress: {
+        pageNum: this.currentPageNum,
+        totalPages: this.totalPages,
+        maxProgressPageNum: Math.max(1, this.maxProgressPageNum()),
+        keepInputValue: this.progressNavigating,
+      },
+    };
+    this.setToolbarComponentState(this.toolbarState);
   }
 
   private notifyActivePageChange(): void {
@@ -1098,6 +1134,11 @@ class ReaderSession {
   }
 
   private handleKeyboardClose(): void {
+    if (this.toolbarState.downloadDialog) {
+      this.closeDownloadDialog();
+      return;
+    }
+
     if (this.zoomOverlay.active()) {
       this.zoomOverlay.close();
       return;
@@ -1264,6 +1305,48 @@ class ReaderSession {
     }
   }
 
+  private openDownloadDialog(): void {
+    const image = this.loadedImages.get(this.currentPageNum);
+
+    if (!image || !this.isRealPageNum(this.currentPageNum)) {
+      return;
+    }
+
+    const downloadDialog: ReaderDownloadDialog = {
+      currentFileName: displayedImageFileName(this.galleryId, this.currentPageNum, image.imageUrl),
+      currentImageUrl: image.imageUrl,
+      originalImageUrl: image.originalImageUrl,
+      pageNum: this.currentPageNum,
+    };
+    this.toolbarState = { ...this.toolbarState, downloadDialog };
+    this.setToolbarComponentState(this.toolbarState);
+  }
+
+  private closeDownloadDialog(): void {
+    if (!this.toolbarState.downloadDialog) {
+      return;
+    }
+
+    this.toolbarState = { ...this.toolbarState, downloadDialog: null };
+    this.setToolbarComponentState(this.toolbarState);
+  }
+
+  private downloadDisplayedImage(): void {
+    const download = this.toolbarState.downloadDialog;
+
+    if (download && startImageDownload(download.currentImageUrl, download.currentFileName)) {
+      this.closeDownloadDialog();
+    }
+  }
+
+  private downloadOriginalImage(): void {
+    const originalImageUrl = this.toolbarState.downloadDialog?.originalImageUrl;
+
+    if (originalImageUrl && startImageDownload(originalImageUrl)) {
+      this.closeDownloadDialog();
+    }
+  }
+
   private openOriginalPage(): void {
     const page = this.pages.get(this.currentPageNum);
 
@@ -1350,6 +1433,43 @@ class ReaderSession {
   }
 
 
+}
+
+function displayedImageFileName(galleryId: number, pageNum: number, imageUrl: string): string {
+  return `${galleryId}-p${String(pageNum).padStart(2, "0")}.${imageFileExtension(imageUrl)}`;
+}
+
+function imageFileExtension(imageUrl: string): string {
+  try {
+    const fileName = decodeURIComponent(new URL(imageUrl).pathname.split("/").pop() ?? "");
+    const extension = fileName.match(/\.([a-z0-9]{2,5})$/i)?.[1]?.toLowerCase();
+
+    if (extension && ["avif", "bmp", "gif", "jpeg", "jpg", "png", "webp"].includes(extension)) {
+      return extension;
+    }
+  } catch {
+    return "jpg";
+  }
+
+  return "jpg";
+}
+
+function startImageDownload(url: string, name?: string): boolean {
+  try {
+    GM_download({
+      url,
+      ...(name ? { name } : {}),
+      onerror: (error) => {
+        console.error("[ehpeek]", error);
+        window.alert(texts.errors.downloadFailed);
+      },
+    });
+    return true;
+  } catch (error) {
+    console.error("[ehpeek]", error);
+    window.alert(texts.errors.downloadFailed);
+    return false;
+  }
 }
 
 async function loadImage(image: HTMLImageElement): Promise<void> {

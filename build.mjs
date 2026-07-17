@@ -28,6 +28,7 @@ const metadata = [
   "// @grant        GM_deleteValue",
   "// @grant        GM_listValues",
   "// @grant        GM_registerMenuCommand",
+  "// @grant        GM_download",
   "// @run-at       document-end",
   `// @updateURL    ${installUrl}`,
   `// @downloadURL  ${installUrl}`,

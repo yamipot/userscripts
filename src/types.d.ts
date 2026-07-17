@@ -16,6 +16,11 @@ declare const GM_listValues: () => string[];
 declare const GM_registerMenuCommand:
   | undefined
   | ((caption: string, commandFunc: () => void, accessKey?: string) => number | string);
+declare const GM_download: (details: {
+  url: string;
+  name?: string;
+  onerror?: (error: { error: string; details?: string }) => void;
+}) => { abort: () => void };
 
 declare namespace JSX {
   type Element = HTMLElement | DocumentFragment;

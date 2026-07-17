@@ -1,11 +1,17 @@
 import { h } from "preact";
 
 export type IconName =
+  | "arrow-left"
+  | "arrow-right"
   | "arrow-up"
+  | "arrows-horizontal"
+  | "arrows-vertical"
   | "check"
   | "chevron-left"
   | "chevron-right"
   | "close"
+  | "download"
+  | "external-link"
   | "heart"
   | "home"
   | "menu"
@@ -52,8 +58,20 @@ type IconDefinition = {
 };
 
 const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
+  "arrow-left": {
+    paths: ["M19 12H5", "m12 19-7-7 7-7"],
+  },
+  "arrow-right": {
+    paths: ["M5 12h14", "m12 5 7 7-7 7"],
+  },
   "arrow-up": {
     paths: ["m5 12 7-7 7 7", "M12 5v14"],
+  },
+  "arrows-horizontal": {
+    paths: ["M3 12h18", "m7 8-4 4 4 4", "m17 8 4 4-4 4"],
+  },
+  "arrows-vertical": {
+    paths: ["M12 3v18", "m8 7 4-4 4 4", "m8 17 4 4 4-4"],
   },
   check: {
     paths: ["m5 12.5 4.25 4.25L19.5 6.5"],
@@ -66,6 +84,12 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   },
   close: {
     paths: ["M6 6l12 12", "M18 6 6 18"],
+  },
+  download: {
+    paths: ["M12 3v12", "m7 10 5 5 5-5", "M5 21h14"],
+  },
+  "external-link": {
+    paths: ["M14 4h6v6", "m20 4-9 9", "M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"],
   },
   heart: {
     fillable: true,

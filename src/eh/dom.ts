@@ -18,6 +18,13 @@ export type PreviewSnapshot = {
   thumbs: Node | null;
 };
 
+export type ImagePageInfo = {
+  imageUrl: string;
+  originalImageUrl: string | null;
+  width: number | null;
+  height: number | null;
+};
+
 export type GalleryPageBarMount = {
   element: HTMLDivElement;
   top: boolean;
@@ -102,6 +109,29 @@ export function imageAspectRatio(image: HTMLImageElement | null): number {
   const height = image?.naturalHeight || image?.height || Number(image?.getAttribute("height") || "");
 
   return width > 0 && height > 0 ? height / width : 1.42;
+}
+
+export function readImagePageInfo(root: ParentNode, baseUrl: string): ImagePageInfo {
+  const image = root.querySelector<HTMLImageElement>("img#img");
+  const imageSrc = image?.getAttribute("src") || image?.getAttribute("data-src") || image?.currentSrc || "";
+  const originalImageUrl = Array.from(root.querySelectorAll<HTMLAnchorElement>("a[href]"))
+    .map((link) => normalizeUrl(link.getAttribute("href") || "", baseUrl))
+    .find((url) => imageUrlPath(url).includes("/fullimg")) ?? null;
+
+  return {
+    imageUrl: normalizeUrl(imageSrc, baseUrl),
+    originalImageUrl,
+    width: numericAttribute(image, "width"),
+    height: numericAttribute(image, "height"),
+  };
+}
+
+function imageUrlPath(url: string): string {
+  try {
+    return new URL(url).pathname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 export function collectGalleryPages(
@@ -809,4 +839,9 @@ function backgroundImageUrl(root: Element | null): string {
   }
 
   return "";
+}
+
+function numericAttribute(element: Element | null, attribute: string): number | null {
+  const value = Number(element?.getAttribute(attribute) || "");
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
