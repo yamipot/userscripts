@@ -2,12 +2,13 @@ import { Fragment, h } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { TouchSearchPanelInfo } from "../../eh/dom";
 import texts from "../../texts.json";
+import { Icon } from "../Icon";
 
 export const TOUCH_SEARCH_OPTION_CLASS =
-  "appearance-none inline-flex min-h-sm items-center px-sm border-0 rounded-sm bg-transparent ehp-color-site-accent text-left textsize-sm font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]";
+  "appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]";
 
 const TOUCH_SEARCH_ACTION_CLASS =
-  "appearance-none block box-border w-auto !h-md py-sm px-md rounded-md border cursor-pointer font-inherit text-center textsize-sm font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 [touch-action:manipulation] active:scale-98";
+  "appearance-none inline-flex box-border w-60px h-60px items-center justify-center p-0 rounded-md border-0 bg-transparent cursor-pointer transition-[background-color,transform] duration-120 [touch-action:manipulation] active:(scale-96 bg-[var(--color-site-item-hover)])";
 
 export function TouchSearchPanel(props: { source: TouchSearchPanelInfo }) {
   const searchBoxHostRef = useRef<HTMLDivElement>(null);
@@ -69,9 +70,11 @@ export function TouchSearchAction(props: { action: "search" | "clear"; source: T
         type={search ? "submit" : "button"}
         className={
           search
-            ? `${TOUCH_SEARCH_ACTION_CLASS} col-start-2 row-start-1 border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-background)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108`
-            : `${TOUCH_SEARCH_ACTION_CLASS} col-start-3 row-start-1 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] ehp-color-site-text hover:bg-[var(--color-site-item-hover)]`
+            ? `${TOUCH_SEARCH_ACTION_CLASS} z-1 col-start-3 row-start-1 ehp-color-site-accent`
+            : `${TOUCH_SEARCH_ACTION_CLASS} z-1 col-start-2 row-start-1 ehp-color-site-text`
         }
+        aria-label={search ? props.source.searchLabel : props.source.clearLabel}
+        title={search ? props.source.searchLabel : props.source.clearLabel}
         onClick={(event: MouseEvent) => {
           if (search) {
             event.preventDefault();
@@ -80,7 +83,7 @@ export function TouchSearchAction(props: { action: "search" | "clear"; source: T
           original.click();
         }}
       >
-        {search ? props.source.searchLabel : props.source.clearLabel}
+        <Icon name={search ? "search" : "close"} size={32} />
       </button>
       <span ref={originalHostRef} className="contents [&>*:not([hidden])]:col-span-full" />
     </Fragment>

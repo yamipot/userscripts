@@ -267,8 +267,8 @@ export function prepareTouchSearchPanel(info: TouchSearchPanelInfo, optionClassN
   const advancedPanel = form?.querySelector<HTMLElement>("#advdiv");
 
   info.searchBox.className =
-    "box-border !w-full !m-0 !p-0 !border-0 !text-left !text-16px " +
-    "[&_.searchadv]:box-border [&_.searchadv]:!w-full [&_.searchadv]:!pt-md [&_.searchadv]:!textsize-sm " +
+    "box-border !w-full !m-0 !p-0 !border-0 !text-left !text-20px " +
+    "[&_.searchadv]:box-border [&_.searchadv]:!w-full [&_.searchadv]:!pt-md [&_.searchadv]:!textsize-md " +
     "[&_.searchadv>div]:!flex-wrap [&_.searchadv>div]:!justify-start [&_.searchadv>div]:!gap-sm " +
     "[&_.searchadv>div>div]:!p-sm";
 
@@ -294,17 +294,17 @@ export function prepareTouchSearchPanel(info: TouchSearchPanelInfo, optionClassN
     const colorClass = Array.from(category.classList).find((className) => /^ct(?:[1-9a])$/.test(className));
     category.className =
       `${colorClass ? `${colorClass} ` : ""}` +
-      "flex box-border w-auto min-w-104px !h-sm items-center justify-center px-md border rounded-sm text-white text-center textsize-sm font-700 leading-[1.15] whitespace-nowrap shadow-[0_2px_6px_var(--color-shadow-control)] cursor-pointer select-none transition-opacity [touch-action:manipulation] active:opacity-70 [&[data-disabled]]:opacity-40";
+      "flex box-border w-auto min-w-104px !h-lg items-center justify-center px-md border rounded-md text-white text-center textsize-md font-700 leading-[1.15] whitespace-nowrap shadow-[0_2px_6px_var(--color-shadow-control)] cursor-pointer select-none transition-opacity [touch-action:manipulation] active:opacity-70 [&[data-disabled]]:opacity-40";
   }
 
   if (searchControls) {
     searchControls.className =
-      "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-start gap-sm !p-0 [&>*:nth-child(n+4)]:col-span-full";
+      "grid w-full grid-cols-[minmax(0,1fr)_60px_60px] items-start gap-0 !p-0 [&>*:nth-child(n+4)]:col-span-full";
   }
 
   if (searchInput) {
     searchInput.className =
-      "appearance-none !box-border !w-full !h-md min-w-0 col-start-1 row-start-1 !m-0 !py-0 px-lg border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text text-16px leading-[1.2] outline-none focus:(border-[var(--color-site-accent)] bg-[var(--color-site-elevated)] shadow-[0_0_0_3px_var(--color-site-accent-hover)])";
+      "appearance-none !box-border !w-full !h-60px min-w-0 col-span-full row-start-1 !m-0 !py-0 !pl-lg !pr-[132px] border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text text-22px leading-[1.2] outline-none focus:(border-[var(--color-site-accent)] bg-[var(--color-site-elevated)] shadow-[0_0_0_3px_var(--color-site-accent-hover)])";
   }
 
   info.searchSubmit.replaceWith(info.searchActionMount);
@@ -324,7 +324,7 @@ export function prepareTouchSearchPanel(info: TouchSearchPanelInfo, optionClassN
   if (info.fileSearch) {
     info.fileSearch.style.removeProperty("margin-top");
     info.fileSearch.className =
-      "box-border !w-full !m-0 !mt-0 p-lg border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text !textsize-sm text-left " +
+      "box-border !w-full !m-0 !mt-0 p-lg border ehp-color-site-border rounded-md bg-[var(--color-site-elevated)] ehp-color-site-text !textsize-md text-left " +
       "[&_form]:flex [&_form]:flex-col [&_form]:gap-sm [&_form>div]:!p-0 " +
       "[&_.searchadv>div]:!flex-wrap [&_.searchadv>div]:!justify-start [&_.searchadv>div]:!gap-sm [&_.searchadv>div>div]:!p-sm";
   }

@@ -4,7 +4,9 @@ import * as eh from "../../eh/dom";
 import texts from "../../texts.json";
 import { Icon } from "../Icon";
 
-const TOUCH_ICON_BUTTON_CLASS = "inline-flex w-md h-md items-center justify-center border-0 bg-transparent ehp-color-site-text no-underline";
+const TOUCH_TOP_BAR_ICON_SIZE = 34;
+const TOUCH_ICON_BUTTON_CLASS =
+  "inline-flex w-56px h-56px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]";
 export const TOUCH_TOP_BAR_MENU_ITEM_CLASS =
   "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-xl py-lg px-xl touch:px-xl border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline text-28px touch:text-30px leading-[1.2]";
 
@@ -53,7 +55,7 @@ function TouchTopBarMenu(props: { navItems: HTMLElement[] }) {
           setOpen(!open);
         }}
       >
-        <Icon name="menu" />
+        <Icon name="menu" size={TOUCH_TOP_BAR_ICON_SIZE} />
       </button>
       {open && (
         <div
@@ -68,7 +70,7 @@ function TouchTopBarMenu(props: { navItems: HTMLElement[] }) {
 
 export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpen: () => void }) {
   return (
-    <nav className="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-56px items-center justify-between py-sm pl-[max(16px,env(safe-area-inset-left,0px))] pr-[max(16px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans">
+    <nav className="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans">
       <a
         className={`ehpeek-touch-top-bar-project ${TOUCH_ICON_BUTTON_CLASS}`}
         href="https://github.com/yamipot/ehpeek"
@@ -77,7 +79,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
         aria-label={texts.navigation.github}
         title={texts.navigation.github}
       >
-        <Icon name="panda-peek" size={36} strokeWidth={1.8} />
+        <Icon name="panda-peek" size={48} strokeWidth={1.8} />
       </a>
       <div className="flex items-center gap-xs">
         <a
@@ -86,7 +88,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
           aria-label={texts.navigation.home}
           title={texts.navigation.home}
         >
-          <Icon name="home" />
+          <Icon name="home" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
         <a
           className={`ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`}
@@ -94,7 +96,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
           aria-label={texts.navigation.favorites}
           title={texts.navigation.favorites}
         >
-          <Icon name="heart" />
+          <Icon name="heart" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
         <button
           type="button"
@@ -106,7 +108,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
             props.onSettingsMenuOpen();
           }}
         >
-          <Icon name="settings" />
+          <Icon name="settings" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </button>
         <TouchTopBarMenu navItems={props.info.navItems} />
       </div>

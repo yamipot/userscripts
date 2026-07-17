@@ -16,6 +16,7 @@ export type IconName =
   | "home"
   | "menu"
   | "panda-peek"
+  | "search"
   | "settings"
   | "star";
 
@@ -124,6 +125,9 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
       "M12 14.6v.7c0 .7-.6 1.2-1.3 1.2m1.3-1.2c0 .7.6 1.2 1.3 1.2",
       "M2 17h20",
     ],
+  },
+  search: {
+    paths: ["M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z", "m16.2 16.2 4.3 4.3"],
   },
   settings: {
     paths: [
