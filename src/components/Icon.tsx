@@ -1,4 +1,4 @@
-import { h } from "preact";
+import { createMemo, For } from "solid-js";
 
 export type IconName =
   | "arrow-left"
@@ -29,31 +29,25 @@ export function Icon(props: {
   size?: number | string;
   strokeWidth?: number;
 }) {
-  const definition = ICON_DEFINITIONS[props.name];
-  const filled = definition.solid || (definition.fillable && props.filled);
-  const size = props.size ?? 24;
+  const definition = createMemo(() => ICON_DEFINITIONS[props.name]);
+  const filled = createMemo(() => definition().solid || (definition().fillable && props.filled));
 
   return (
     <svg
-      className={`ehpeek-icon block flex-none${props.className ? ` ${props.className}` : ""}`}
-      width={size}
-      height={size}
+      class={`ehpeek-icon block flex-none${props.className ? ` ${props.className}` : ""}`}
+      width={props.size ?? 24}
+      height={props.size ?? 24}
       viewBox="0 0 24 24"
-      fill={filled ? "currentColor" : "none"}
-      stroke={filled ? "none" : "currentColor"}
+      fill={filled() ? "currentColor" : "none"}
+      stroke={filled() ? "none" : "currentColor"}
       stroke-width={props.strokeWidth ?? 2}
       stroke-linecap="round"
       stroke-linejoin="round"
       data-icon-name={props.name}
       aria-hidden="true"
-      focusable="false"
     >
-      {definition.filledPaths?.map((path) => (
-        <path key={`filled-${path}`} d={path} fill="currentColor" stroke="none" />
-      ))}
-      {definition.paths.map((path) => (
-        <path key={path} d={path} />
-      ))}
+      <For each={definition().filledPaths}>{(path) => <path d={path} fill="currentColor" stroke="none" />}</For>
+      <For each={definition().paths}>{(path) => <path d={path} />}</For>
     </svg>
   );
 }

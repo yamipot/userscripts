@@ -1,5 +1,5 @@
-import { h, type ComponentChildren } from "preact";
-import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createStore } from "solid-js/store";
 import texts from "../../texts.json";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
 import { state, type ReadDirection, type ViewMode } from "../../state";
@@ -12,9 +12,9 @@ import {
   targetSummary,
 } from "../../utils";
 import type { ScrollMotion } from "../animation";
-import type { PointerDragEnd } from "../pointerGesture";
-import { usePointerGestureElement, type PointerGestureSurfaceHandle } from "../PointerGestureSurface";
-import { PagesViewport } from "./Viewport";
+import type { PointerDragEnd, PointerGestureCallbacks } from "../pointerGesture";
+import { createPointerGestureElement, type PointerGestureSurfaceHandle } from "../PointerGestureSurface";
+import { PagesViewport, PagesViewportView, type PagesViewportViewHandle } from "./Viewport";
 import {
   initialToolbarState,
   Toolbar,
@@ -25,7 +25,6 @@ import {
   type ToolbarState,
 } from "./Toolbar";
 import { createZoomOverlay, type ZoomOverlay, type ZoomOverlayImage } from "./ZoomOverlay";
-import { ExternalDomNode } from "../ExternalDom";
 import readerCss from "./index.css";
 
 const VIEWER_ID = "ehpeek-reader";
@@ -309,39 +308,7 @@ export type FullscreenReaderHandle = {
   close: () => void;
 };
 
-function ReaderRoot(props: ReaderRootState & { children: ComponentChildren }) {
-  useLayoutEffect(() => {
-    const previousDocumentOverflow = document.documentElement.style.overflow;
-    const previousBodyOverflow = document.body.style.overflow;
-
-    registerGlobalStyle(STYLE_ID, readerCss);
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.documentElement.style.overflow = previousDocumentOverflow;
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, []);
-
-  return (
-    <div
-      id={VIEWER_ID}
-      className="fixed inset-0 z-reader ehp-color-reader font-sans text-13px leading-[1.4]"
-      data-read-direction={props.readDirection}
-      data-toolbar-open={String(props.toolbarOpen)}
-      data-view-mode={props.viewMode}
-    >
-      {props.children}
-    </div>
-  );
-}
-
-function PagesGesture(props: {
-  callbacks: PagesGestureCallbacks;
-  handleRef: (handle: PagesGestureHandle | null) => void;
-  target: HTMLElement;
-}) {
+function pagesPointerGestureCallbacks(callbacks: PagesGestureCallbacks): PointerGestureCallbacks {
   const shouldStartDrag = (event: PointerEvent | MouseEvent): boolean => {
     if (!(event instanceof PointerEvent)) {
       return false;
@@ -359,56 +326,28 @@ function PagesGesture(props: {
       return false;
     }
 
-    return props.callbacks.shouldStartDrag(event);
+    return callbacks.shouldStartDrag(event);
   };
   const shouldObserveTap = (event: PointerEvent | MouseEvent): boolean => {
-    return event instanceof PointerEvent && event.pointerType !== "mouse" && !props.callbacks.shouldStartDrag(event);
+    return event instanceof PointerEvent && event.pointerType !== "mouse" && !callbacks.shouldStartDrag(event);
   };
   const onDragEnd = (info: PointerDragEnd, event: PointerEvent | MouseEvent): void => {
-    props.callbacks.onDragEnd(info, event);
+    callbacks.onDragEnd(info, event);
   };
 
-  usePointerGestureElement(props.target, {
+  return {
     shouldCaptureDrag: shouldStartDrag,
-    onStart: props.callbacks.onDragStart,
-    onMove: props.callbacks.onDragMove,
+    onStart: callbacks.onDragStart,
+    onMove: callbacks.onDragMove,
     onEnd: onDragEnd,
-    onTap: props.callbacks.onTap,
+    onTap: callbacks.onTap,
     dragStartThreshold: TAP_CANCEL_DISTANCE,
     tapMoveThreshold: TAP_CANCEL_DISTANCE,
     shouldObserveTap,
-    onPinchStart: props.callbacks.onPinchStart,
-    onPinchMove: props.callbacks.onPinchMove,
-    onPinchEnd: props.callbacks.onPinchEnd,
-  }, (handle: PointerGestureSurfaceHandle | null) => {
-    props.handleRef(
-      handle
-        ? {
-            dragging: () => handle.gesture()?.isDragging() ?? false,
-          }
-        : null,
-    );
-  });
-
-  useEffect(() => {
-    const onWheel = (event: WheelEvent): void => {
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      props.callbacks.onWheel(delta, event);
-    };
-    const onScroll = (): void => {
-      props.callbacks.onNativeScroll();
-    };
-
-    props.target.addEventListener("scroll", onScroll);
-    props.target.addEventListener("wheel", onWheel);
-
-    return () => {
-      props.target.removeEventListener("scroll", onScroll);
-      props.target.removeEventListener("wheel", onWheel);
-    };
-  }, [props.callbacks, props.target]);
-
-  return null;
+    onPinchStart: callbacks.onPinchStart,
+    onPinchMove: callbacks.onPinchMove,
+    onPinchEnd: callbacks.onPinchEnd,
+  };
 }
 
 export function removePreviousReaderRoot(): void {
@@ -452,72 +391,135 @@ export function FullscreenReader(props: {
   onClosed: () => void;
   options: FullscreenReaderOptions;
 }) {
-  const [toolbarState, setToolbarState] = useState<ToolbarState>(() => initialToolbarState());
-  const [rootState, setRootState] = useState<ReaderRootState>(() => ({
+  const [toolbarState, setToolbarState] = createStore<ToolbarState>(initialToolbarState());
+  const [rootState, setRootState] = createStore<ReaderRootState>({
     readDirection: state.reader.readDirection.value,
     toolbarOpen: false,
     viewMode: state.reader.viewMode.value,
-  }));
-  const gestureHandle = useRef<PagesGestureHandle | null>(null);
-  const [session, setSession] = useState<ReaderSession | null>(null);
+  });
+  const [session, setSession] = createSignal<ReaderSession | null>(null);
+  let gestureHandle: PagesGestureHandle | null = null;
+  let pointerCallbacks!: PointerGestureCallbacks;
+  let scroller!: HTMLDivElement;
+  let viewportView!: PagesViewportViewHandle;
+  let zoomOverlay!: HTMLDivElement;
+  let zoomImage!: HTMLImageElement;
 
-  useLayoutEffect(() => {
+  createPointerGestureElement(
+    () => session() ? scroller : null,
+    () => pointerCallbacks,
+    (handle: PointerGestureSurfaceHandle | null) => {
+      gestureHandle = handle
+        ? {
+            dragging: () => handle.gesture()?.isDragging() ?? false,
+          }
+        : null;
+    },
+  );
+
+  onMount(() => {
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
     const nextSession = new ReaderSession(props.options, {
       close: props.onClosed,
-      isDragging: () => gestureHandle.current?.dragging() ?? false,
-      setRootState,
-      setToolbarState,
+      isDragging: () => gestureHandle?.dragging() ?? false,
+      setRootState: (nextState) => setRootState(nextState),
+      setToolbarState: (nextState) => setToolbarState(nextState),
+    }, {
+      scroller,
+      viewportView,
+      zoomOverlay,
+      zoomImage,
     });
 
+    registerGlobalStyle(STYLE_ID, readerCss);
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    pointerCallbacks = pagesPointerGestureCallbacks(nextSession.gestureCallbacks);
     setSession(nextSession);
     props.handleRef({
       close: () => nextSession.close(),
     });
 
-    return () => {
-      props.handleRef(null);
-      nextSession.dispose();
-    };
-  }, [props.handleRef, props.onClosed, props.options]);
-
-  useEffect(() => {
-    session?.open();
-  }, [session]);
-
-  useEffect(() => {
-    if (!session) {
-      return;
-    }
-
     const onKeydown = (event: KeyboardEvent): void => {
-      handlePagesKeydown(event, session.gestureCallbacks);
+      handlePagesKeydown(event, nextSession.gestureCallbacks);
+    };
+    const onWheel = (event: WheelEvent): void => {
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      nextSession.gestureCallbacks.onWheel(delta, event);
+    };
+    const onScroll = (): void => {
+      nextSession.gestureCallbacks.onNativeScroll();
     };
 
     document.addEventListener("keydown", onKeydown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeydown, true);
-    };
-  }, [session]);
+    scroller.addEventListener("scroll", onScroll);
+    scroller.addEventListener("wheel", onWheel);
+    nextSession.open();
 
-  if (!session) {
-    return null;
-  }
+    onCleanup(() => {
+      props.handleRef(null);
+      nextSession.dispose();
+      document.removeEventListener("keydown", onKeydown, true);
+      scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("wheel", onWheel);
+      document.documentElement.style.overflow = previousDocumentOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    });
+  });
 
   return (
-    <ReaderRoot readDirection={rootState.readDirection} toolbarOpen={rootState.toolbarOpen} viewMode={rootState.viewMode}>
-      <Toolbar callbacks={session.toolbarCallbacks} state={toolbarState} />
-      <PagesGesture
-        callbacks={session.gestureCallbacks}
-        handleRef={(handle) => {
-          gestureHandle.current = handle;
-        }}
-        target={session.scrollerElement()}
-      />
-      <ExternalDomNode node={session.viewportElement()} />
-      <ExternalDomNode node={session.zoomOverlayElement()} />
-    </ReaderRoot>
+    <div
+      id={VIEWER_ID}
+      class="fixed inset-0 z-reader ehp-color-reader font-sans text-13px leading-[1.4]"
+      data-read-direction={rootState.readDirection}
+      data-toolbar-open={String(rootState.toolbarOpen)}
+      data-view-mode={rootState.viewMode}
+    >
+      <header class="contents">
+        <Show when={session()} keyed>
+          {(currentSession) => <Toolbar callbacks={currentSession.toolbarCallbacks} state={toolbarState} />}
+        </Show>
+      </header>
+      <div
+        ref={scroller}
+        class={
+          "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden " +
+          "[&[data-dragging=true]]:(cursor-grabbing select-none) " +
+          "[#ehpeek-reader[data-view-mode=paged]_&]:(overflow-hidden touch-none select-none)"
+        }
+        tabIndex={-1}
+      >
+        <PagesViewportView
+          handleRef={(handle) => {
+            if (handle) {
+              viewportView = handle;
+            }
+          }}
+        />
+      </div>
+      <div
+        ref={zoomOverlay}
+        class="fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none"
+        hidden
+        style={{ display: "none" }}
+      >
+        <img
+          ref={zoomImage}
+          class="block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]"
+          alt=""
+        />
+      </div>
+    </div>
   );
 }
+
+type ReaderViewElements = {
+  scroller: HTMLElement;
+  viewportView: PagesViewportViewHandle;
+  zoomOverlay: HTMLElement;
+  zoomImage: HTMLImageElement;
+};
 
 type ReaderSessionBindings = {
   close: () => void;
@@ -578,7 +580,7 @@ class ReaderSession {
   private keepReaderAfterFullscreenExit = false;
   private readonly initialFullscreenHint: boolean;
 
-  constructor(options: FullscreenReaderOptions, bindings: ReaderSessionBindings) {
+  constructor(options: FullscreenReaderOptions, bindings: ReaderSessionBindings, view: ReaderViewElements) {
     this.fullscreenTarget = options.fullscreenTarget;
     this.fullscreenWasActive = document.fullscreenElement === this.fullscreenTarget;
     this.galleryId = options.galleryId;
@@ -615,13 +617,15 @@ class ReaderSession {
       viewMode: state.reader.viewMode.value,
     };
     this.viewport = new PagesViewport({
+      element: view.scroller,
+      view: view.viewportView,
       mode: () => state.reader.viewMode.value,
       readDirection: () => state.reader.readDirection.value,
       closed: () => this.closed,
       totalPages: () => this.totalPages,
       onReloadPage: (pageNum) => this.reloadPage(pageNum),
     });
-    this.zoomOverlay = createZoomOverlay();
+    this.zoomOverlay = createZoomOverlay({ element: view.zoomOverlay, image: view.zoomImage });
     this.toolbarCallbacks = {
       onReadDirectionClick: () => this.toggleReadDirection(),
       onRightTapClick: () => this.toggleRightTapAction(),
@@ -662,18 +666,6 @@ class ReaderSession {
       options.nearConcurrentLoads ?? DEFAULT_NEAR_CONCURRENT_LOADS,
       options.farConcurrentLoads ?? DEFAULT_FAR_CONCURRENT_LOADS,
     );
-  }
-
-  scrollerElement(): HTMLElement {
-    return this.viewport.scrollerElement();
-  }
-
-  viewportElement(): HTMLElement {
-    return this.viewport.element;
-  }
-
-  zoomOverlayElement(): HTMLElement {
-    return this.zoomOverlay.element;
   }
 
   open(): void {

@@ -1,4 +1,4 @@
-import { h } from "preact";
+import { onCleanup } from "solid-js";
 import { Icon, type IconName } from "../Icon";
 export { ExternalDomNode as DomNode, ExternalDomNodes as DomNodes } from "../ExternalDom";
 
@@ -24,7 +24,7 @@ export function ReadButton(props: {
   return (
     <button
       type="button"
-      className={buttonClassName}
+      class={buttonClassName}
       onClick={(event: MouseEvent) => {
         event.preventDefault();
         event.stopPropagation();
@@ -32,7 +32,7 @@ export function ReadButton(props: {
       }}
     >
       {props.info.label}
-      <span className={detailClassName}>{props.info.detail}</span>
+      <span class={detailClassName}>{props.info.detail}</span>
     </button>
   );
 }
@@ -61,16 +61,17 @@ export function SwipeIndicator(props: { handleRef: (handle: SwipeIndicatorHandle
       updateSwipeIndicatorElement(element, state);
     },
   });
+  onCleanup(() => props.handleRef(null));
 
   return (
     <div
-      ref={(element: HTMLDivElement | null) => {
-        props.handleRef(element ? handleFor(element) : null);
+      ref={(element) => {
+        props.handleRef(handleFor(element));
       }}
-      className="ehpeek-swipe-indicator fixed top-1/2 z-overlay flex w-42px h-108px items-center justify-center border border-[var(--color-site-swipe-border)] rounded-full bg-[var(--color-site-swipe-background)] text-[var(--color-site-text)] shadow-[0_6px_20px_var(--color-shadow-floating)] pointer-events-none select-none transition-opacity duration-120 ease-in-out"
+      class="ehpeek-swipe-indicator fixed top-1/2 z-overlay flex w-42px h-108px items-center justify-center border border-[var(--color-site-swipe-border)] rounded-full bg-[var(--color-site-swipe-background)] text-[var(--color-site-text)] shadow-[0_6px_20px_var(--color-shadow-floating)] pointer-events-none select-none transition-opacity duration-120 ease-in-out"
       aria-hidden="true"
       style={{
-        backdropFilter: "blur(8px)",
+        "backdrop-filter": "blur(8px)",
         display: "none",
         opacity: "0",
         transform: "translate(42px, -50%)",

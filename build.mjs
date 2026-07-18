@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { solidPlugin } from "esbuild-plugin-solid";
 import { createGenerator, expandVariantGroup } from "unocss";
 import unoConfig from "./uno.config.mjs";
 
@@ -46,13 +47,18 @@ await build({
   bundle: true,
   format: "iife",
   target: "es2020",
-  jsxFactory: "h",
-  jsxFragment: "Fragment",
   charset: "utf8",
   loader: {
     ".css": "text",
   },
-  plugins: [variantGroupPlugin(), unoCssPlugin(unoCss)],
+  plugins: [
+    solidPlugin({
+      babel: {
+        plugins: [variantGroupBabelPlugin],
+      },
+    }),
+    unoCssPlugin(unoCss),
+  ],
   minifySyntax: !debugBuild,
   sourcemap: releaseBuild ? false : "linked",
   banner: {
@@ -157,24 +163,25 @@ function unoCssPlugin(css) {
   };
 }
 
-function variantGroupPlugin() {
+function variantGroupBabelPlugin() {
+  const expandStringLiteral = (path) => {
+    path.node.value = expandVariantGroup(path.node.value);
+  };
+  const expandTemplateElement = (path) => {
+    path.node.value.raw = expandVariantGroup(path.node.value.raw);
+    if (path.node.value.cooked !== undefined) {
+      path.node.value.cooked = expandVariantGroup(path.node.value.cooked);
+    }
+  };
+
   return {
-    name: "ehpeek-variant-group",
-    setup(build) {
-      build.onLoad({ filter: /\.[cm]?[tj]sx?$/ }, (args) => {
-        if (!args.path.startsWith(path.join(packageDir, "src"))) {
-          return null;
-        }
-
-        const source = readFileSync(args.path, "utf-8");
-        const extension = path.extname(args.path);
-        const loader = extension === ".tsx" ? "tsx" : extension === ".ts" ? "ts" : "js";
-
-        return {
-          contents: expandVariantGroup(source),
-          loader,
-        };
-      });
+    visitor: {
+      Program(path) {
+        path.traverse({
+          StringLiteral: expandStringLiteral,
+          TemplateElement: expandTemplateElement,
+        });
+      },
     },
   };
 }

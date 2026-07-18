@@ -17,6 +17,7 @@ export {
   prepareTouchSearchResultsPage,
   prepareThumbsGridSwipeTargets,
   preparePageViewportForFullscreen,
+  parseGalleryFavoriteOptions,
   readGalleryInfo,
   readShowingRange,
   readTouchSearchPanelInfo,
@@ -28,9 +29,19 @@ export {
   searchPageNavigation,
   searchResultList,
   searchTopNavigationBar,
+  setGalleryRating,
   settingsMenuMountTarget,
   showPreviewPlaceholder,
   snapshotPreview,
+} from "./dom";
+
+export type {
+  GalleryFavoriteInfo,
+  GalleryFavoriteOption,
+  GalleryInfo,
+  GalleryTagGroup,
+  TouchSearchPanelInfo,
+  TouchTopBarInfo,
 } from "./dom";
 
 export type PreviewSnapshot = dom.PreviewSnapshot;

@@ -1,5 +1,5 @@
-import { Fragment, h } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { createEffect, onCleanup, onMount, Show } from "solid-js";
+import { createStore } from "solid-js/store";
 import texts from "../texts.json";
 
 export type SettingsMenuState = {
@@ -20,27 +20,22 @@ const SETTINGS_DOT_CLASS =
   "block flex-none w-10px h-10px touch:w-18px touch:h-18px rounded-full";
 
 function SwitchButton(props: {
-  checked: [boolean, string, string];
+  checked: boolean;
+  labelOff: string;
+  labelOn: string;
   onChange: (value: boolean) => void;
 }) {
-  const [initialChecked, labelOn, labelOff] = props.checked;
-  const [checked, setChecked] = useState(initialChecked);
-  const setValue = (value: boolean) => {
-    setChecked(value);
-    props.onChange(value);
-  };
-
   return (
     <button
       type="button"
-      className="flex w-full min-h-lg touch:min-h-xl items-center justify-between gap-lg touch:gap-xl py-md px-md touch:py-lg rounded-xs border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text cursor-pointer font-inherit text-left textsize-lg [-webkit-tap-highlight-color:transparent]"
+      class="flex w-full min-h-lg touch:min-h-xl items-center justify-between gap-lg touch:gap-xl py-md px-md touch:py-lg rounded-xs border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text cursor-pointer font-inherit text-left textsize-lg [-webkit-tap-highlight-color:transparent]"
       onClick={(event: MouseEvent) => {
         event.stopPropagation();
-        setValue(!checked);
+        props.onChange(!props.checked);
       }}
     >
-      <span>{checked ? labelOn : labelOff}</span>
-      <span className={`${SETTINGS_DOT_CLASS} ${checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`} />
+      <span>{props.checked ? props.labelOn : props.labelOff}</span>
+      <span class={`${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`} />
     </button>
   );
 }
@@ -51,25 +46,25 @@ export function SettingsMenu(props: {
   onApply: (state: SettingsMenuState) => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [draft, setDraft] = useState(() => ({ ...props.initState }));
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = createStore<SettingsMenuState>({ ...props.initState });
+  let menu!: HTMLDivElement;
   const close = () => {
     props.onOpenChange(false);
   };
 
-  useEffect(() => {
+  createEffect(() => {
     if (props.open) {
       setDraft({ ...props.initState });
     }
-  }, [props.open, props.initState]);
+  });
 
-  useEffect(() => {
-    const onClick = (event: MouseEvent) => {
+  onMount(() => {
+    const onPointerDown = (event: PointerEvent) => {
       if (!props.open) {
         return;
       }
 
-      if (event.target instanceof Element && menuRef.current?.contains(event.target)) {
+      if (event.target instanceof Element && menu.contains(event.target)) {
         return;
       }
 
@@ -85,77 +80,71 @@ export function SettingsMenu(props: {
       }
     };
 
-    document.addEventListener("click", onClick);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
 
-    return () => {
-      document.removeEventListener("click", onClick);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [props.open]);
-
-  if (!props.open) {
-    return <Fragment />;
-  }
+    });
+  });
 
   return (
-    <div ref={menuRef} className="ehpeek-settings-menu fixed top-24px right-24px z-overlay min-w-260px p-sm border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-lg leading-[1.2]">
-      <SwitchButton
-        checked={[draft.readerEnabled, texts.settings.readerOn, texts.settings.readerOff]}
-        onChange={(value) => {
-          draft.readerEnabled = value;
-        }}
-      />
-      <SwitchButton
-        checked={[
-          draft.readerFullscreenEnabled,
-          texts.settings.readerFullscreenOn,
-          texts.settings.readerFullscreenOff,
-        ]}
-        onChange={(value) => {
-          draft.readerFullscreenEnabled = value;
-        }}
-      />
-      <SwitchButton
-        checked={[draft.enhanceSearchGridsEnabled, texts.settings.enhanceSearchOn, texts.settings.enhanceSearchOff]}
-        onChange={(value) => {
-          draft.enhanceSearchGridsEnabled = value;
-        }}
-      />
-      <SwitchButton
-        checked={[draft.enhanceThumbsGridsEnabled, texts.settings.enhanceThumbsOn, texts.settings.enhanceThumbsOff]}
-        onChange={(value) => {
-          draft.enhanceThumbsGridsEnabled = value;
-        }}
-      />
-      <SwitchButton
-        checked={[draft.touchUiEnabled, texts.settings.touchUiOn, texts.settings.touchUiOff]}
-        onChange={(value) => {
-          draft.touchUiEnabled = value;
-        }}
-      />
-      <div className="ehpeek-settings-actions grid grid-cols-2 gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]">
-        <button
-          type="button"
-          className={`ehpeek-settings-apply ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_APPLY_BUTTON_COLOR}`}
-          onClick={(event: MouseEvent) => {
-            event.stopPropagation();
-            props.onApply({ ...draft });
-          }}
-        >
-          {texts.settings.apply}
-        </button>
-        <button
-          type="button"
-          className={`ehpeek-settings-close ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_CLOSE_BUTTON_COLOR}`}
-          onClick={(event: MouseEvent) => {
-            event.stopPropagation();
-            close();
-          }}
-        >
-          {texts.settings.close}
-        </button>
+    <Show when={props.open}>
+      <div ref={menu} class="ehpeek-settings-menu fixed top-24px right-24px z-overlay min-w-260px p-sm border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-lg leading-[1.2]">
+        <SwitchButton
+          checked={draft.readerEnabled}
+          labelOn={texts.settings.readerOn}
+          labelOff={texts.settings.readerOff}
+          onChange={(value) => setDraft("readerEnabled", value)}
+        />
+        <SwitchButton
+          checked={draft.readerFullscreenEnabled}
+          labelOn={texts.settings.readerFullscreenOn}
+          labelOff={texts.settings.readerFullscreenOff}
+          onChange={(value) => setDraft("readerFullscreenEnabled", value)}
+        />
+        <SwitchButton
+          checked={draft.enhanceSearchGridsEnabled}
+          labelOn={texts.settings.enhanceSearchOn}
+          labelOff={texts.settings.enhanceSearchOff}
+          onChange={(value) => setDraft("enhanceSearchGridsEnabled", value)}
+        />
+        <SwitchButton
+          checked={draft.enhanceThumbsGridsEnabled}
+          labelOn={texts.settings.enhanceThumbsOn}
+          labelOff={texts.settings.enhanceThumbsOff}
+          onChange={(value) => setDraft("enhanceThumbsGridsEnabled", value)}
+        />
+        <SwitchButton
+          checked={draft.touchUiEnabled}
+          labelOn={texts.settings.touchUiOn}
+          labelOff={texts.settings.touchUiOff}
+          onChange={(value) => setDraft("touchUiEnabled", value)}
+        />
+        <div class="ehpeek-settings-actions grid grid-cols-2 gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]">
+          <button
+            type="button"
+            class={`ehpeek-settings-apply ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_APPLY_BUTTON_COLOR}`}
+            onClick={(event: MouseEvent) => {
+              event.stopPropagation();
+              props.onApply({ ...draft });
+            }}
+          >
+            {texts.settings.apply}
+          </button>
+          <button
+            type="button"
+            class={`ehpeek-settings-close ${SETTINGS_ACTION_BUTTON_CLASS} ${SETTINGS_CLOSE_BUTTON_COLOR}`}
+            onClick={(event: MouseEvent) => {
+              event.stopPropagation();
+              close();
+            }}
+          >
+            {texts.settings.close}
+          </button>
+        </div>
       </div>
-    </div>
+    </Show>
   );
 }

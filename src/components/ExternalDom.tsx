@@ -1,36 +1,29 @@
-import { h } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { createEffect, onCleanup } from "solid-js";
 
 export function ExternalDomNode(props: { node: HTMLElement | null }) {
-  const root = useRef<HTMLSpanElement>(null);
+  let root!: HTMLSpanElement;
 
-  useLayoutEffect(() => {
-    if (!root.current || !props.node) {
+  createEffect(() => {
+    const node = props.node;
+
+    if (!node) {
       return;
     }
 
-    root.current.replaceChildren(props.node);
-    return () => {
-      root.current?.replaceChildren();
-    };
-  }, [props.node]);
+    root.replaceChildren(node);
+    onCleanup(() => root.replaceChildren());
+  });
 
-  return <span ref={root} className="contents" />;
+  return <span ref={root} class="contents" />;
 }
 
 export function ExternalDomNodes(props: { clone?: boolean; nodes: HTMLElement[] }) {
-  const root = useRef<HTMLSpanElement>(null);
+  let root!: HTMLSpanElement;
 
-  useLayoutEffect(() => {
-    if (!root.current) {
-      return;
-    }
+  createEffect(() => {
+    root.replaceChildren(...props.nodes.map((node) => (props.clone ? node.cloneNode(true) : node)));
+    onCleanup(() => root.replaceChildren());
+  });
 
-    root.current.replaceChildren(...props.nodes.map((node) => (props.clone ? node.cloneNode(true) : node)));
-    return () => {
-      root.current?.replaceChildren();
-    };
-  }, [props.nodes, props.clone]);
-
-  return <span ref={root} className="contents" />;
+  return <span ref={root} class="contents" />;
 }

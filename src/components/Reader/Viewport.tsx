@@ -1,3 +1,4 @@
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import type { ReadDirection, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { clamp, normalizedAspectRatio } from "../../utils";
@@ -49,182 +50,171 @@ type PageSlot = {
   imageUrl: string | null;
   width: number | null;
   height: number | null;
+  image: HTMLImageElement | null;
+  errorMessage: string | null;
+  frameWidth: number;
+  frameHeight: number;
   elements: SlotElements | null;
   token: number;
 };
 
-function pagesViewportDom(options: { onReloadPage: (pageNum: number) => void }) {
-  const scroller = document.createElement("div");
-  const strip = document.createElement("main");
+export type PagesViewportViewHandle = {
+  refresh: () => void;
+  sync: (
+    slots: PageSlot[],
+    options: {
+      onReloadPage: (pageNum: number) => void;
+      visualIndex: (slotIndex: number, slotCount: number) => number;
+    },
+  ) => void;
+};
 
-  scroller.className =
-    "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden " +
-    "[&[data-dragging=true]]:(cursor-grabbing select-none) " +
-    "[#ehpeek-reader[data-view-mode=paged]_&]:(overflow-hidden touch-none select-none)";
-  scroller.tabIndex = -1;
-  strip.className =
-    "ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px " +
-    "[#ehpeek-reader[data-view-mode=paged]_&]:(flex-row w-auto h-full min-h-0 p-0)";
-  scroller.append(strip);
+export function PagesViewportView(props: { handleRef: (handle: PagesViewportViewHandle | null) => void }) {
+  const [slots, setSlots] = createSignal<PageSlot[]>([]);
+  const [revision, setRevision] = createSignal(0);
+  let onReloadPage = (_pageNum: number) => {};
+  let visualIndex = (slotIndex: number, _slotCount: number) => slotIndex;
 
-  const setOrder = (elements: SlotElements, visualIndex: number) => {
-    elements.node.style.setProperty("order", String(visualIndex));
-    elements.node.dataset.ehpeekIndex = String(visualIndex);
-  };
+  props.handleRef({
+    refresh: () => setRevision((value) => value + 1),
+    sync: (nextSlots, options) => {
+      onReloadPage = options.onReloadPage;
+      visualIndex = options.visualIndex;
+      setSlots(nextSlots.slice());
+      setRevision((value) => value + 1);
+    },
+  });
+  onCleanup(() => props.handleRef(null));
 
-  const setPageNum = (elements: SlotElements, pageNum: number) => {
-    elements.node.dataset.ehpeekPageNum = String(pageNum);
-  };
+  return (
+    <main class="ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&]:(flex-row w-auto h-full min-h-0 p-0)">
+      <For each={slots()}>{(slot) => (
+        <PageSlotView
+          slot={slot}
+          revision={revision()}
+          visualIndex={visualIndex(slot.index, slots().length)}
+          onReloadPage={onReloadPage}
+        />
+      )}</For>
+    </main>
+  );
+}
 
-  const newSlotElements = (pageNum: number, visualIndex: number): SlotElements => {
-    const elements = slotElements();
-    setOrder(elements, visualIndex);
-    setPageNum(elements, pageNum);
-    return elements;
-  };
+function PageSlotView(props: {
+  slot: PageSlot;
+  revision: number;
+  visualIndex: number;
+  onReloadPage: (pageNum: number) => void;
+}) {
+  let node!: HTMLElement;
+  let frame!: HTMLElement;
+  const content = createMemo<SlotContent>(() => {
+    void props.revision;
+    return {
+      pageNum: props.slot.pageNum,
+      kind: props.slot.kind,
+      state: props.slot.state,
+      errorMessage: props.slot.errorMessage ?? undefined,
+    };
+  });
+  const image = createMemo(() => {
+    void props.revision;
+    return props.slot.state === "ready" ? props.slot.image : null;
+  });
+  const slotStyle = createMemo(() => {
+    void props.revision;
+    return {
+      "--reader-page-height": `${props.slot.frameHeight + 8}px`,
+      "--reader-frame-width": `${props.slot.frameWidth}px`,
+      "--reader-frame-height": `${props.slot.frameHeight}px`,
+      order: String(props.visualIndex),
+    };
+  });
 
-  const appendSlotElements = (elements: SlotElements) => {
-    strip.append(elements.node);
-  };
-
-  const removeSlotElements = (elements: SlotElements) => {
-    elements.node.remove();
-  };
-
-  const removeStaleElements = (keepNodes: Set<HTMLElement | null>) => {
-    for (const node of Array.from(strip.children)) {
-      if (!keepNodes.has(node as HTMLElement)) {
-        node.remove();
-      }
+  onCleanup(() => {
+    if (props.slot.elements?.node === node) {
+      props.slot.elements = null;
     }
-  };
+  });
 
-  const slotElementsConnected = (elements: SlotElements) => elements.node.isConnected;
-  const slots = {
-    sync(
-      pageSlots: PageSlot[],
-      options: {
-        refreshSlot: (slot: PageSlot) => void;
-        visualIndex: (slotIndex: number, slotCount: number) => number;
-      },
-    ) {
-      const keepNodes = new Set(pageSlots.map((slot) => slot.elements?.node ?? null).filter(Boolean));
-      removeStaleElements(keepNodes);
-
-      for (const slot of pageSlots) {
-        if (slot.elements && !slotElementsConnected(slot.elements)) {
-          slot.elements = null;
-        }
-
-        if (!slot.elements) {
-          slot.elements = newSlotElements(slot.pageNum, options.visualIndex(slot.index, pageSlots.length));
-          appendSlotElements(slot.elements);
-        }
-
-        options.refreshSlot(slot);
-
-        if (slot.elements) {
-          setOrder(slot.elements, options.visualIndex(slot.index, pageSlots.length));
-        }
-      }
-    },
-    removeSlot(slot: PageSlot) {
-      if (!slot.elements) {
-        return;
-      }
-
-      removeSlotElements(slot.elements);
-      slot.elements = null;
-    },
-    setImage(elements: SlotElements, image: HTMLImageElement) {
-      elements.frame.replaceChildren(image);
-    },
-    setPageNum,
-    setPlaceholder(elements: SlotElements, content: SlotContent, text: string) {
-      const placeholder =
-        content.state === "error" ? errorPlaceholderDom(content.pageNum, text, options.onReloadPage) : placeholderDom(content, text);
-
-      elements.frame.replaceChildren(placeholder);
-    },
-    setSize(elements: SlotElements, frameWidth: number, frameHeight: number) {
-      elements.node.style.setProperty("--reader-page-height", `${frameHeight + 8}px`);
-      elements.node.style.setProperty("--reader-frame-width", `${frameWidth}px`);
-      elements.node.style.setProperty("--reader-frame-height", `${frameHeight}px`);
-    },
-  };
-
-  return { element: scroller, scroller: createPagesScroller(scroller), slots };
+  return (
+    <section
+      ref={node}
+      class="ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&]:(flex-[0_0_100%] w-full h-full items-center p-0)"
+      data-ehpeek-index={String(props.visualIndex)}
+      data-ehpeek-page-num={String(props.slot.pageNum)}
+      style={slotStyle()}
+    >
+      <div
+        ref={(element) => {
+          frame = element;
+          props.slot.elements = { node, frame };
+        }}
+        class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:(w-full h-full)"
+      >
+        <Show
+          when={image()}
+          keyed
+          fallback={<PageSlotPlaceholder content={content()} text={slotPlaceholderText(content())} onReloadPage={props.onReloadPage} />}
+        >
+          {(currentImage) => currentImage}
+        </Show>
+      </div>
+    </section>
+  );
 }
 
-function slotElements(): SlotElements {
-  const node = document.createElement("section");
-  const frame = document.createElement("div");
-
-  node.className = "ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&]:(flex-[0_0_100%] w-full h-full items-center p-0)";
-  frame.className = "flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&]:(w-full h-full)";
-  node.append(frame);
-
-  return { node, frame };
-}
-
-function placeholderDom(content: SlotContent, text: string): HTMLElement {
-  const placeholder = document.createElement("div");
-
-  placeholder.className =
-    "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] leading-1 text-center " +
-    (content.kind === "end"
-      ? "p-xl [direction:ltr] text-[clamp(24px,6vw,42px)] font-700 leading-[1.3] [unicode-bidi:plaintext]"
-      : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 [font-variant-numeric:tabular-nums]");
-
-  if (content.state === "loading") {
-    const loading = document.createElement("span");
-    const spinner = document.createElement("span");
-    const pageNumber = document.createElement("span");
-
-    loading.className = "flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden";
-    loading.setAttribute("aria-hidden", "true");
-    spinner.className =
-      "block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner";
-    pageNumber.className =
-      "block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]";
-    pageNumber.textContent = text;
-    placeholder.setAttribute("role", "status");
-    placeholder.setAttribute("aria-label", `${texts.reader.loading} ${text}`);
-    loading.append(pageNumber, spinner);
-    placeholder.append(loading);
-    return placeholder;
-  }
-
-  placeholder.textContent = text;
-  return placeholder;
-}
-
-function errorPlaceholderDom(pageNum: number, text: string, onReloadPage: (pageNum: number) => void): HTMLElement {
-  const button = document.createElement("button");
-  const icon = document.createElement("span");
-  const placeholder = document.createElement("div");
-  const message = document.createElement("div");
+function PageSlotPlaceholder(props: {
+  content: SlotContent;
+  text: string;
+  onReloadPage: (pageNum: number) => void;
+}) {
   const stop = (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
   };
 
-  button.className = "ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans text-34px font-700 leading-1 active:scale-96 [touch-action:manipulation]";
-  button.type = "button";
-  button.setAttribute("aria-label", texts.reader.reload);
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "↻";
-  button.append(icon);
-  placeholder.className = "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center text-18px font-700 leading-1";
-  message.className = "max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]";
-  message.textContent = text;
-  placeholder.append(message, button);
-  button.addEventListener("pointerdown", stop);
-  button.addEventListener("click", (event) => {
-    stop(event);
-    onReloadPage(pageNum);
-  });
-  return placeholder;
+  return (
+    <div
+      class={
+        props.content.state === "error"
+          ? "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center text-18px font-700 leading-1"
+          : "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] leading-1 text-center " +
+            (props.content.kind === "end"
+              ? "p-xl [direction:ltr] text-[clamp(24px,6vw,42px)] font-700 leading-[1.3] [unicode-bidi:plaintext]"
+              : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 [font-variant-numeric:tabular-nums]")
+      }
+      role={props.content.state === "loading" ? "status" : undefined}
+      aria-label={props.content.state === "loading" ? `${texts.reader.loading} ${props.text}` : undefined}
+    >
+      <Show when={props.content.state === "error"} fallback={
+        <Show when={props.content.state === "loading"} fallback={props.text}>
+          <span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden" aria-hidden="true">
+            <span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]">
+              {props.text}
+            </span>
+            <span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner" />
+          </span>
+        </Show>
+      }>
+        <div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">
+          {props.text}
+        </div>
+        <button
+          type="button"
+          class="ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans text-34px font-700 leading-1 active:scale-96 [touch-action:manipulation]"
+          aria-label={texts.reader.reload}
+          onPointerDown={stop}
+          onClick={(event: MouseEvent) => {
+            stop(event);
+            props.onReloadPage(props.content.pageNum);
+          }}
+        >
+          <span aria-hidden="true">↻</span>
+        </button>
+      </Show>
+    </div>
+  );
 }
 
 function pageImageDom(pageNum: number, slotImage: ViewportImage): HTMLImageElement {
@@ -302,7 +292,8 @@ function createPagesScroller(element: HTMLElement) {
 
 export class PagesViewport {
   readonly element: HTMLElement;
-  private readonly dom: ReturnType<typeof pagesViewportDom>;
+  private readonly scroller: ReturnType<typeof createPagesScroller>;
+  private readonly view: PagesViewportViewHandle;
   private slots: PageSlot[] = [];
   private readonly horizontalAnimator = new ScrollAnimator("x");
   private readonly flingAnimator = new ScrollFlingAnimator();
@@ -314,14 +305,17 @@ export class PagesViewport {
       closed: () => boolean;
       totalPages: () => number | undefined;
       onReloadPage: (pageNum: number) => void;
+      element: HTMLElement;
+      view: PagesViewportViewHandle;
     },
   ) {
-    this.dom = pagesViewportDom({ onReloadPage: options.onReloadPage });
-    this.element = this.dom.element;
+    this.element = options.element;
+    this.scroller = createPagesScroller(options.element);
+    this.view = options.view;
   }
 
   scrollerElement(): HTMLElement {
-    return this.dom.scroller.element;
+    return this.scroller.element;
   }
 
   syncWindow(options: PagesViewportWindowOptions): void {
@@ -362,7 +356,7 @@ export class PagesViewport {
   }
 
   resetPosition(): void {
-    this.dom.scroller.resetPosition();
+    this.scroller.resetPosition();
   }
 
   stopMotion(): void {
@@ -374,6 +368,7 @@ export class PagesViewport {
     for (const slot of this.slots) {
       this.applySlotSize(slot);
     }
+    this.view.refresh();
   }
 
   requiredImagePageNums(): number[] {
@@ -400,6 +395,7 @@ export class PagesViewport {
     }
 
     slot.state = "loading";
+    slot.errorMessage = null;
     slot.token += 1;
     this.refreshSlot(slot);
     return slot.token;
@@ -418,10 +414,12 @@ export class PagesViewport {
 
     slot.state = "ready";
     slot.imageUrl = slotImage.imageUrl;
+    slot.image = image;
+    slot.errorMessage = null;
     slot.width = positiveDimension(image.naturalWidth) ?? slotImage.width;
     slot.height = positiveDimension(image.naturalHeight) ?? slotImage.height;
     this.applySlotSize(slot);
-    this.dom.slots.setImage(slot.elements, image);
+    this.view.refresh();
     return true;
   }
 
@@ -433,7 +431,9 @@ export class PagesViewport {
     }
 
     slot.state = "error";
-    this.renderSlotPlaceholder(slot, errorMessage);
+    slot.image = null;
+    slot.errorMessage = errorMessage;
+    this.view.refresh();
     return true;
   }
 
@@ -445,6 +445,7 @@ export class PagesViewport {
     }
 
     slot.state = "idle";
+    slot.errorMessage = null;
     this.refreshSlot(slot);
     return true;
   }
@@ -461,25 +462,25 @@ export class PagesViewport {
 
   moveBy(delta: number, motion: ScrollMotion = "instant", onComplete?: () => void): void {
     if (this.options.mode() === "paged") {
-      this.horizontalAnimator.scrollTo(this.dom.scroller.element, this.dom.scroller.scrollLeft() + delta, motion, onComplete);
+      this.horizontalAnimator.scrollTo(this.scroller.element, this.scroller.scrollLeft() + delta, motion, onComplete);
       return;
     }
 
-    this.moveToTop(this.dom.scroller.scrollTop() + delta);
+    this.moveToTop(this.scroller.scrollTop() + delta);
     onComplete?.();
   }
 
   moveToTop(scrollTop: number): void {
-    this.dom.scroller.moveToTop(scrollTop, this.verticalScrollBounds());
+    this.scroller.moveToTop(scrollTop, this.verticalScrollBounds());
   }
 
   startDragPosition(): number {
-    return this.options.mode() === "paged" ? this.dom.scroller.scrollLeft() : this.dom.scroller.scrollTop();
+    return this.options.mode() === "paged" ? this.scroller.scrollLeft() : this.scroller.scrollTop();
   }
 
   dragPage(startPosition: number, delta: { dx: number; dy: number }): void {
     if (this.options.mode() === "paged") {
-      this.dom.scroller.moveToLeft(startPosition - delta.dx);
+      this.scroller.moveToLeft(startPosition - delta.dx);
       return;
     }
 
@@ -487,20 +488,20 @@ export class PagesViewport {
   }
 
   scrollTop(): number {
-    return this.dom.scroller.scrollTop();
+    return this.scroller.scrollTop();
   }
 
   viewportWidth(): number {
-    return this.dom.scroller.viewportWidth();
+    return this.scroller.viewportWidth();
   }
 
   viewportHeight(): number {
-    return this.dom.scroller.viewportHeight();
+    return this.scroller.viewportHeight();
   }
 
   pageOffset(pageNum: number): number | null {
     const elements = this.slotFor(pageNum)?.elements;
-    return elements ? this.dom.scroller.slotOffset(elements, this.options.mode()) : null;
+    return elements ? this.scroller.slotOffset(elements, this.options.mode()) : null;
   }
 
   centerPageNum(): number | null {
@@ -509,7 +510,7 @@ export class PagesViewport {
         continue;
       }
 
-      if (this.dom.scroller.slotContainsViewportTarget(slot.elements)) {
+      if (this.scroller.slotContainsViewportTarget(slot.elements)) {
         return slot.pageNum;
       }
     }
@@ -538,7 +539,7 @@ export class PagesViewport {
 
   startVerticalFlingFromDragVelocity(dragVelocityY: number, onStop: () => void): void {
     this.flingAnimator.start({
-      scroller: this.dom.scroller.element,
+      scroller: this.scroller.element,
       initialVelocityY: -dragVelocityY,
       setScrollTop: (scrollTop) => this.moveToTop(scrollTop),
       canRun: () => !this.options.closed() && this.options.mode() === "scroll",
@@ -566,12 +567,12 @@ export class PagesViewport {
     const bounds: VerticalScrollBounds = {};
 
     if (firstElements) {
-      bounds.min = this.dom.scroller.slotTop(firstElements);
+      bounds.min = this.scroller.slotTop(firstElements);
     }
 
     if (lastElements) {
       const lastElementsRect = lastElements.node.getBoundingClientRect();
-      const lastElementsTop = this.dom.scroller.slotTop(lastElements);
+      const lastElementsTop = this.scroller.slotTop(lastElements);
       bounds.max = lastElementsTop + lastElementsRect.height - this.viewportHeight();
     }
 
@@ -596,79 +597,49 @@ export class PagesViewport {
       : index;
   }
 
-  private setSlotPlaceholder(elements: SlotElements, content: SlotContent): void {
-    this.dom.slots.setPlaceholder(elements, content, this.slotPlaceholderText(content));
-  }
-
   private removeSlot(slot: PageSlot): void {
     slot.token += 1;
-
-    if (slot.elements) {
-      this.dom.slots.removeSlot(slot);
-    }
   }
 
   private renderSlots(): void {
-    this.dom.slots.sync(this.slots, {
-      refreshSlot: (slot) => this.refreshSlot(slot),
+    for (const slot of this.slots) {
+      this.applySlotSize(slot);
+    }
+
+    this.view.sync(this.slots, {
+      onReloadPage: this.options.onReloadPage,
       visualIndex: (slotIndex, slotCount) => this.visualSlotIndex(slotIndex, slotCount),
     });
   }
 
   private refreshSlot(slot: PageSlot): void {
-    if (!slot.elements) {
-      return;
-    }
-
-    this.dom.slots.setPageNum(slot.elements, slot.pageNum);
     this.applySlotSize(slot);
-
-    if (slot.state === "ready" && slot.imageUrl) {
-      return;
-    }
-
-    this.renderSlotPlaceholder(slot, undefined);
-  }
-
-  private renderSlotPlaceholder(slot: PageSlot, errorMessage: string | undefined): void {
-    if (!slot.elements) {
-      return;
-    }
-
-    this.setSlotPlaceholder(slot.elements, {
-      pageNum: slot.pageNum,
-      kind: slot.kind,
-      state: slot.state,
-      errorMessage,
-    });
+    this.view.refresh();
   }
 
   private applySlotSize(slot: PageSlot): void {
-    if (!slot.elements) {
-      return;
-    }
-
     const frameWidth = Math.max(1, this.viewportWidth());
     const frameHeight = Math.ceil(frameWidth * pageSlotAspectRatio(slot));
-    this.dom.slots.setSize(slot.elements, frameWidth, frameHeight);
+    slot.frameWidth = frameWidth;
+    slot.frameHeight = frameHeight;
+  }
+}
+
+function slotPlaceholderText(content: SlotContent): string {
+  if (content.state === "error") {
+    const suffix = content.errorMessage ? `: ${content.errorMessage}` : "";
+    return `${texts.reader.failedPrefix} ${content.pageNum}${suffix}`;
   }
 
-  private slotPlaceholderText(content: SlotContent): string {
-    if (content.state === "error") {
-      const suffix = content.errorMessage ? `: ${content.errorMessage}` : "";
-      return `${texts.reader.failedPrefix} ${content.pageNum}${suffix}`;
-    }
-
-    if (content.kind === "end") {
-      return texts.reader.end;
-    }
-
-    if (content.kind === "blank") {
-      return "";
-    }
-
-    return String(content.pageNum);
+  if (content.kind === "end") {
+    return texts.reader.end;
   }
+
+  if (content.kind === "blank") {
+    return "";
+  }
+
+  return String(content.pageNum);
 }
 
 function positiveDimension(value: number): number | null {
@@ -701,6 +672,10 @@ function pageSlot(pageNum: number, kind: PageSlotKind): PageSlot {
     imageUrl: null,
     width: null,
     height: null,
+    image: null,
+    errorMessage: null,
+    frameWidth: 1,
+    frameHeight: Math.ceil(FALLBACK_ASPECT_RATIO),
     elements: null,
     token: 0,
   };
@@ -717,6 +692,8 @@ function applyPageMetaToSlot(slot: PageSlot, page: PageMeta): void {
   slot.kind = "page";
   slot.state = "idle";
   slot.imageUrl = null;
+  slot.image = null;
+  slot.errorMessage = null;
   slot.width = null;
   slot.height = null;
   slot.token += 1;
@@ -729,6 +706,8 @@ function clearNonPageSlotMeta(slot: PageSlot): void {
 
   slot.state = "ready";
   slot.imageUrl = null;
+  slot.image = null;
+  slot.errorMessage = null;
   slot.width = null;
   slot.height = null;
   slot.token += 1;

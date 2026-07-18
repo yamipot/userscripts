@@ -1,7 +1,6 @@
-import { h } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { createEffect, createMemo, createSignal, For } from "solid-js";
 import { clamp } from "../../utils";
-import { usePointerGestureElement } from "../PointerGestureSurface";
+import { createPointerGestureElement } from "../PointerGestureSurface";
 
 export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
 export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
@@ -39,22 +38,22 @@ export type ScrollPageBarOptions = {
 export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDivElement }) {
   const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
   const currentIndex = clamp(options.currentIndex, 0, maxIndex);
-  const [windowIndex, setWindowIndex] = useState(() =>
+  const [windowIndex, setWindowIndex] = createSignal(
     clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex),
   );
-  const dragStartWindowIndex = useRef(windowIndex);
+  let dragStartWindowIndex = windowIndex();
   const draggable = () => maxIndex + 1 > 7;
-  const slots = pageSlots(windowIndex, currentIndex, maxIndex);
-  const firstSlotIndex = slots[0]?.pageIndex ?? currentIndex;
-  const lastSlotIndex = slots[slots.length - 1]?.pageIndex ?? currentIndex;
-  const currentBeforeWindow = currentIndex < firstSlotIndex;
-  const currentAfterWindow = currentIndex > lastSlotIndex;
+  const slots = createMemo(() => pageSlots(windowIndex(), currentIndex, maxIndex));
+  const firstSlotIndex = createMemo(() => slots()[0]?.pageIndex ?? currentIndex);
+  const lastSlotIndex = createMemo(() => slots()[slots().length - 1]?.pageIndex ?? currentIndex);
+  const currentBeforeWindow = () => currentIndex < firstSlotIndex();
+  const currentAfterWindow = () => currentIndex > lastSlotIndex();
   const linkCell = (text: string, pageIndex: number, itemState: PageBarItemState = "link") => {
     if (itemState !== "link") {
       return (
-        <td className={PAGE_BAR_CELL_CLASS}>
+        <td class={PAGE_BAR_CELL_CLASS}>
           <span
-            className={`${PAGE_BAR_LINK_CLASS} ${itemState === "current" ? PAGE_BAR_CURRENT_COLOR_CLASS : PAGE_BAR_DISABLED_COLOR_CLASS}`}
+            class={`${PAGE_BAR_LINK_CLASS} ${itemState === "current" ? PAGE_BAR_CURRENT_COLOR_CLASS : PAGE_BAR_DISABLED_COLOR_CLASS}`}
             aria-current={itemState === "current" ? "page" : undefined}
             aria-disabled={itemState === "disabled" ? "true" : undefined}
           >
@@ -65,56 +64,61 @@ export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDiv
     }
 
     return (
-      <td className={PAGE_BAR_CELL_CLASS}>
-        <a className={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS}`} href={options.urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
+      <td class={PAGE_BAR_CELL_CLASS}>
+        <a class={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS}`} href={options.urlForIndex(pageIndex)} data-page-index={String(pageIndex)}>
           {text}
         </a>
       </td>
     );
   };
   const emptyCell = () => (
-    <td className={`${PAGE_BAR_CELL_CLASS} cursor-default`}>
-      <span className={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS} invisible`} />
+    <td class={`${PAGE_BAR_CELL_CLASS} cursor-default`}>
+      <span class={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS} invisible`} />
     </td>
   );
 
-  options.element.className = `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`;
-  options.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex));
-
-  usePointerGestureElement(options.element, {
-    shouldCaptureDrag: draggable,
-    dragAxis: "x",
-    onStart: () => {
-      dragStartWindowIndex.current = windowIndex;
-    },
-    onMove: (info) => {
-      if (Math.abs(info.dx) < Math.abs(info.dy)) {
-        return;
-      }
-
-      const nextIndex = clamp(dragStartWindowIndex.current - acceleratedPageOffset(info.dx), 0, maxIndex);
-
-      if (nextIndex === windowIndex) {
-        return;
-      }
-
-      galleryPageBarWindowIndex = nextIndex;
-      setWindowIndex(nextIndex);
-    },
+  createEffect(() => {
+    options.element.className = `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`;
+    options.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex()));
   });
 
+  createPointerGestureElement(
+    () => options.element,
+    () => ({
+      shouldCaptureDrag: draggable,
+      dragAxis: "x",
+      onStart: () => {
+        dragStartWindowIndex = windowIndex();
+      },
+      onMove: (info) => {
+        if (Math.abs(info.dx) < Math.abs(info.dy)) {
+          return;
+        }
+
+        const nextIndex = clamp(dragStartWindowIndex - acceleratedPageOffset(info.dx), 0, maxIndex);
+
+        if (nextIndex === windowIndex()) {
+          return;
+        }
+
+        galleryPageBarWindowIndex = nextIndex;
+        setWindowIndex(nextIndex);
+      },
+    }),
+  );
+
   return (
-    <table className={PAGE_BAR_TABLE_CLASS}>
+    <table class={PAGE_BAR_TABLE_CLASS}>
       <tbody>
         <tr>
           {linkCell("<<", 0, currentIndex === 0 ? "disabled" : "link")}
-          {currentBeforeWindow ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell()}
+          {currentBeforeWindow() ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell()}
           {linkCell("<", Math.max(0, currentIndex - 1), currentIndex === 0 ? "disabled" : "link")}
-          {slots.map((slot) =>
-            slot ? linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex ? "current" : "link") : emptyCell(),
-          )}
+          <For each={slots()}>{(slot) =>
+            slot ? linkCell(String(slot.pageIndex + 1), slot.pageIndex, slot.pageIndex === currentIndex ? "current" : "link") : emptyCell()
+          }</For>
           {linkCell(">", Math.min(maxIndex, currentIndex + 1), currentIndex === maxIndex ? "disabled" : "link")}
-          {currentAfterWindow ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell()}
+          {currentAfterWindow() ? linkCell(String(currentIndex + 1), currentIndex, "current") : emptyCell()}
           {linkCell(">>", maxIndex, currentIndex === maxIndex ? "disabled" : "link")}
         </tr>
       </tbody>

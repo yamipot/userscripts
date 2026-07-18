@@ -30,25 +30,9 @@ type ZoomOverlayDom = {
   image: HTMLImageElement;
 };
 
-function createZoomOverlayDom(): ZoomOverlayDom {
-  const element = document.createElement("div");
-  const image = document.createElement("img");
-
-  element.className = "fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none";
-  element.hidden = true;
-  element.style.display = "none";
-  image.className = "block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]";
-  element.append(image);
-  return {
-    element,
-    image,
-  };
-}
-
 export type ZoomOverlay = ReturnType<typeof createZoomOverlay>;
 
-export function createZoomOverlay() {
-  const dom = createZoomOverlayDom();
+export function createZoomOverlay(dom: ZoomOverlayDom) {
   let activeImage: ZoomOverlayImage | null = null;
   let scale = 1;
   let requestedScale = 1;

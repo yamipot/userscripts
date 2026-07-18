@@ -1,6 +1,5 @@
-import { h } from "preact";
-import { useEffect, useRef, useState } from "preact/hooks";
-import * as eh from "../../eh/dom";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import * as eh from "../../eh";
 import texts from "../../texts.json";
 import { Icon } from "../Icon";
 
@@ -11,23 +10,21 @@ export const TOUCH_TOP_BAR_MENU_ITEM_CLASS =
   "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-xl py-lg px-xl touch:px-xl border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline text-28px touch:text-30px leading-[1.2]";
 
 function TouchTopBarMenu(props: { navItems: HTMLElement[] }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const navItemsRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = createSignal(false);
+  let root!: HTMLDivElement;
+  let navItemsHost: HTMLDivElement | undefined;
 
-  useEffect(() => {
-    const navItems = navItemsRef.current;
-
-    if (!navItems) {
+  createEffect(() => {
+    if (!open() || !navItemsHost) {
       return;
     }
 
-    navItems.replaceChildren(...props.navItems.map((item) => item.cloneNode(true)));
-  }, [open, props.navItems]);
+    navItemsHost.replaceChildren(...props.navItems.map((item) => item.cloneNode(true)));
+  });
 
-  useEffect(() => {
+  onMount(() => {
     const onClick = (event: MouseEvent) => {
-      if (event.target instanceof Element && rootRef.current?.contains(event.target)) {
+      if (event.target instanceof Element && root.contains(event.target)) {
         return;
       }
 
@@ -36,43 +33,43 @@ function TouchTopBarMenu(props: { navItems: HTMLElement[] }) {
 
     document.addEventListener("click", onClick);
 
-    return () => {
+    onCleanup(() => {
       document.removeEventListener("click", onClick);
-    };
-  }, []);
+    });
+  });
 
   return (
-    <div ref={rootRef} className="ehpeek-touch-top-bar-menu relative">
+    <div ref={root} class="ehpeek-touch-top-bar-menu relative">
       <button
         type="button"
-        className={`ehpeek-touch-top-bar-menu-button ${TOUCH_ICON_BUTTON_CLASS}`}
+        class={`ehpeek-touch-top-bar-menu-button ${TOUCH_ICON_BUTTON_CLASS}`}
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={open()}
         aria-label={texts.navigation.menu}
         title={texts.navigation.menu}
         onClick={(event: MouseEvent) => {
           event.stopPropagation();
-          setOpen(!open);
+          setOpen((value) => !value);
         }}
       >
         <Icon name="menu" size={TOUCH_TOP_BAR_ICON_SIZE} />
       </button>
-      {open && (
+      <Show when={open()}>
         <div
-          className="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated"
+          class="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated"
         >
-          <div ref={navItemsRef} className="contents" />
+          <div ref={navItemsHost} class="contents" />
         </div>
-      )}
+      </Show>
     </div>
   );
 }
 
 export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpen: () => void }) {
   return (
-    <nav className="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans">
+    <nav class="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans">
       <a
-        className={`ehpeek-touch-top-bar-project ${TOUCH_ICON_BUTTON_CLASS}`}
+        class={`ehpeek-touch-top-bar-project ${TOUCH_ICON_BUTTON_CLASS}`}
         href="https://github.com/yamipot/ehpeek"
         target="_blank"
         rel="noopener noreferrer"
@@ -81,9 +78,9 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
       >
         <Icon name="panda-peek" size={48} strokeWidth={1.8} />
       </a>
-      <div className="flex items-center gap-xs">
+      <div class="flex items-center gap-xs">
         <a
-          className={`ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`}
+          class={`ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`}
           href={props.info.homeHref}
           aria-label={texts.navigation.home}
           title={texts.navigation.home}
@@ -91,7 +88,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
           <Icon name="home" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
         <a
-          className={`ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`}
+          class={`ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`}
           href={props.info.favoritesHref}
           aria-label={texts.navigation.favorites}
           title={texts.navigation.favorites}
@@ -100,7 +97,7 @@ export function TouchTopBar(props: { info: eh.TouchTopBarInfo; onSettingsMenuOpe
         </a>
         <button
           type="button"
-          className={`ehpeek-touch-top-bar-settings ${TOUCH_ICON_BUTTON_CLASS}`}
+          class={`ehpeek-touch-top-bar-settings ${TOUCH_ICON_BUTTON_CLASS}`}
           aria-label={texts.settings.openSettings}
           title={texts.settings.openSettings}
           onClick={(event: MouseEvent) => {

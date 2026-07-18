@@ -5,7 +5,8 @@ import {
   type FullscreenReaderHandle,
   type FullscreenReaderOptions,
 } from "./components/Reader";
-import { Fragment, h, render } from "preact";
+import { createSignal, type JSX } from "solid-js";
+import { render } from "solid-js/web";
 import { SettingsMenu } from "./components/SettingsMenu";
 import { TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS, TouchGalleryPanel } from "./components/Enhance/TouchGalleryPanel";
 import {
@@ -44,6 +45,19 @@ import themeCss from "./theme.css";
 const READER_WINDOW_SIZE = 10;
 const THEME_STYLE_ID = "ehpeek-theme-style";
 const UNO_STYLE_ID = "ehpeek-uno-style";
+const mountedRoots = new WeakMap<HTMLElement, () => void>();
+
+function renderInto(host: HTMLElement, view: () => JSX.Element): void {
+  mountedRoots.get(host)?.();
+  host.replaceChildren();
+  mountedRoots.set(host, render(view, host));
+}
+
+function unmountFrom(host: HTMLElement): void {
+  mountedRoots.get(host)?.();
+  mountedRoots.delete(host);
+  host.replaceChildren();
+}
 
 type ReaderFullscreenLaunch = {
   host: HTMLDivElement;
@@ -117,7 +131,7 @@ eh.applySiteTheme();
 if (initialSettingsState.touchUiEnabled) {
   document.documentElement.dataset.ehpeekTouchUi = "true";
 }
-let settingsMenuOpen = false;
+const [settingsMenuOpen, setSettingsMenuOpenSignal] = createSignal(false);
 let settingsState = initialSettingsState;
 const settingsMenuHost = document.createElement("div");
 document.body.append(settingsMenuHost);
@@ -126,22 +140,23 @@ let touchGalleryReadButtonMount: HTMLElement | null = null;
 let activeReader: FullscreenReaderHandle | null = null;
 
 function setSettingsMenuOpen(open: boolean): void {
-  settingsMenuOpen = open;
-  installSettingsMenu();
+  setSettingsMenuOpenSignal(open);
 }
 
 function installSettingsMenu(): void {
-  render(
-    <SettingsMenu
-      open={settingsMenuOpen}
-      initState={settingsState}
-      onApply={(next) => {
-        settingsState = next;
-        applySettingsMenuState(next);
-      }}
-      onOpenChange={setSettingsMenuOpen}
-    />,
+  renderInto(
     settingsMenuHost,
+    () => (
+      <SettingsMenu
+        open={settingsMenuOpen()}
+        initState={settingsState}
+        onApply={(next) => {
+          settingsState = next;
+          applySettingsMenuState(next);
+        }}
+        onOpenChange={setSettingsMenuOpen}
+      />
+    ),
   );
 }
 
@@ -169,7 +184,7 @@ function openFullscreenReader(
     onClosed();
   };
   const onClosed = () => {
-    render(<Fragment />, host);
+    unmountFrom(host);
     host.remove();
 
     if (activeReader?.close === close) {
@@ -181,15 +196,17 @@ function openFullscreenReader(
     document.body.append(host);
   }
   activeReader = { close };
-  render(
-    <FullscreenReader
-      options={{ ...options, fullscreenTarget: host }}
-      handleRef={(nextHandle) => {
-        handle = nextHandle;
-      }}
-      onClosed={onClosed}
-    />,
+  renderInto(
     host,
+    () => (
+      <FullscreenReader
+        options={{ ...options, fullscreenTarget: host }}
+        handleRef={(nextHandle) => {
+          handle = nextHandle;
+        }}
+        onClosed={onClosed}
+      />
+    ),
   );
 }
 
@@ -197,15 +214,17 @@ function replaceGalleryPageBar(currentIndex: number, maxIndex: number | null): v
   const mounts = eh.replaceGalleryPageBarMounts(SCROLL_PAGE_BAR_TOP_CLASS, SCROLL_PAGE_BAR_BOTTOM_CLASS);
 
   for (const mount of mounts) {
-    render(
-      <ScrollPageBar
-        currentIndex={currentIndex}
-        element={mount.element}
-        maxIndex={maxIndex}
-        top={mount.top}
-        urlForIndex={eh.previewUrlForIndex}
-      />,
+    renderInto(
       mount.element,
+      () => (
+        <ScrollPageBar
+          currentIndex={currentIndex}
+          element={mount.element}
+          maxIndex={maxIndex}
+          top={mount.top}
+          urlForIndex={eh.previewUrlForIndex}
+        />
+      ),
     );
   }
 }
@@ -215,13 +234,15 @@ function installContinueReadingButton(): void {
 
   if (settingsState.touchUiEnabled && pageType.type === "gallery") {
     if (touchGalleryReadButtonMount) {
-      render(
-        continueReading ? (
-          <ReadButton info={continueReading.info} onClick={continueReading.onClick} variant="touchGallery" />
-        ) : (
-          <Fragment />
-        ),
+      renderInto(
         touchGalleryReadButtonMount,
+        () => (
+          continueReading ? (
+            <ReadButton info={continueReading.info} onClick={continueReading.onClick} variant="touchGallery" />
+          ) : (
+            <></>
+          )
+        ),
       );
     }
     return;
@@ -232,13 +253,15 @@ function installContinueReadingButton(): void {
   }
 
   if (galleryReadButtonMount) {
-    render(
-      continueReading ? (
-        <ReadButton info={continueReading.info} onClick={continueReading.onClick} variant="gallery" />
-      ) : (
-        <Fragment />
-      ),
+    renderInto(
       galleryReadButtonMount,
+      () => (
+        continueReading ? (
+          <ReadButton info={continueReading.info} onClick={continueReading.onClick} variant="gallery" />
+        ) : (
+          <></>
+        )
+      ),
     );
   }
 }
@@ -258,19 +281,21 @@ if (!settingsState.touchUiEnabled) {
     const mount = document.createElement("span");
     target.append(mount);
 
-    render(
-      <a
-        href="#"
-            className="textsize-md font-inherit"
-        onClick={(event: MouseEvent) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setSettingsMenuOpen(true);
-        }}
-      >
-        {texts.settings.menuLabel}
-      </a>,
+    renderInto(
       mount,
+      () => (
+        <a
+          href="#"
+          class="textsize-md font-inherit"
+          onClick={(event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSettingsMenuOpen(true);
+          }}
+        >
+          {texts.settings.menuLabel}
+        </a>
+      ),
     );
   }
 }
@@ -288,14 +313,16 @@ function installTouchTopBar(): void {
       document.body.prepend(mount);
     }
 
-    render(
-      <TouchTopBar
-        info={info}
-        onSettingsMenuOpen={() => {
-          setSettingsMenuOpen(true);
-        }}
-      />,
+    renderInto(
       mount,
+      () => (
+        <TouchTopBar
+          info={info}
+          onSettingsMenuOpen={() => {
+            setSettingsMenuOpen(true);
+          }}
+        />
+      ),
     );
   }
 }
@@ -333,15 +360,20 @@ function installTouchGalleryPanel(): void {
       document.body.prepend(mount);
     }
 
-    render(
-      <TouchGalleryPanel
-        source={touchGalleryInfo}
-        onPrimaryActionMount={(mount) => {
-          touchGalleryReadButtonMount = mount;
-          installContinueReadingButton();
-        }}
-      />,
+    renderInto(
       mount,
+      () => (
+        <TouchGalleryPanel
+          source={touchGalleryInfo}
+          onPrimaryActionMount={(mount) => {
+            if (touchGalleryReadButtonMount && touchGalleryReadButtonMount !== mount) {
+              unmountFrom(touchGalleryReadButtonMount);
+            }
+            touchGalleryReadButtonMount = mount;
+            installContinueReadingButton();
+          }}
+        />
+      ),
     );
   }
 }
@@ -373,11 +405,11 @@ function installTouchSearchPanel(): boolean {
   }
 
   eh.prepareTouchSearchPanel(touchSearchInfo, TOUCH_SEARCH_OPTION_CLASS);
-  render(<TouchSearchPanel source={touchSearchInfo} />, mount);
-  render(<TouchSearchCategoryToggle source={touchSearchInfo} />, touchSearchInfo.categoryToggleMount);
-  render(<TouchSearchAction action="search" source={touchSearchInfo} />, touchSearchInfo.searchActionMount);
-  render(<TouchSearchAction action="clear" source={touchSearchInfo} />, touchSearchInfo.clearActionMount);
-  render(<TouchSearchHistory source={touchSearchInfo} />, touchSearchInfo.historyMount);
+  renderInto(mount, () => <TouchSearchPanel source={touchSearchInfo} />);
+  renderInto(touchSearchInfo.categoryToggleMount, () => <TouchSearchCategoryToggle source={touchSearchInfo} />);
+  renderInto(touchSearchInfo.searchActionMount, () => <TouchSearchAction action="search" source={touchSearchInfo} />);
+  renderInto(touchSearchInfo.clearActionMount, () => <TouchSearchAction action="clear" source={touchSearchInfo} />);
+  renderInto(touchSearchInfo.historyMount, () => <TouchSearchHistory source={touchSearchInfo} />);
   return true;
 }
 
@@ -395,13 +427,15 @@ installContinueReadingButton();
 if (pageType.type === "gallery") {
   const host = document.createElement("div");
   document.body.append(host);
-  render(
-    <EnhanceThumbsGrids
-      enabled={settingsState.enhanceThumbsGridsEnabled}
-      onError={reportOpenError}
-      replaceGalleryPageBar={replaceGalleryPageBar}
-    />,
+  renderInto(
     host,
+    () => (
+      <EnhanceThumbsGrids
+        enabled={settingsState.enhanceThumbsGridsEnabled}
+        onError={reportOpenError}
+        replaceGalleryPageBar={replaceGalleryPageBar}
+      />
+    ),
   );
 }
 
@@ -411,7 +445,7 @@ if ((pageType.type === "search" || pageType.type === "favorites") && settingsSta
   if (resultList && eh.searchPageNavigation()) {
     const host = document.createElement("div");
     document.body.append(host);
-    render(<EnhanceSearchGrids resultList={resultList} />, host);
+    renderInto(host, () => <EnhanceSearchGrids resultList={resultList} />);
   }
 }
 

@@ -1,5 +1,4 @@
-import { h } from "preact";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import { createEffect } from "solid-js";
 import { registerGlobalStyle } from "../utils";
 import progressBarCss from "./Misc.css";
 
@@ -29,40 +28,31 @@ export function ProgressBar(props: {
   step: number;
   value?: number;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  let input!: HTMLInputElement;
 
-  useLayoutEffect(() => {
-    const element = input.current;
-
-    if (!element) {
-      return;
-    }
-
-    const max = Math.max(1, props.max ?? props.min);
+  createEffect(() => {
     const direction = props.direction ?? "ltr";
-    element.min = String(props.min);
-    element.max = String(max);
-    element.step = String(props.step);
-    element.dir = direction;
-    element.style.setProperty("--progress-bar-track-direction", direction === "rtl" ? "to left" : "to right");
-    element.style.setProperty("--progress-bar-fill", `${Math.min(100, Math.max(0, props.fillPercent ?? 0))}%`);
+    input.style.setProperty("--progress-bar-track-direction", direction === "rtl" ? "to left" : "to right");
+    input.style.setProperty("--progress-bar-fill", `${Math.min(100, Math.max(0, props.fillPercent ?? 0))}%`);
 
     if (!props.keepInputValue && props.value !== undefined) {
-      element.value = String(props.value);
+      input.value = String(props.value);
     }
-  }, [props.direction, props.fillPercent, props.keepInputValue, props.max, props.min, props.step, props.value]);
+  });
 
   const currentValue = (event: Event): number => Number((event.currentTarget as HTMLInputElement).value || "");
 
   return (
     <input
-      ref={input}
+      ref={(element) => {
+        input = element;
+        element.value = String(props.value ?? props.min);
+      }}
       type="range"
-      className={`${PROGRESS_BAR_CLASS_NAME}${props.className ? ` ${props.className}` : ""}`}
+      class={`${PROGRESS_BAR_CLASS_NAME}${props.className ? ` ${props.className}` : ""}`}
       min={String(props.min)}
-      max={props.max === undefined ? undefined : String(props.max)}
+      max={String(Math.max(1, props.max ?? props.min))}
       step={String(props.step)}
-      defaultValue={String(props.value ?? props.min)}
       dir={props.direction ?? "ltr"}
       onPointerDown={(event: PointerEvent) => {
         props.onPointerDown?.(event);

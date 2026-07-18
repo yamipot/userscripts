@@ -1,10 +1,9 @@
 import type { ReaderPage } from "../../readerTypes";
 import type { PointerDragEnd } from "../pointerGesture";
 import { loadingSpinnerElement } from "../Loading";
-import { usePointerGestureElement } from "../PointerGestureSurface";
+import { createPointerGestureElement } from "../PointerGestureSurface";
 import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
-import { h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import {
   SCROLL_PAGE_BAR_BOTTOM_CLASS,
   SCROLL_PAGE_BAR_CLASS,
@@ -115,10 +114,11 @@ export function EnhanceThumbsGrids(props: {
   onError: (error: unknown) => void;
   replaceGalleryPageBar: (currentIndex: number, maxIndex: number | null) => void;
 }) {
-  const [gestureTarget, setGestureTarget] = useState<HTMLElement | null>(null);
+  const [gestureTarget, setGestureTarget] = createSignal<HTMLElement | null>(null);
+  const updateGestureTarget = (target: HTMLElement | null) => setGestureTarget(target);
 
-  useEffect(() => {
-    setSwipeGestureTarget = setGestureTarget;
+  onMount(() => {
+    setSwipeGestureTarget = updateGestureTarget;
     replaceGalleryPageBar = props.replaceGalleryPageBar;
 
     if (props.enabled) {
@@ -132,41 +132,46 @@ export function EnhanceThumbsGrids(props: {
       }
     }
 
-    return () => {
-      if (setSwipeGestureTarget === setGestureTarget) {
+    onCleanup(() => {
+      if (setSwipeGestureTarget === updateGestureTarget) {
         setSwipeGestureTarget = null;
       }
       if (replaceGalleryPageBar === props.replaceGalleryPageBar) {
         replaceGalleryPageBar = null;
       }
-    };
-  }, [props.enabled, props.onError, props.replaceGalleryPageBar]);
-
-  usePointerGestureElement(gestureTarget, {
-    onStart: () => {
-      swipeState = { horizontal: true, cancelled: false };
-      hideSwipeIndicator();
-    },
-    onMove: (info) => {
-      updateSwipeIndicator(info);
-    },
-    onEnd: (info, event) => {
-      navigateBySwipe(info, event);
-      swipeState = null;
-      hideSwipeIndicator();
-    },
-    dragAxis: "x",
-    dragIntentRatio: HORIZONTAL_INTENT_RATIO,
-    dragStartThreshold: SWIPE_INTENT_DISTANCE,
+    });
   });
 
-  return props.enabled ? (
-    <SwipeIndicator
-      handleRef={(handle) => {
-        swipeIndicator = handle;
-      }}
-    />
-  ) : null;
+  createPointerGestureElement(
+    gestureTarget,
+    () => ({
+      onStart: () => {
+        swipeState = { horizontal: true, cancelled: false };
+        hideSwipeIndicator();
+      },
+      onMove: (info) => {
+        updateSwipeIndicator(info);
+      },
+      onEnd: (info, event) => {
+        navigateBySwipe(info, event);
+        swipeState = null;
+        hideSwipeIndicator();
+      },
+      dragAxis: "x",
+      dragIntentRatio: HORIZONTAL_INTENT_RATIO,
+      dragStartThreshold: SWIPE_INTENT_DISTANCE,
+    }),
+  );
+
+  return (
+    <Show when={props.enabled}>
+      <SwipeIndicator
+        handleRef={(handle) => {
+          swipeIndicator = handle;
+        }}
+      />
+    </Show>
+  );
 }
 
 export async function navigateGalleryPreview(

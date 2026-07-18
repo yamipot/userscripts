@@ -1,9 +1,8 @@
 import type { PointerDragEnd } from "../pointerGesture";
 import { LoadingOverlay } from "../Loading";
-import { usePointerGestureElement } from "../PointerGestureSurface";
+import { createPointerGestureElement } from "../PointerGestureSurface";
 import { SwipeIndicator, type SwipeDirection, type SwipeIndicatorHandle } from "./Misc";
-import { Fragment, h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import * as eh from "../../eh";
 import texts from "../../texts.json";
 
@@ -27,12 +26,14 @@ type SwipeState = {
 };
 
 export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
-  const [gestureTarget, setGestureTarget] = useState<HTMLElement | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [gestureTarget, setGestureTarget] = createSignal<HTMLElement | null>(null);
+  const [loading, setLoading] = createSignal(false);
+  const updateLoading = (value: boolean) => setLoading(value);
+  const updateGestureTarget = (target: HTMLElement | null) => setGestureTarget(target);
 
-  useEffect(() => {
-    setSearchLoading = setLoading;
-    setSwipeGestureTarget = setGestureTarget;
+  onMount(() => {
+    setSearchLoading = updateLoading;
+    setSwipeGestureTarget = updateGestureTarget;
     setResultListSwipeTarget(props.resultList);
 
     if (!installed) {
@@ -40,44 +41,47 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
       document.addEventListener("click", onSearchNavigationClick, true);
     }
 
-    return () => {
-      if (setSearchLoading === setLoading) {
+    onCleanup(() => {
+      if (setSearchLoading === updateLoading) {
         setSearchLoading = null;
       }
 
-      if (setSwipeGestureTarget === setGestureTarget) {
+      if (setSwipeGestureTarget === updateGestureTarget) {
         setSwipeGestureTarget = null;
       }
-    };
-  }, [props.resultList]);
-
-  usePointerGestureElement(gestureTarget, {
-    onStart: () => {
-      swipeState = { horizontal: true, cancelled: false };
-      hideSwipeIndicator();
-    },
-    onMove: (info) => {
-      updateSwipeIndicator(info);
-    },
-    onEnd: (info, event) => {
-      navigateBySwipe(info, event);
-      swipeState = null;
-      hideSwipeIndicator();
-    },
-    dragAxis: "x",
-    dragIntentRatio: HORIZONTAL_INTENT_RATIO,
-    dragStartThreshold: SWIPE_INTENT_DISTANCE,
+    });
   });
 
+  createPointerGestureElement(
+    gestureTarget,
+    () => ({
+      onStart: () => {
+        swipeState = { horizontal: true, cancelled: false };
+        hideSwipeIndicator();
+      },
+      onMove: (info) => {
+        updateSwipeIndicator(info);
+      },
+      onEnd: (info, event) => {
+        navigateBySwipe(info, event);
+        swipeState = null;
+        hideSwipeIndicator();
+      },
+      dragAxis: "x",
+      dragIntentRatio: HORIZONTAL_INTENT_RATIO,
+      dragStartThreshold: SWIPE_INTENT_DISTANCE,
+    }),
+  );
+
   return (
-    <Fragment>
+    <>
       <SwipeIndicator
         handleRef={(handle) => {
           swipeIndicator = handle;
         }}
       />
-      <LoadingOverlay label={texts.reader.loading} visible={loading} />
-    </Fragment>
+      <LoadingOverlay label={texts.reader.loading} visible={loading()} />
+    </>
   );
 }
 

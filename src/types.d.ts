@@ -21,11 +21,3 @@ declare const GM_download: (details: {
   name?: string;
   onerror?: (error: { error: string; details?: string }) => void;
 }) => { abort: () => void };
-
-declare namespace JSX {
-  type Element = HTMLElement | DocumentFragment;
-
-  interface IntrinsicElements {
-    [tagName: string]: Record<string, unknown>;
-  }
-}

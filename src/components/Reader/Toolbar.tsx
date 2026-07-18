@@ -1,5 +1,4 @@
-import { Fragment, h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
 import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
@@ -89,19 +88,18 @@ export function initialToolbarState(): ToolbarState {
 }
 
 export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarState }) {
-  const controls = props.state.controls;
-  const progress = props.state.progress;
-  const downloadDialog = props.state.downloadDialog;
-  const open = props.state.open;
-  const modeButton = modeButtonInfo(controls.mode);
-  const readDirectionButton = readDirectionButtonInfo(controls.readDirection);
-  const rightTapButton = rightTapButtonInfo(controls.rightTapAction);
-  const fullscreenTime = useFullscreenTime(props.state.fullscreenActive);
+  const controls = () => props.state.controls;
+  const progress = () => props.state.progress;
+  const open = () => props.state.open;
+  const modeButton = createMemo(() => modeButtonInfo(controls().mode));
+  const readDirectionButton = createMemo(() => readDirectionButtonInfo(controls().readDirection));
+  const rightTapButton = createMemo(() => rightTapButtonInfo(controls().rightTapAction));
+  const fullscreenTime = createFullscreenTime(() => props.state.fullscreenActive);
 
   return (
-    <>
+    <div class="contents">
       <div
-        className={
+        class={
           "ehpeek-reader-toolbar fixed z-3 flex justify-end pointer-events-none " +
           "top-[calc(10px+env(safe-area-inset-top,0px))] right-10px " +
           "coarse:top-[calc(8px+env(safe-area-inset-top,0px))] coarse:right-8px"
@@ -110,29 +108,29 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
         onPointerDown={stopEvent}
         onWheel={stopEvent}
       >
-        <div className={`ehpeek-reader-toolbar-buttons flex flex-row gap-md coarse:gap-lg pointer-events-auto${open ? "" : " !hidden"}`}>
+        <div class={`ehpeek-reader-toolbar-buttons flex flex-row gap-md coarse:gap-lg pointer-events-auto${open() ? "" : " !hidden"}`}>
           <button
             type="button"
-            className={READER_BUTTON_CLASS}
-            title={rightTapButton.title}
+            class={READER_BUTTON_CLASS}
+            title={rightTapButton().title}
             onClick={props.callbacks.onRightTapClick}
           >
-            {rightTapButton.text}
+            {rightTapButton().text}
           </button>
           <button
             type="button"
-            className={READER_BUTTON_CLASS}
-            title={readDirectionButton.title}
+            class={READER_BUTTON_CLASS}
+            title={readDirectionButton().title}
             onClick={props.callbacks.onReadDirectionClick}
           >
-            <Icon name={readDirectionButton.icon} size={READER_ICON_SIZE} />
+            <Icon name={readDirectionButton().icon} size={READER_ICON_SIZE} />
           </button>
-          <button type="button" className={READER_BUTTON_CLASS} title={modeButton.title} onClick={props.callbacks.onModeClick}>
-            <Icon name={modeButton.icon} size={READER_ICON_SIZE} />
+          <button type="button" class={READER_BUTTON_CLASS} title={modeButton().title} onClick={props.callbacks.onModeClick}>
+            <Icon name={modeButton().icon} size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
-            className={READER_BUTTON_CLASS}
+            class={READER_BUTTON_CLASS}
             disabled={!props.state.downloadAvailable}
             title={texts.reader.download}
             onClick={props.callbacks.onDownloadClick}
@@ -141,7 +139,7 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           </button>
           <button
             type="button"
-            className={READER_BUTTON_CLASS}
+            class={READER_BUTTON_CLASS}
             title={texts.reader.openOriginalPage}
             onClick={props.callbacks.onOpenOriginalPageClick}
           >
@@ -149,19 +147,19 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           </button>
           <button
             type="button"
-            className={READER_BUTTON_CLASS}
+            class={READER_BUTTON_CLASS}
             title={props.state.fullscreenActive ? texts.reader.exitFullscreen : texts.reader.enterFullscreen}
             onClick={props.callbacks.onFullscreenClick}
           >
             <Icon name={props.state.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
           </button>
-          <button type="button" className={READER_BUTTON_CLASS} title={texts.reader.close} onClick={props.callbacks.onCloseClick}>
+          <button type="button" class={READER_BUTTON_CLASS} title={texts.reader.close} onClick={props.callbacks.onCloseClick}>
             <Icon name="close" size={READER_ICON_SIZE} />
           </button>
         </div>
       </div>
       <div
-        className={
+        class={
           "ehpeek-reader-page-number fixed z-3 pointer-events-none " +
           "top-[calc(70px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 " +
           "coarse:top-[calc(80px+env(safe-area-inset-top,0px))] " +
@@ -172,13 +170,13 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
           "text-center landscape:text-right"
         }
-        hidden={controls.mode === "scroll" && !open && !props.state.fullscreenActive}
+        hidden={controls().mode === "scroll" && !open() && !props.state.fullscreenActive}
       >
-        {pageNumberText(progress.pageNum, progress.totalPages)}
+        {pageNumberText(progress().pageNum, progress().totalPages)}
       </div>
-      {props.state.fullscreenActive ? (
+      <Show when={props.state.fullscreenActive}>
         <div
-          className={
+          class={
             "ehpeek-reader-fullscreen-status fixed z-3 flex items-center gap-sm pointer-events-none " +
             "top-[calc(10px+env(safe-area-inset-top,0px))] left-[max(10px,env(safe-area-inset-left,0px))] " +
             "py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text " +
@@ -186,37 +184,37 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           }
           role="status"
         >
-          <span>{fullscreenTime}</span>
+          <span>{fullscreenTime()}</span>
         </div>
-      ) : null}
+      </Show>
       <div
-        className={
+        class={
           "fixed z-2 flex items-center p-0 transition-[opacity,transform] duration-160 ease-in-out " +
           "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(12px+env(safe-area-inset-bottom,0px))] left-[max(12px,env(safe-area-inset-left,0px))] " +
           "[&[data-open=false]]:(opacity-0 translate-y-[calc(100%+16px)] pointer-events-none)"
         }
-        data-open={String(open)}
+        data-open={String(open())}
         onClick={stopEvent}
         onPointerDown={stopEvent}
         onWheel={stopEvent}
       >
         <ProgressBar
           className="ehpeek-reader-progress text-xl coarse:text-3xl"
-          direction={controls.readDirection === "rtl" ? "rtl" : "ltr"}
-          fillPercent={progressFillPercent(progress)}
-          keepInputValue={progress.keepInputValue}
-          max={Math.max(1, progress.maxProgressPageNum)}
+          direction={controls().readDirection === "rtl" ? "rtl" : "ltr"}
+          fillPercent={progressFillPercent(progress())}
+          keepInputValue={progress().keepInputValue}
+          max={Math.max(1, progress().maxProgressPageNum)}
           min={1}
           step={1}
-          value={progress.pageNum}
+          value={progress().pageNum}
           onPointerDown={props.callbacks.onProgressPointerDown}
           onInput={props.callbacks.onProgressInput}
           onCommit={props.callbacks.onProgressCommit}
         />
       </div>
-      {props.state.fullscreenHint ? (
+      <Show when={props.state.fullscreenHint}>
         <div
-          className={
+          class={
             "fixed z-3 left-1/2 -translate-x-1/2 w-[min(88vw,520px)] " +
             "bottom-[calc(76px+env(safe-area-inset-bottom,0px))] coarse:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] " +
             "px-lg py-md rounded-md bg-[var(--color-badge)] ehp-color-text shadow-lg pointer-events-none " +
@@ -227,10 +225,11 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
         >
           {texts.reader.fullscreenHint}
         </div>
-      ) : null}
-      {downloadDialog ? (
+      </Show>
+      <Show when={props.state.downloadDialog} keyed>
+        {(downloadDialog) => (
         <div
-          className="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"
+          class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"
           role="dialog"
           aria-modal="true"
           aria-label={texts.reader.download}
@@ -243,12 +242,12 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           onPointerDown={stopEvent}
           onWheel={stopEvent}
         >
-          <div className="ehpeek-reader-download-dialog-panel w-full max-w-420px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl">
-            <div className="flex items-center justify-between gap-md mb-lg">
-              <div className="font-sans textsize-lg font-700">{`${texts.reader.download} · ${downloadDialog.pageNum}`}</div>
+          <div class="ehpeek-reader-download-dialog-panel w-full max-w-420px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl">
+            <div class="flex items-center justify-between gap-md mb-lg">
+              <div class="font-sans textsize-lg font-700">{`${texts.reader.download} · ${downloadDialog.pageNum}`}</div>
               <button
                 type="button"
-                className={READER_BUTTON_CLASS}
+                class={READER_BUTTON_CLASS}
                 title={texts.reader.close}
                 aria-label={texts.reader.close}
                 onClick={props.callbacks.onDownloadDialogClose}
@@ -256,37 +255,38 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
                 <Icon name="close" size={READER_ICON_SIZE} />
               </button>
             </div>
-            <div className="grid gap-md font-sans textsize-md">
-              <button type="button" className={DOWNLOAD_OPTION_CLASS} onClick={props.callbacks.onDownloadCurrentClick}>
-                <span className="font-700">{texts.reader.downloadDisplayedImage}</span>
-                <span className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75">
+            <div class="grid gap-md font-sans textsize-md">
+              <button type="button" class={DOWNLOAD_OPTION_CLASS} onClick={props.callbacks.onDownloadCurrentClick}>
+                <span class="font-700">{texts.reader.downloadDisplayedImage}</span>
+                <span class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75">
                   {downloadDialog.currentFileName}
                 </span>
               </button>
               <button
                 type="button"
-                className={DOWNLOAD_OPTION_CLASS}
+                class={DOWNLOAD_OPTION_CLASS}
                 disabled={!downloadDialog.originalImageUrl}
                 onClick={props.callbacks.onDownloadOriginalClick}
               >
-                <span className="font-700">{texts.reader.downloadOriginalImage}</span>
-                <span className="textsize-sm opacity-75">
+                <span class="font-700">{texts.reader.downloadOriginalImage}</span>
+                <span class="textsize-sm opacity-75">
                   {downloadDialog.originalImageUrl ? texts.reader.originalImageSource : texts.reader.originalImageUnavailable}
                 </span>
               </button>
             </div>
           </div>
         </div>
-      ) : null}
-    </>
+        )}
+      </Show>
+    </div>
   );
 }
 
-function useFullscreenTime(enabled: boolean): string {
-  const [time, setTime] = useState(() => TIME_FORMATTER.format(new Date()));
+function createFullscreenTime(enabled: () => boolean): () => string {
+  const [time, setTime] = createSignal(TIME_FORMATTER.format(new Date()));
 
-  useEffect(() => {
-    if (!enabled) {
+  createEffect(() => {
+    if (!enabled()) {
       return;
     }
 
@@ -297,13 +297,13 @@ function useFullscreenTime(enabled: boolean): string {
       updateTime();
       interval = window.setInterval(updateTime, 60_000);
     }, 60_000 - (Date.now() % 60_000));
-    return () => {
+    onCleanup(() => {
       window.clearTimeout(timeout);
       if (interval !== null) {
         window.clearInterval(interval);
       }
-    };
-  }, [enabled]);
+    });
+  });
 
   return time;
 }
