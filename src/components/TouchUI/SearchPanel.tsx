@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onMount } from "solid-js";
+import { createEffect, createSignal, onMount, type JSX } from "solid-js";
 import * as eh from "../../eh";
 import type { TouchSearchPanelInfo } from "../../eh";
 import texts from "../../texts.json";
@@ -14,7 +14,7 @@ export function prepareSearchPanel(source: TouchSearchPanelInfo): void {
   eh.prepareTouchSearchPanel(source, TOUCH_SEARCH_OPTION_CLASS);
 }
 
-export function TouchSearchPanel(props: { source: TouchSearchPanelInfo }) {
+export function TouchSearchPanel(props: { after?: JSX.Element; source: TouchSearchPanelInfo }) {
   let searchBoxHost!: HTMLDivElement;
   let fileSearchHost!: HTMLDivElement;
 
@@ -30,6 +30,7 @@ export function TouchSearchPanel(props: { source: TouchSearchPanelInfo }) {
     <section class="ehpeek-touch-search-panel box-border flex w-[calc(100%_-_32px)] max-w-960px flex-col gap-md mx-auto mb-lg p-lg border ehp-color-site-border rounded-lg ehp-color-site-surface ehp-color-site-text shadow-[0_8px_24px_var(--color-shadow-panel)] font-sans">
       <div ref={searchBoxHost} class="contents" />
       <div ref={fileSearchHost} class="contents" />
+      {props.after}
     </section>
   );
 }

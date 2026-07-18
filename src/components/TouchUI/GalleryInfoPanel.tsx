@@ -18,23 +18,10 @@ export function GalleryInfoPanel(props: {
   const hasCover = props.source.cover !== null;
   const [ratingValue, setRatingValue] = createSignal(rating?.value ?? 0);
   const [ratingPreview, setRatingPreview] = createSignal<number | null>(null);
-  const [backToTopVisible, setBackToTopVisible] = createSignal(false);
   const displayedRating = createMemo(() => ratingPreview() ?? ratingValue());
   const selectedRating = createMemo(() => ratingPreview() ?? selectableRating(ratingValue()));
   const ratingLabel = createMemo(() => ratingPreview() ? `Rate as ${ratingPreview()!.toFixed(1)} stars` : rating?.label ?? "");
 
-  onMount(() => {
-    const updateBackToTopVisibility = () => {
-      setBackToTopVisible(window.scrollY > Math.max(320, window.innerHeight * 0.5));
-    };
-
-    updateBackToTopVisibility();
-    window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
-
-    onCleanup(() => {
-      window.removeEventListener("scroll", updateBackToTopVisibility);
-    });
-  });
   onCleanup(() => props.onPrimaryActionUnmount());
 
   const submitRating = (value: number) => {
@@ -180,19 +167,6 @@ export function GalleryInfoPanel(props: {
           </div>
         )}
       </div>
-      <Show when={backToTopVisible()}>
-        <button
-          type="button"
-          class="ehpeek-back-to-top fixed right-[max(16px,env(safe-area-inset-right,0px))] bottom-[calc(max(16px,env(safe-area-inset-bottom,0px))_+_52px)] z-ui inline-flex w-lg h-lg items-center justify-center rounded-full border ehp-color-site-border bg-[var(--color-site-elevated)] ehp-color-site-accent shadow-[0_4px_14px_var(--color-shadow-floating)] cursor-pointer [touch-action:manipulation] active:scale-96"
-          aria-label={texts.reader.backToTop}
-          title={texts.reader.backToTop}
-          onClick={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-        >
-          <Icon name="arrow-up" />
-        </button>
-      </Show>
     </section>
   );
 }

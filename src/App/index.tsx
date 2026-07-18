@@ -10,6 +10,7 @@ import {
   ScrollPageBar,
 } from "../components/Enhance/ScrollPageBar";
 import { SettingsMenu } from "../components/SettingsMenu";
+import { BackToTop } from "../components/Widgets/BackToTop";
 import {
   prepareTouchGalleryPage,
   prepareTouchResultsPage,
@@ -149,6 +150,7 @@ document.body.append(settingsMenuHost);
 let galleryReadButtonMount: HTMLElement | null | undefined;
 let touchGalleryReadButtonMount: HTMLElement | undefined;
 let originalReadHistorySession: ReadHistorySession | undefined;
+let touchFavoritesCategorySelect: eh.TouchFavoritesCategorySelectInfo | null = null;
 let pageGeneration = 0;
 let pageRoots = new Set<HTMLElement>();
 let pageOwnedHosts = new Set<HTMLElement>();
@@ -184,6 +186,7 @@ function deactivatePage(): void {
   pageOwnedHosts = new Set();
   galleryReadButtonMount = undefined;
   touchGalleryReadButtonMount = undefined;
+  touchFavoritesCategorySelect = null;
 }
 
 function installSettingsMenu(): void {
@@ -329,6 +332,13 @@ function installTouchTopBar(): void {
   }
 }
 
+function installBackToTop(): void {
+  const host = document.createElement("div");
+  host.className = "ehpeek-back-to-top-host";
+  document.body.append(host);
+  renderPageInto(host, () => <BackToTop />, true);
+}
+
 function installGalleryInfoPanel(): void {
   if (document.querySelector(".ehpeek-touch-gallery")) {
     return;
@@ -387,7 +397,20 @@ function installTouchSearchPanel(): void {
   }
 
   prepareSearchPanel(touchSearchInfo);
-  renderPageInto(mount, () => <TouchSearchPanel source={touchSearchInfo} />, true);
+  renderPageInto(
+    mount,
+    () => (
+      <TouchSearchPanel
+        source={touchSearchInfo}
+        after={
+          touchFavoritesCategorySelect ? (
+            <FavoritesCategorySelect info={touchFavoritesCategorySelect} />
+          ) : undefined
+        }
+      />
+    ),
+    true,
+  );
   if (touchSearchInfo.categories && touchSearchInfo.categoryToggleMount) {
     const categories = touchSearchInfo.categories;
     renderPageInto(
@@ -445,15 +468,7 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   if (!settingsState.touchUiEnabled) {
     installDesktopSettingsLink();
   } else {
-    const favoritesCategorySelect = prepareTouchResultsPage(pageType);
-
-    if (favoritesCategorySelect) {
-      renderPageInto(
-        favoritesCategorySelect.mount,
-        () => <FavoritesCategorySelect info={favoritesCategorySelect} />,
-        true,
-      );
-    }
+    touchFavoritesCategorySelect = prepareTouchResultsPage(pageType);
   }
 
   installReadButton();
@@ -524,11 +539,14 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   }
 
   installTouchTopBar();
+  if (pageType.type === "gallery" || resultsPage) {
+    installBackToTop();
+  }
 
   if (pageType.type === "gallery") {
     installGalleryInfoPanel();
   } else if (resultsPage) {
-    if (!settingsState.singlePageAppEnabled) {
+    if (!settingsState.singlePageAppEnabled && pageType.type === "search") {
       await EhSyringe.waitForSearchUi();
     }
 

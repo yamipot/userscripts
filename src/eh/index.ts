@@ -133,6 +133,7 @@ export function extractPageType(url = window.location.href): PageType {
     if (
       parsed.pathname === "/" ||
       parsed.pathname.startsWith("/tag/") ||
+      parsed.pathname.startsWith("/uploader/") ||
       /^\/(?:popular|watched)\/?$/.test(parsed.pathname)
     ) {
       return {

@@ -18,8 +18,8 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
     const updatePosition = () => {
       const rect = input.getBoundingClientRect();
       setPosition({
-        left: rect.left + window.scrollX,
-        top: rect.bottom + window.scrollY,
+        left: rect.left,
+        top: rect.bottom,
         width: rect.width,
       });
     };
@@ -82,8 +82,12 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
       {(currentPosition) => (
         <section
           ref={dropdown}
-          class="absolute z-ui flex box-border max-h-[50vh] min-w-0 flex-col overflow-hidden overflow-y-auto overscroll-contain rounded-md border ehp-color-site-border ehp-color-site-elevated ehp-color-site-text font-sans"
-          style={{ left: `${currentPosition.left}px`, top: `${currentPosition.top}px`, width: `${currentPosition.width}px` }}
+          class="fixed z-ui flex box-border max-h-[50vh] flex-col overflow-hidden overflow-y-auto overscroll-contain rounded-md border ehp-color-site-border ehp-color-site-elevated ehp-color-site-text font-sans"
+          style={{
+            left: `${currentPosition.left}px`,
+            top: `${currentPosition.top}px`,
+            width: `${currentPosition.width}px`,
+          }}
           aria-label={texts.search.history}
           role="list"
         >

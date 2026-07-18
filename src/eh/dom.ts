@@ -9,6 +9,9 @@ const TOUCH_FAVORITES_CONTENT_CLASS_NAME = "box-border !min-w-0 !w-full !max-w-f
 const TOUCH_FAVORITES_NAV_CLASS_NAME = "box-border !max-w-full overflow-x-auto";
 const TOUCH_FAVORITES_RESULTS_CLASS_NAME = "ehpeek-touch-favorites-results box-border !min-w-0 !w-full !max-w-full overflow-x-auto";
 const TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME = "!min-w-0 !w-full !max-w-full";
+const TOUCH_FAVORITES_ALL_RESULTS_CLASS_NAME = "!overflow-x-hidden";
+const TOUCH_FAVORITES_ALL_RESULT_LIST_CLASS_NAME =
+  "!table-auto [&>tbody>tr>.gl2e]:!w-auto [&>tbody>tr>.gl2e]:[overflow-wrap:anywhere] [&_.glink]:whitespace-normal [&_.glink]:break-words [&>tbody>tr>.glfe]:!w-[1%] [&>tbody>tr>.glfe]:whitespace-nowrap";
 const TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME = "!min-w-0 !max-w-full !overflow-x-hidden";
 const TOUCH_SEARCH_RESULTS_CONTENT_CLASS_NAME = "box-border !min-w-0 !w-full !max-w-full !overflow-x-hidden";
 const TOUCH_SEARCH_RESULTS_WRAPPER_CLASS_NAME =
@@ -136,15 +139,21 @@ export type TouchSearchPanelInfo = {
 };
 
 export type TouchFavoritesCategory = {
+  appearance: TouchFavoritesCategoryAppearance | null;
   count: number;
   label: string;
   selected: boolean;
   select: () => void;
 };
 
+export type TouchFavoritesCategoryAppearance = {
+  backgroundImage: string;
+  backgroundPosition: string;
+  backgroundSize: string;
+};
+
 export type TouchFavoritesCategorySelectInfo = {
   categories: TouchFavoritesCategory[];
-  mount: HTMLDivElement;
 };
 
 export type SearchHistorySource = {
@@ -851,8 +860,18 @@ export function prepareTouchFavoritesPage(): TouchFavoritesCategorySelectInfo | 
   document.documentElement.classList.add(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "));
   document.body.classList.add(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "));
 
+  const page = document.querySelector<HTMLElement>(".ido");
+  page?.style.removeProperty("min-width");
+  page?.classList.add(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" "));
   const categories = document.querySelector<HTMLElement>(".ido > .nosel");
   const categorySelect = categories ? prepareTouchFavoritesCategorySelect(categories) : null;
+  const searchForm = document.querySelector<HTMLInputElement>("input[name='f_search']")?.form;
+  const searchContainer = searchForm?.parentElement;
+
+  if (searchContainer instanceof HTMLElement) {
+    searchContainer.style.removeProperty("width");
+    searchContainer.classList.add("box-border", "!w-full", "!min-w-0", "!max-w-full");
+  }
 
   for (const navigation of searchNavigationBars()) {
     navigation.classList.add(...TOUCH_FAVORITES_NAV_CLASS_NAME.split(" "));
@@ -860,13 +879,12 @@ export function prepareTouchFavoritesPage(): TouchFavoritesCategorySelectInfo | 
 
   const resultList = searchResultList();
   resultList?.classList.add(...TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME.split(" "));
+  const allSelected = categorySelect?.categories[0]?.selected === true;
   const existingWrapper = resultList?.parentElement?.classList.contains("ehpeek-touch-favorites-results")
     ? resultList.parentElement
     : null;
   const content = existingWrapper?.parentElement ?? resultList?.parentElement;
-  const pageContent = resultList?.closest<HTMLElement>(".ido");
 
-  pageContent?.classList.add(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" "));
   content?.classList.add(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" "));
 
   if (!resultList || existingWrapper) {
@@ -875,6 +893,10 @@ export function prepareTouchFavoritesPage(): TouchFavoritesCategorySelectInfo | 
 
   const wrapper = document.createElement("div");
   wrapper.className = TOUCH_FAVORITES_RESULTS_CLASS_NAME;
+  if (allSelected || window.innerWidth < 850) {
+    wrapper.classList.add(...TOUCH_FAVORITES_ALL_RESULTS_CLASS_NAME.split(" "));
+    resultList.classList.add(...TOUCH_FAVORITES_ALL_RESULT_LIST_CLASS_NAME.split(" "));
+  }
   resultList.replaceWith(wrapper);
   wrapper.append(resultList);
   return categorySelect;
@@ -888,12 +910,19 @@ function prepareTouchFavoritesCategorySelect(container: HTMLElement): TouchFavor
   }
 
   const parsed = nodes.map((node) => {
-    const text = (node.textContent ?? "").replace(/\s+/g, " ").trim();
-    const countMatch = text.match(/([\d,]+)\s*$/);
-    const count = Number((countMatch?.[1] ?? "0").replace(/,/g, ""));
-    const label = countMatch ? text.slice(0, countMatch.index).trim() : text;
+    const children = Array.from(node.children);
+    const countText = children[0]?.textContent?.trim() ?? "0";
+    const label = children[children.length - 1]?.textContent?.trim() || node.textContent?.trim() || "";
+    const count = Number(countText.replace(/,/g, ""));
+    const indicator = node.querySelector<HTMLElement>(".i");
+    const indicatorStyle = indicator ? window.getComputedStyle(indicator) : null;
 
     return {
+      appearance: indicatorStyle ? {
+        backgroundImage: indicatorStyle.backgroundImage,
+        backgroundPosition: indicatorStyle.backgroundPosition,
+        backgroundSize: indicatorStyle.backgroundSize,
+      } : null,
       count: Number.isFinite(count) ? count : 0,
       label,
       node,
@@ -903,17 +932,14 @@ function prepareTouchFavoritesCategorySelect(container: HTMLElement): TouchFavor
   const all = parsed.find((category) => category.node.children.length === 0);
   const favorites = parsed.filter((category) => category !== all);
   const total = favorites.reduce((sum, category) => sum + category.count, 0);
-  const mount = document.createElement("div");
-  mount.className = "box-border w-[calc(100%_-_32px)] max-w-960px mx-auto py-sm";
-  container.before(mount);
   container.hidden = true;
 
   return {
-    mount,
     categories: [
       ...(all ? [{ ...all, count: total, label: texts.favorites.all }] : []),
       ...favorites,
-    ].map(({ count, label, node, selected }) => ({
+    ].map(({ appearance, count, label, node, selected }) => ({
+      appearance,
       count,
       label,
       selected,
@@ -959,7 +985,9 @@ export function insertTouchTopBar(topBar: HTMLElement): boolean {
 }
 
 export function insertTouchSearchPanel(panel: HTMLElement): boolean {
-  const original = document.querySelector("#searchbox");
+  const original =
+    document.querySelector("#searchbox") ??
+    document.querySelector<HTMLInputElement>("input[name='f_search']")?.form;
 
   if (!original?.parentElement) {
     return false;

@@ -1,19 +1,74 @@
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { TouchFavoritesCategorySelectInfo } from "../../eh";
 import texts from "../../texts.json";
 
 export function FavoritesCategorySelect(props: { info: TouchFavoritesCategorySelectInfo }) {
-  const selectedIndex = Math.max(0, props.info.categories.findIndex((category) => category.selected));
+  let container!: HTMLDivElement;
+  const [open, setOpen] = createSignal(false);
+  const selected = () => props.info.categories.find((category) => category.selected) ?? props.info.categories[0];
+
+  onMount(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !container.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    onCleanup(() => document.removeEventListener("pointerdown", closeOnOutsidePointer, true));
+  });
 
   return (
-    <select
-      aria-label={texts.favorites.categories}
-      class="block h-60px w-full rounded-md border border-solid ehp-color-site-border bg-[var(--color-site-elevated)] px-lg textsize-md ehp-color-site-text outline-none focus:(border-[var(--color-site-accent)] shadow-[0_0_0_3px_var(--color-site-accent-hover)])"
-      value={String(selectedIndex)}
-      onChange={(event) => props.info.categories[Number(event.currentTarget.value)]?.select()}
-    >
-      {props.info.categories.map((category, index) => (
-        <option value={String(index)}>{category.label} [{category.count}]</option>
-      ))}
-    </select>
+    <div ref={container} class="box-border w-full min-w-0 overflow-hidden rounded-md border ehp-color-site-border bg-[var(--color-site-elevated)]">
+      <button
+        type="button"
+        class="flex box-border w-full min-h-md items-center justify-between gap-md px-md py-sm rounded-xs border-0 !bg-transparent ehp-color-site-text text-left textsize-md font-700 font-inherit cursor-pointer hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)]"
+        aria-expanded={open()}
+        aria-label={texts.favorites.categories}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span class="flex min-w-0 items-center gap-sm overflow-hidden">
+          {categoryIndicator(selected()?.appearance)}
+          <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+          {selected()?.label} [{selected()?.count}]
+          </span>
+        </span>
+        <span class="flex h-20px w-20px flex-none items-center justify-center leading-none" aria-hidden="true">
+          {open() ? "−" : "+"}
+        </span>
+      </button>
+      <Show when={open()}>
+        <div class="border-0 border-t border-t-[var(--color-site-border-subtle)]">
+          <For each={props.info.categories}>{(category) => (
+            <button
+              type="button"
+              class={`flex box-border w-full min-h-md items-center px-md py-sm border-0 border-b ehp-color-site-border-subtle-b last:border-b-0 text-left textsize-md font-inherit cursor-pointer ${category.selected ? "bg-[var(--color-site-accent-hover)] ehp-color-site-accent font-700" : "!bg-transparent ehp-color-site-text hover:!bg-[var(--color-site-item-hover)]"}`}
+              onClick={category.select}
+            >
+              <span class="flex min-w-0 items-center gap-sm">
+                {categoryIndicator(category.appearance)}
+                <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                  {category.label} [{category.count}]
+                </span>
+              </span>
+            </button>
+          )}</For>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function categoryIndicator(appearance: TouchFavoritesCategorySelectInfo["categories"][number]["appearance"]) {
+  return (
+    <span
+      class="block h-15px w-15px flex-none bg-no-repeat"
+      style={appearance ? {
+        "background-image": appearance.backgroundImage,
+        "background-position": appearance.backgroundPosition,
+        "background-size": appearance.backgroundSize,
+      } : undefined}
+      aria-hidden="true"
+    />
   );
 }
