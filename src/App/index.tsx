@@ -170,8 +170,9 @@ function installSearchGridModeSelect(): void {
       state.search.grid.set(true);
       window.location.assign(new URL("/?inline_set=dm_e", window.location.href).href);
     },
-    () => {
+    (value) => {
       state.search.grid.set(false);
+      window.location.assign(new URL(`/?inline_set=dm_${value}`, window.location.href).href);
     },
   );
 }
@@ -440,19 +441,19 @@ function installTouchSearchPanel(): void {
       true,
     );
   }
-  if (touchSearchInfo.advancedToggle && touchSearchInfo.advancedToggleMount) {
-    const advancedToggle = touchSearchInfo.advancedToggle;
+  if (touchSearchInfo.advancedPanel && touchSearchInfo.advancedToggleMount) {
+    const advancedPanel = touchSearchInfo.advancedPanel;
     renderPageInto(
       touchSearchInfo.advancedToggleMount,
-      () => <TouchSearchAdvancedToggle toggle={advancedToggle} />,
+      () => <TouchSearchAdvancedToggle panel={advancedPanel} />,
       true,
     );
   }
-  if (touchSearchInfo.fileSearchToggle && touchSearchInfo.fileSearchToggleMount) {
-    const fileSearchToggle = touchSearchInfo.fileSearchToggle;
+  if (touchSearchInfo.fileSearch && touchSearchInfo.fileSearchToggleMount) {
+    const fileSearch = touchSearchInfo.fileSearch;
     renderPageInto(
       touchSearchInfo.fileSearchToggleMount,
-      () => <TouchSearchFileToggle toggle={fileSearchToggle} />,
+      () => <TouchSearchFileToggle panel={fileSearch} />,
       true,
     );
   }
@@ -625,7 +626,9 @@ function trackOriginalReadHistory(): void {
 
 document.addEventListener("click", (event) => onReaderDocumentClick(event, readerCallbacks), true);
 
-const singlePageInitialRoute = settingsState.singlePageAppEnabled ? eh.singlePageRoute(window.location.href) : null;
+const singlePageInitialRoute = settingsState.touchUiEnabled && settingsState.singlePageAppEnabled
+  ? eh.singlePageRoute(window.location.href)
+  : null;
 
 if (singlePageInitialRoute) {
   void startSinglePageApp(singlePageInitialRoute);
@@ -635,6 +638,7 @@ if (singlePageInitialRoute) {
 
 async function startSinglePageApp(initialPage: eh.PageType): Promise<void> {
   await EhSyringe.waitForInitialUi();
+  eh.prepareSinglePageContent(document.body, window.location.href);
   const initialNodes = eh.singlePageContentNodes();
   const host = document.createElement("div");
   host.className = "isolate";

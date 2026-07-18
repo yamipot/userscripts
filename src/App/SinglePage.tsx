@@ -66,6 +66,7 @@ export function SinglePage(props: {
     navigationController = controller;
     setFailedUrl(null);
     setLoading(true);
+    routeHost.inert = true;
     routeHost.setAttribute("aria-busy", "true");
 
     try {
@@ -126,6 +127,7 @@ export function SinglePage(props: {
       if (sequence === navigationSequence) {
         navigationController = null;
         stagingHost.replaceChildren();
+        routeHost.inert = false;
         routeHost.removeAttribute("aria-busy");
         setLoading(false);
       }

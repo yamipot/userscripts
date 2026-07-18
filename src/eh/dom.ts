@@ -26,6 +26,14 @@ const EXHENTAI_ONION_HOST = "exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ug
 const SINGLE_PAGE_PERSISTENT_SELECTOR =
   "[data-ehpeek-persistent], #eh-syringe-popup-button, #eh-syringe-popup-back, .eh-syringe-lite-auto-complete-list";
 
+type GalleryApiSession = {
+  apiKey: string;
+  apiUid: number;
+  apiUrl: string;
+};
+
+let galleryApiSession: GalleryApiSession | null = null;
+
 export type PreviewSnapshot = {
   description: Node | null;
   thumbs: Node | null;
@@ -325,7 +333,7 @@ export function prepareEhPeekSearchGrid(): void {
       "important",
     );
     row.style.setProperty("align-items", "start", "important");
-    row.style.setProperty("column-gap", "6px", "important");
+    row.style.setProperty("column-gap", "0", "important");
     row.style.setProperty("width", "100%", "important");
 
     thumbnailCell.style.setProperty("width", "auto", "important");
@@ -333,7 +341,10 @@ export function prepareEhPeekSearchGrid(): void {
     contentCell.style.setProperty("min-width", "0", "important");
     contentCell.style.setProperty("align-self", "stretch", "important");
     contentCell.style.setProperty("height", "100%", "important");
+    contentCell.style.setProperty("box-sizing", "border-box", "important");
+    contentCell.style.setProperty("padding-left", "0", "important");
     selectionCell?.style.setProperty("width", "auto", "important");
+    selectionCell?.style.setProperty("margin-left", "6px", "important");
 
     mergeEhPeekSearchContent(contentCell);
 
@@ -392,6 +403,7 @@ function mergeEhPeekSearchContent(contentCell: HTMLElement): void {
   detail.style.setProperty("min-height", "0", "important");
   detail.style.setProperty("width", "100%", "important");
   detail.style.setProperty("box-sizing", "border-box", "important");
+  detail.style.setProperty("padding-left", "6px", "important");
 
   metadata.style.setProperty("display", "flex", "important");
   metadata.style.setProperty("flex-direction", "row", "important");
@@ -450,6 +462,7 @@ function mergeEhPeekSearchContent(contentCell: HTMLElement): void {
     item.style.setProperty("flex", "0 0 auto", "important");
     item.style.setProperty("min-width", "0", "important");
     item.style.setProperty("margin", "0", "important");
+    item.style.setProperty("font-size", "var(--font-size-sm)", "important");
     item.style.setProperty("font-weight", "600", "important");
 
     if (item.matches(".ir, .gldown")) {
@@ -502,9 +515,13 @@ function makeEhPeekSearchContentClickable(contentCell: HTMLElement, galleryLink:
 export function prepareSearchGridModeSelect(
   selected: boolean,
   onEhPeekSelect: () => void,
-  onOriginalSelect: () => void,
+  onOriginalSelect: (value: string) => void,
 ): void {
-  const selects = Array.from(document.querySelectorAll<HTMLSelectElement>("select[onchange*='inline_set=dm_']"));
+  const selects = Array.from(
+    document.querySelectorAll<HTMLSelectElement>(
+      "select[onchange*='inline_set=dm_'], select[data-ehpeek-grid-mode-source='true']",
+    ),
+  );
 
   for (const select of selects) {
     let option = Array.from(select.options).find((item) => item.value === "ehpeek");
@@ -523,7 +540,9 @@ export function prepareSearchGridModeSelect(
     select.dataset.ehpeekGridMode = "true";
     select.addEventListener("change", (event) => {
       if (select.value !== "ehpeek") {
-        onOriginalSelect();
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onOriginalSelect(select.value);
         return;
       }
 
@@ -542,14 +561,88 @@ export function searchTopNavigationBar(root: ParentNode = document): HTMLElement
   return searchNavigationBars(root)[0] ?? null;
 }
 
+export function searchNavigationLinkForUrl(url: string, root: ParentNode = document): HTMLAnchorElement | null {
+  const targetUrl = normalizeUrl(url, window.location.href);
+
+  for (const bar of searchNavigationBars(root)) {
+    const link = Array.from(bar.querySelectorAll<HTMLAnchorElement>("a[href]")).find(
+      (candidate) => candidate.href === targetUrl,
+    );
+
+    if (link) {
+      return link;
+    }
+  }
+
+  return null;
+}
+
 export function singlePageContentNodes(root: HTMLElement = document.body): Node[] {
   return Array.from(root.childNodes).filter(
     (node) => !(node instanceof Element && node.matches(SINGLE_PAGE_PERSISTENT_SELECTOR)),
   );
 }
 
+export function prepareSinglePageContent(root: ParentNode, baseUrl: string): void {
+  captureGalleryApiSession(root, baseUrl);
+  preserveSinglePageGalleryData(root, baseUrl);
+
+  for (const form of Array.from(root.querySelectorAll<HTMLFormElement>("form"))) {
+    const action = form.getAttribute("action") ?? "";
+    form.action = normalizeUrl(action || baseUrl, baseUrl);
+  }
+
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (/^on/i.test(attribute.name)) {
+        preserveSinglePageControlRole(element, attribute.value);
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+
+  for (const script of Array.from(root.querySelectorAll<HTMLScriptElement>("script"))) {
+    script.remove();
+  }
+}
+
+function preserveSinglePageGalleryData(root: ParentNode, baseUrl: string): void {
+  const scripts = Array.from(root.querySelectorAll<HTMLScriptElement>("script"), (item) => item.textContent ?? "");
+  const ratingScript = scripts.find((text) => text.includes("display_rating"));
+  const rating = ratingScript ? scriptNumberValue(ratingScript, "display_rating") : null;
+  const ratingImage = root.querySelector<HTMLElement>("#rating_image");
+
+  if (ratingImage && rating !== null) {
+    ratingImage.dataset.ehpeekRating = String(rating);
+  }
+
+  const gallery = new URL(baseUrl).pathname.match(/^\/g\/(\d+)\/([^/]+)/i);
+  const favoriteScript = scripts.find((text) => text.includes("popbase") && text.includes("addfav"));
+  const favoriteMatch = favoriteScript?.match(
+    /popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"&]+)&act="/,
+  );
+  const favorite = root.querySelector<HTMLElement>("#fav");
+
+  if (favorite && gallery && favoriteMatch?.[1] === gallery[1] && favoriteMatch[2] === gallery[2]) {
+    favorite.dataset.ehpeekActionUrl = `/gallerypopups.php?gid=${favoriteMatch[1]}&t=${favoriteMatch[2]}&act=addfav`;
+  }
+}
+
+function preserveSinglePageControlRole(element: HTMLElement, handler: string): void {
+  if (handler.includes("toggle_advsearch")) {
+    element.dataset.ehpeekSearchAdvancedToggle = "true";
+  }
+  if (handler.includes("toggle_filesearch")) {
+    element.dataset.ehpeekSearchFileToggle = "true";
+  }
+  if (handler.includes("inline_set=dm_")) {
+    element.dataset.ehpeekGridModeSource = "true";
+  }
+}
+
 export function importSinglePageContent(doc: Document, baseUrl: string): Node[] {
   absolutizeDocumentUrls(doc, baseUrl);
+  prepareSinglePageContent(doc, baseUrl);
   return Array.from(doc.body.childNodes, (node) => document.importNode(node, true));
 }
 
@@ -682,8 +775,12 @@ export function readTouchSearchPanelInfo(root: ParentNode = document): TouchSear
   const advancedPanel = searchBox?.querySelector<HTMLElement>("#advdiv") ?? null;
   const optionLinksCandidate = advancedPanel?.previousElementSibling;
   const optionLinks = optionLinksCandidate instanceof HTMLElement ? optionLinksCandidate : null;
-  const advancedToggle = optionLinks?.querySelector<HTMLAnchorElement>("a[onclick*='toggle_advsearch']") ?? null;
-  const fileSearchToggle = optionLinks?.querySelector<HTMLAnchorElement>("a[onclick*='toggle_filesearch']") ?? null;
+  const advancedToggle = optionLinks?.querySelector<HTMLAnchorElement>(
+    "a[onclick*='toggle_advsearch'], a[data-ehpeek-search-advanced-toggle='true']",
+  ) ?? null;
+  const fileSearchToggle = optionLinks?.querySelector<HTMLAnchorElement>(
+    "a[onclick*='toggle_filesearch'], a[data-ehpeek-search-file-toggle='true']",
+  ) ?? null;
   const searchSubmit =
     form?.querySelector<HTMLInputElement | HTMLButtonElement>("input[name='f_apply'], button[name='f_apply']") ??
     searchInput?.parentElement?.querySelector<HTMLInputElement | HTMLButtonElement>(
@@ -803,6 +900,7 @@ export function prepareTouchSearchPanel(info: TouchSearchPanelInfo, optionClassN
       category.className =
         `${colorClass ? `${colorClass} ` : ""}` +
         "flex box-border w-full min-w-0 !h-lg items-center justify-center px-md border rounded-md text-white text-center textsize-md font-700 leading-[1.15] whitespace-nowrap shadow-[0_2px_6px_var(--color-shadow-control)] cursor-pointer select-none transition-opacity [touch-action:manipulation] active:opacity-70 [&[data-disabled]]:opacity-40";
+      prepareTouchSearchCategory(category, form);
     }
   }
 
@@ -856,6 +954,29 @@ export function prepareTouchSearchPanel(info: TouchSearchPanelInfo, optionClassN
   }
 }
 
+function prepareTouchSearchCategory(category: HTMLElement, form: HTMLFormElement): void {
+  if (category.dataset.ehpeekCategory === "true") {
+    return;
+  }
+
+  const categoryMask = form.querySelector<HTMLInputElement>("input[name='f_cats']");
+  const bit = Number(category.id.match(/^cat_(\d+)$/)?.[1]);
+
+  if (!categoryMask || !Number.isInteger(bit) || bit <= 0) {
+    return;
+  }
+
+  category.dataset.ehpeekCategory = "true";
+  const update = () => {
+    category.toggleAttribute("data-disabled", (Number(categoryMask.value) & bit) !== 0);
+  };
+  update();
+  category.addEventListener("click", () => {
+    categoryMask.value = String(Number(categoryMask.value) ^ bit);
+    update();
+  });
+}
+
 function searchActionLabel(element: HTMLInputElement | HTMLButtonElement): string {
   return element instanceof HTMLInputElement ? element.value : element.textContent?.trim() ?? "";
 }
@@ -881,7 +1002,6 @@ export function replaceSearchPageContent(doc: Document): HTMLElement | null {
 
   replaceFirstElement("#rangebar", doc);
   replaceFirstElement(".searchtext", doc);
-  replaceSearchRangeScript(doc);
   replaceSearchNavigationBars(doc);
 
   const importedList = document.importNode(incomingList, true);
@@ -1252,6 +1372,12 @@ export function prepareTouchSearchResultsPage(): void {
   document.documentElement.classList.add(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "));
   document.body.classList.add(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "));
 
+  const rangeBar = document.querySelector<HTMLElement>("#rangebar");
+  if (rangeBar) {
+    rangeBar.hidden = true;
+    rangeBar.style.setProperty("display", "none", "important");
+  }
+
   const resultList = searchResultList();
   resultList?.classList.add(...TOUCH_SEARCH_RESULT_LIST_CLASS_NAME.split(" "));
   const existingWrapper = resultList?.parentElement?.classList.contains("ehpeek-touch-search-results")
@@ -1364,7 +1490,9 @@ export function readGalleryInfo(actionMenuItemClassName: string): GalleryInfo {
     newTag: readGalleryNewTagInfo(),
     tagApi: readGalleryTagApiInfo(),
     summary,
-    actions: readGalleryActionsDom(actionMenuItemClassName),
+    actions: document.querySelector("[data-ehpeek-single-page-app='true']")
+      ? []
+      : readGalleryActionsDom(actionMenuItemClassName),
     rating: readGalleryRatingInfo(),
     tagGroups: readGalleryTagGroups(),
   };
@@ -1442,29 +1570,6 @@ function replaceSearchNavigationBars(doc: Document): void {
   }
 }
 
-function replaceSearchRangeScript(doc: Document): void {
-  const incomingScript = Array.from(doc.querySelectorAll<HTMLScriptElement>("script")).find((item) =>
-    item.textContent?.includes("build_rangebar()"),
-  );
-
-  if (!incomingScript) {
-    return;
-  }
-
-  const currentScript = Array.from(document.querySelectorAll<HTMLScriptElement>("script")).find((item) =>
-    item.textContent?.includes("build_rangebar()"),
-  );
-  const script = document.createElement("script");
-  script.type = incomingScript.type || "text/javascript";
-  script.textContent = incomingScript.textContent;
-
-  if (currentScript) {
-    currentScript.replaceWith(script);
-  } else {
-    searchNavigationBars()[0]?.before(script);
-  }
-}
-
 function readGalleryMeta(): Map<string, string> {
   const entries = Array.from(document.querySelectorAll<HTMLTableRowElement>("#gdd tr"))
     .map((row) => {
@@ -1496,8 +1601,10 @@ function readGalleryRatingInfo(): GalleryRatingInfo | null {
   const label = textOf("#rating_label");
   const count = textOf("#rating_count");
   const ratingImage = document.querySelector("#rating_image");
-  const script = galleryRatingScript();
-  const value = scriptNumberValue(script, "display_rating");
+  const preservedValue = ratingImage instanceof HTMLElement ? Number(ratingImage.dataset.ehpeekRating) : Number.NaN;
+  const value = Number.isFinite(preservedValue)
+    ? preservedValue
+    : scriptNumberValue(galleryRatingScript(), "display_rating");
 
   if (!label || value === null) {
     return null;
@@ -1697,43 +1804,71 @@ function readGalleryNewTagInfo(): GalleryNewTagInfo | null {
   };
 }
 
+function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.location.href): boolean {
+  if (galleryApiSession) {
+    return true;
+  }
+
+  const script = Array.from(root.querySelectorAll<HTMLScriptElement>("script"))
+    .map((item) => item.textContent ?? "")
+    .find((text) => text.includes("var api_url") && text.includes("var apikey"));
+
+  if (!script) {
+    return false;
+  }
+
+  const apiUrlValue = scriptStringValue(script, "api_url");
+  const apiKey = scriptStringValue(script, "apikey");
+  const apiUid = scriptNumberValue(script, "apiuid");
+
+  if (!apiUrlValue || !apiKey || apiUid === null) {
+    return false;
+  }
+
+  const apiUrl = new URL(apiUrlValue, baseUrl);
+  const pageUrl = new URL(baseUrl);
+  const allowedHost =
+    apiUrl.origin === pageUrl.origin ||
+    (apiUrl.protocol === "https:" && apiUrl.hostname === "api.e-hentai.org");
+
+  if (
+    !allowedHost ||
+    !/^\/api\.php$/i.test(apiUrl.pathname) ||
+    Boolean(apiUrl.username || apiUrl.password || apiUrl.search || apiUrl.hash) ||
+    !Number.isSafeInteger(apiUid) ||
+    apiUid <= 0 ||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(apiKey)
+  ) {
+    return false;
+  }
+
+  galleryApiSession = {
+    apiKey,
+    apiUid,
+    apiUrl: apiUrl.href,
+  };
+  return true;
+}
+
 function readGalleryTagApiInfo(): GalleryTagApiInfo | null {
   const galleryMatch = window.location.pathname.match(/^\/g\/(\d+)\/([^/]+)/i);
 
-  if (!galleryMatch) {
+  if (!galleryMatch || (!galleryApiSession && !captureGalleryApiSession())) {
     return null;
   }
 
-  const expectedGalleryId = Number(galleryMatch[1]);
-  const expectedToken = galleryMatch[2];
-  const script = Array.from(document.scripts)
-    .map((item) => item.textContent ?? "")
-    .find(
-      (text) =>
-        text.includes("var api_url") &&
-        text.includes("var apikey") &&
-        scriptNumberValue(text, "gid") === expectedGalleryId &&
-        scriptStringValue(text, "token") === expectedToken,
-    );
+  const galleryId = Number(galleryMatch[1]);
+  const token = galleryMatch[2];
+  const session = galleryApiSession;
 
-  if (!script) {
-    return null;
-  }
-
-  const apiUrl = scriptStringValue(script, "api_url");
-  const apiKey = scriptStringValue(script, "apikey");
-  const token = scriptStringValue(script, "token");
-  const galleryId = scriptNumberValue(script, "gid");
-  const apiUid = scriptNumberValue(script, "apiuid");
-
-  if (!apiUrl || !apiKey || !token || galleryId === null || apiUid === null) {
+  if (!session || !Number.isSafeInteger(galleryId) || galleryId <= 0 || !/^[A-Za-z0-9]+$/.test(token)) {
     return null;
   }
 
   return {
-    apiKey,
-    apiUid,
-    apiUrl,
+    apiKey: session.apiKey,
+    apiUid: session.apiUid,
+    apiUrl: session.apiUrl,
     galleryId,
     token,
   };
@@ -1778,6 +1913,12 @@ function galleryFavoriteColor(value: string): string | null {
 }
 
 function galleryFavoriteActionUrl(): string {
+  const preserved = document.querySelector<HTMLElement>("#fav")?.dataset.ehpeekActionUrl;
+
+  if (preserved) {
+    return preserved;
+  }
+
   const script = Array.from(document.scripts)
     .map((item) => item.textContent ?? "")
     .find((text) => text.includes("popbase") && text.includes("addfav")) ?? "";

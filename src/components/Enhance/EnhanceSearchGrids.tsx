@@ -140,12 +140,21 @@ function onSearchNavigationClick(event: MouseEvent): void {
     return;
   }
 
+  if (document.querySelector("[data-ehpeek-single-page-app='true']")) {
+    return;
+  }
+
   event.preventDefault();
   event.stopPropagation();
   void navigateSearchPage(link.href);
 }
 
 async function navigateSearchPage(url: string): Promise<void> {
+  if (document.querySelector("[data-ehpeek-single-page-app='true']")) {
+    eh.searchNavigationLinkForUrl(url)?.click();
+    return;
+  }
+
   if (searchNavigationLoading) {
     return;
   }

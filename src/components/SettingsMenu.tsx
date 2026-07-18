@@ -25,6 +25,7 @@ const SETTINGS_DOT_CLASS =
 function SwitchButton(props: {
   checked: boolean;
   description: string;
+  disabled?: boolean;
   label: string;
   onChange: (value: boolean) => void;
 }) {
@@ -36,8 +37,9 @@ function SwitchButton(props: {
       <div class="flex items-stretch">
         <button
           type="button"
-          class="flex min-w-0 flex-1 min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text cursor-pointer font-inherit text-left textsize-md [-webkit-tap-highlight-color:transparent]"
+          class={`flex min-w-0 flex-1 min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text font-inherit text-left textsize-md [-webkit-tap-highlight-color:transparent] ${props.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"}`}
           aria-describedby={helpOpen() ? helpId : undefined}
+          disabled={props.disabled}
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
             props.onChange(!props.checked);
@@ -148,6 +150,7 @@ export function SettingsMenu(props: {
         <SwitchButton
           checked={draft.singlePageAppEnabled}
           description={texts.settings.singlePageAppHelp}
+          disabled={!draft.touchUiEnabled}
           label={texts.settings.singlePageApp}
           onChange={(value) => setDraft("singlePageAppEnabled", value)}
         />

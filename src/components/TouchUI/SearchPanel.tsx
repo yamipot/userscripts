@@ -59,8 +59,13 @@ export function TouchSearchCategoryToggle(props: { categories: HTMLTableElement 
   );
 }
 
-export function TouchSearchFileToggle(props: { toggle: HTMLAnchorElement }) {
+export function TouchSearchFileToggle(props: { panel: HTMLElement }) {
   const [fileSearchOpen, setFileSearchOpen] = createSignal(false);
+
+  createEffect(() => {
+    props.panel.hidden = !fileSearchOpen();
+    props.panel.style.display = fileSearchOpen() ? "" : "none";
+  });
 
   return (
     <button
@@ -68,7 +73,6 @@ export function TouchSearchFileToggle(props: { toggle: HTMLAnchorElement }) {
       class={TOUCH_SEARCH_OPTION_CLASS}
       aria-expanded={fileSearchOpen()}
       onClick={() => {
-        props.toggle.click();
         setFileSearchOpen((open) => !open);
       }}
     >
@@ -77,8 +81,13 @@ export function TouchSearchFileToggle(props: { toggle: HTMLAnchorElement }) {
   );
 }
 
-export function TouchSearchAdvancedToggle(props: { toggle: HTMLAnchorElement }) {
+export function TouchSearchAdvancedToggle(props: { panel: HTMLElement }) {
   const [advancedOpen, setAdvancedOpen] = createSignal(false);
+
+  createEffect(() => {
+    props.panel.hidden = !advancedOpen();
+    props.panel.style.display = advancedOpen() ? "" : "none";
+  });
 
   return (
     <button
@@ -86,7 +95,6 @@ export function TouchSearchAdvancedToggle(props: { toggle: HTMLAnchorElement }) 
       class={TOUCH_SEARCH_OPTION_CLASS}
       aria-expanded={advancedOpen()}
       onClick={() => {
-        props.toggle.click();
         setAdvancedOpen((open) => !open);
       }}
     >
@@ -124,7 +132,7 @@ export function TouchSearchAction(props: {
         onClick={(event: MouseEvent) => {
           if (search) {
             event.preventDefault();
-            original.click();
+            props.source.form.requestSubmit(original);
             return;
           }
 
