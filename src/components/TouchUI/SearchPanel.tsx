@@ -1,14 +1,19 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import * as eh from "../../eh";
 import type { TouchSearchPanelInfo } from "../../eh";
-import { state } from "../../state";
+import { addSearchHistory, loadSearchHistory, removeSearchHistory } from "../../state";
 import texts from "../../texts.json";
-import { Icon } from "../Icon";
+import { Icon } from "../Widgets/Icon";
 
 export const TOUCH_SEARCH_OPTION_CLASS =
   "appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]";
 
 const TOUCH_SEARCH_ACTION_CLASS =
   "appearance-none inline-flex box-border w-60px h-60px items-center justify-center p-0 rounded-md border-0 bg-transparent cursor-pointer transition-[background-color,transform] duration-120 [touch-action:manipulation] active:(scale-96 bg-[var(--color-site-item-hover)])";
+
+export function prepareSearchPanel(source: TouchSearchPanelInfo): void {
+  eh.prepareTouchSearchPanel(source, TOUCH_SEARCH_OPTION_CLASS);
+}
 
 export function TouchSearchPanel(props: { source: TouchSearchPanelInfo }) {
   let searchBoxHost!: HTMLDivElement;
@@ -98,7 +103,7 @@ export function TouchSearchAction(props: { action: "search" | "clear"; source: T
 export function TouchSearchHistory(props: { source: TouchSearchPanelInfo }) {
   let dropdown: HTMLElement | undefined;
   const [searchValue, setSearchValue] = createSignal(props.source.searchInput.value);
-  const [history, setHistory] = createSignal<string[]>(state.search.history.reload());
+  const [history, setHistory] = createSignal<string[]>(loadSearchHistory());
   const [open, setOpen] = createSignal(false);
   const [position, setPosition] = createSignal<{ left: number; top: number; width: number } | null>(null);
   const visiblePosition = () => open() && !searchValue().trim() && history().length > 0 ? position() : null;
@@ -132,8 +137,7 @@ export function TouchSearchHistory(props: { source: TouchSearchPanelInfo }) {
         return;
       }
 
-      const next = [value, ...state.search.history.value.filter((item) => item !== value)];
-      state.search.history.set(next);
+      const next = addSearchHistory(value);
       setHistory(next);
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -203,8 +207,7 @@ export function TouchSearchHistory(props: { source: TouchSearchPanelInfo }) {
                 aria-label={`${texts.search.deleteHistory}: ${item}`}
                 title={texts.search.deleteHistory}
                 onClick={() => {
-                  const next = history().filter((candidate) => candidate !== item);
-                  state.search.history.set(next);
+                  const next = removeSearchHistory(item);
                   setHistory(next);
                 }}
               >

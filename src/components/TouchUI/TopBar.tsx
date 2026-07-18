@@ -1,7 +1,7 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import * as eh from "../../eh";
 import texts from "../../texts.json";
-import { Icon } from "../Icon";
+import { Icon } from "../Widgets/Icon";
 
 const TOUCH_TOP_BAR_ICON_SIZE = 34;
 const TOUCH_ICON_BUTTON_CLASS =

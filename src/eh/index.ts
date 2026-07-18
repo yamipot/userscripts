@@ -1,7 +1,10 @@
 import type { LoadedReaderPage, ReaderPage } from "../readerTypes";
 import texts from "../texts.json";
-import { normalizeUrl, requestText } from "../utils";
+import { normalizeUrl } from "../utils";
 import * as dom from "./dom";
+import { requestPage } from "./request";
+
+export { requestPage, updateGalleryFavorite, type PageRequestOptions, type PageResponse } from "./request";
 
 export {
   applySiteTheme,
@@ -38,6 +41,7 @@ export {
   settingsMenuMountTarget,
   showPreviewPlaceholder,
   snapshotPreview,
+  thumbsGrid,
 } from "./dom";
 
 export type {
@@ -265,9 +269,8 @@ export function collectGalleryPages(root: ParentNode = document, baseUrl = windo
 }
 
 export async function replaceSearchPageContentFromUrl(url: string): Promise<HTMLElement> {
-  const html = await requestText(url);
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const list = dom.replaceSearchPageContent(doc);
+  const response = await requestPage(url);
+  const list = dom.replaceSearchPageContent(response.document);
 
   if (!list) {
     throw new Error(texts.errors.searchPageContentNotFound);
@@ -310,9 +313,8 @@ export async function pullPreviewPage(index: number, landingIndex: number, landi
   }
 
   const previewUrl = previewUrlForIndex(index);
-  const html = await requestText(previewUrl);
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return collectGalleryPages(doc, previewUrl);
+  const response = await requestPage(previewUrl);
+  return collectGalleryPages(response.document, previewUrl);
 }
 
 export function findClickedImageLink(target: EventTarget | null): HTMLAnchorElement | null {
@@ -320,9 +322,8 @@ export function findClickedImageLink(target: EventTarget | null): HTMLAnchorElem
 }
 
 export async function loadEhImagePage(page: ReaderPage): Promise<LoadedReaderPage> {
-  const html = await requestText(page.url);
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const info = dom.readImagePageInfo(doc, page.url);
+  const response = await requestPage(page.url);
+  const info = dom.readImagePageInfo(response.document, page.url);
 
   if (!info.imageUrl) {
     throw new Error(texts.errors.imageNotFound);

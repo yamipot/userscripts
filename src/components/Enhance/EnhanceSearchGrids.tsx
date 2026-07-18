@@ -1,7 +1,6 @@
-import type { PointerDragEnd } from "../pointerGesture";
-import { LoadingOverlay } from "../Loading";
-import { createPointerGestureElement } from "../PointerGestureSurface";
-import { SwipeIndicator, type SwipeIndicatorState } from "./Misc";
+import { createPointerGestureElement, type PointerDragEnd } from "../PointerGesture";
+import { LoadingOverlay } from "../Widgets/Loading";
+import { SwipeIndicator, type SwipeIndicatorState } from "../Widgets/SwipeIndicator";
 import { createSignal, onCleanup, onMount } from "solid-js";
 import * as eh from "../../eh";
 import texts from "../../texts.json";
@@ -15,6 +14,7 @@ let installed = false;
 let swipeElement: HTMLElement | null = null;
 let setSearchLoading: ((loading: boolean) => void) | null = null;
 let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
+let onSearchPageChange: (() => void) | null = null;
 let searchNavigationLoading = false;
 
 type SwipeState = {
@@ -22,7 +22,7 @@ type SwipeState = {
   cancelled: boolean;
 };
 
-export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
+export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultList: HTMLElement }) {
   const [gestureTarget, setGestureTarget] = createSignal<HTMLElement | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [swipeIndicatorState, setSwipeIndicatorState] = createSignal<SwipeIndicatorState>({
@@ -31,6 +31,7 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
     progress: 0,
   });
   let swipeState: SwipeState | null = null;
+  const handlePageChange = props.onPageChange ?? null;
   const updateLoading = (value: boolean) => setLoading(value);
   const updateGestureTarget = (target: HTMLElement | null) => setGestureTarget(target);
   const hideSwipeIndicator = () => {
@@ -72,6 +73,7 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
   onMount(() => {
     setSearchLoading = updateLoading;
     setSwipeGestureTarget = updateGestureTarget;
+    onSearchPageChange = handlePageChange;
     setResultListSwipeTarget(props.resultList);
 
     if (!installed) {
@@ -86,6 +88,10 @@ export function EnhanceSearchGrids(props: { resultList: HTMLElement }) {
 
       if (setSwipeGestureTarget === updateGestureTarget) {
         setSwipeGestureTarget = null;
+      }
+
+      if (onSearchPageChange === handlePageChange) {
+        onSearchPageChange = null;
       }
     });
   });
@@ -150,15 +156,7 @@ async function navigateSearchPage(url: string): Promise<void> {
   try {
     const resultList = await eh.replaceSearchPageContentFromUrl(url);
     window.history.pushState(window.history.state, "", url);
-    if (document.documentElement.dataset.ehpeekTouchUi === "true") {
-      const pageType = eh.extractPageType(url).type;
-
-      if (pageType === "favorites") {
-        eh.prepareTouchFavoritesPage();
-      } else if (pageType === "search") {
-        eh.prepareTouchSearchResultsPage();
-      }
-    }
+    onSearchPageChange?.();
     setResultListSwipeTarget(resultList);
     eh.searchTopNavigationBar()?.scrollIntoView({ block: "start", behavior: "auto" });
   } catch (error) {

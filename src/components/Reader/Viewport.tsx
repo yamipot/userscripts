@@ -3,8 +3,7 @@ import type { ReadDirection, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { clamp, normalizedAspectRatio } from "../../utils";
 import { ScrollAnimator, ScrollFlingAnimator, type ScrollMotion } from "../animation";
-import type { PointerGestureCallbacks } from "../pointerGesture";
-import { createPointerGestureElement } from "../PointerGestureSurface";
+import { createPointerGestureElement, type PointerGestureCallbacks } from "../PointerGesture";
 
 const FALLBACK_ASPECT_RATIO = 1.42;
 

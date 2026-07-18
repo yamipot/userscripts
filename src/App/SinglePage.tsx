@@ -19,7 +19,7 @@ type AppHistoryState = {
   scrollY: number;
 };
 
-export function SinglePageApp(props: {
+export function SinglePage(props: {
   initialNodes: Node[];
   initialPage: PageType;
   onPageActivate: (page: PageType) => void | Promise<void>;
@@ -69,26 +69,20 @@ export function SinglePageApp(props: {
     routeHost.setAttribute("aria-busy", "true");
 
     try {
-      const response = await fetch(request.url, {
+      const response = await eh.requestPage(request.url, {
         method: request.method,
         body: request.body,
-        credentials: "include",
         signal: controller.signal,
+        timeoutMs: null,
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const responseUrl = response.url || request.url;
+      const responseUrl = response.url;
       const page = eh.singlePageRoute(responseUrl);
 
       if (!page) {
         throw new Error(`Unsupported Single Page App route: ${responseUrl}`);
       }
 
-      const html = await response.text();
-      const doc = new DOMParser().parseFromString(html, "text/html");
+      const doc = response.document;
       stagingHost.replaceChildren(...eh.importSinglePageContent(doc, responseUrl));
       await EhSyringe.waitForRouteTranslation(stagingHost);
 
@@ -97,7 +91,6 @@ export function SinglePageApp(props: {
       }
 
       props.onPageDeactivate();
-      eh.resetTouchPageLayout();
 
       if (mode === "push") {
         updateHistoryScroll();

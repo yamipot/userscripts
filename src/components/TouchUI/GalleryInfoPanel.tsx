@@ -3,14 +3,13 @@ import * as eh from "../../eh";
 import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryTag, GalleryTagGroup } from "../../eh";
 import * as EhSyringe from "../../integrations/EhSyringe";
 import texts from "../../texts.json";
-import { requestText } from "../../utils";
-import { Icon } from "../Icon";
-import { DomNode, DomNodes } from "./Misc";
+import { DomNode, DomNodes } from "../Widgets/ExternalDom";
+import { Icon } from "../Widgets/Icon";
 
 export const TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item block box-border w-full min-h-lg py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline text-21px leading-[1.2]";
 const RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
 
-export function TouchGalleryPanel(props: {
+export function GalleryInfoPanel(props: {
   onPrimaryActionMount: (mount: HTMLElement) => void;
   onPrimaryActionUnmount: () => void;
   source: GalleryInfo;
@@ -198,6 +197,10 @@ export function TouchGalleryPanel(props: {
   );
 }
 
+export function prepareGalleryInfoPanel(): void {
+  eh.applyTouchGalleryPanelPageStyle();
+}
+
 function TouchGalleryActionsMenu(props: { actions: HTMLElement[] }) {
   const [open, setOpen] = createSignal(false);
   let root!: HTMLDivElement;
@@ -310,9 +313,8 @@ function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
     setLoadingState("loading");
 
     try {
-      const html = await requestText(currentFavorite.actionUrl);
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      setOptions(eh.parseGalleryFavoriteOptions(doc, currentFavorite.favorited));
+      const response = await eh.requestPage(currentFavorite.actionUrl);
+      setOptions(eh.parseGalleryFavoriteOptions(response.document, currentFavorite.favorited));
       setLoadingState("idle");
     } catch (error) {
       console.error("[ehpeek]", error);
@@ -394,7 +396,7 @@ function TouchGalleryFavoriteOption(props: {
       aria-pressed={props.option.selected}
       onClick={(event: MouseEvent) => {
         event.stopPropagation();
-        void applyFavoriteOption(props.actionUrl, props.option)
+        void eh.updateGalleryFavorite(props.actionUrl, props.option.value)
           .then(props.onApplied)
           .catch((error) => {
             console.error("[ehpeek]", error);
@@ -416,27 +418,6 @@ function TouchGalleryFavoriteOption(props: {
       </span>
     </button>
   );
-}
-
-async function applyFavoriteOption(actionUrl: string, option: GalleryFavoriteOption): Promise<void> {
-  const body = new URLSearchParams();
-  body.set("favcat", option.value);
-  body.set("favnote", "");
-  body.set("apply", "Apply Changes");
-  body.set("update", "1");
-
-  const response = await fetch(actionUrl, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
 }
 
 function selectableRating(value: number): number {

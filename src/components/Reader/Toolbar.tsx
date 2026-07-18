@@ -2,8 +2,8 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-j
 import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
-import { Icon, type IconName } from "../Icon";
-import { ProgressBar } from "../Misc";
+import { Icon, type IconName } from "../Widgets/Icon";
+import { ProgressBar } from "../Widgets/ProgressBar";
 
 export type ReaderControls = {
   mode: ViewMode;

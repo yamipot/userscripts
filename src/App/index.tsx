@@ -1,69 +1,39 @@
-import {
-  enterReaderFullscreen,
-  FullscreenReader,
-  removePreviousReaderRoot,
-  type FullscreenReaderOptions,
-} from "./components/Reader";
 import { createSignal, type JSX } from "solid-js";
-import { render } from "solid-js/web";
-import { SettingsMenu } from "./components/SettingsMenu";
-import { SinglePageApp } from "./components/SinglePageApp";
-import { TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS, TouchGalleryPanel } from "./components/Enhance/TouchGalleryPanel";
-import {
-  TOUCH_SEARCH_OPTION_CLASS,
-  TouchSearchAction,
-  TouchSearchCategoryToggle,
-  TouchSearchHistory,
-  TouchSearchPanel,
-} from "./components/Enhance/TouchSearchPanel";
-import { TOUCH_TOP_BAR_MENU_ITEM_CLASS, TouchTopBar } from "./components/Enhance/TouchTopBar";
-import {
-  EnhanceThumbsGrids,
-  enhanceThumbsGridsEnabled,
-  GalleryPageProvider,
-  navigateGalleryPreview,
-} from "./components/Enhance/EnhanceThumbsGrids";
-import { EnhanceSearchGrids } from "./components/Enhance/EnhanceSearchGrids";
+import { EnhanceSearchGrids } from "../components/Enhance/EnhanceSearchGrids";
+import { EnhanceThumbsGrids, navigateGalleryPreview } from "../components/Enhance/EnhanceThumbsGrids";
 import {
   SCROLL_PAGE_BAR_BOTTOM_CLASS,
   SCROLL_PAGE_BAR_TOP_CLASS,
   ScrollPageBar,
-} from "./components/Enhance/ScrollPageBar";
+} from "../components/Enhance/ScrollPageBar";
+import { ReadButton, type ReadButtonInfo } from "../components/Reader";
+import { SettingsMenu } from "../components/SettingsMenu";
 import {
-  ReadButton,
-  type ReadButtonInfo,
-} from "./components/Enhance/Misc";
-import * as eh from "./eh";
-import texts from "./texts.json";
-import { state } from "./state";
-import { loadReaderHistory, ReaderHistorySession } from "./history";
-import { normalizeUrl } from "./utils";
-import * as EhSyringe from "./integrations/EhSyringe";
+  prepareTouchGalleryPage,
+  prepareTouchResultsPage,
+  prepareSearchPanel,
+  resetTouchUiPage,
+  TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS,
+  TOUCH_TOP_BAR_MENU_ITEM_CLASS,
+  GalleryInfoPanel,
+  TouchSearchAction,
+  TouchSearchCategoryToggle,
+  TouchSearchHistory,
+  TouchSearchPanel,
+  TouchTopBar,
+} from "../components/TouchUI";
+import * as eh from "../eh";
+import * as EhSyringe from "../integrations/EhSyringe";
+import { loadReaderHistory, state } from "../state";
+import texts from "../texts.json";
 import unoCss from "ehpeek:uno.css";
-import themeCss from "./theme.css";
+import themeCss from "../theme.css";
+import { ReaderApp } from "./Reader";
+import { renderInto, unmountFrom } from "./render";
+import { SinglePage } from "./SinglePage";
 
-const READER_WINDOW_SIZE = 10;
 const THEME_STYLE_ID = "ehpeek-theme-style";
 const UNO_STYLE_ID = "ehpeek-uno-style";
-const mountedRoots = new WeakMap<HTMLElement, () => void>();
-
-function renderInto(host: HTMLElement, view: () => JSX.Element): void {
-  mountedRoots.get(host)?.();
-  host.replaceChildren();
-  mountedRoots.set(host, render(view, host));
-}
-
-function unmountFrom(host: HTMLElement): void {
-  mountedRoots.get(host)?.();
-  mountedRoots.delete(host);
-  host.replaceChildren();
-}
-
-type ReaderFullscreenLaunch = {
-  host: HTMLDivElement;
-  result: Promise<boolean>;
-  viewport: eh.PageViewportSnapshot | null;
-};
 
 if (unoCss && !document.getElementById(UNO_STYLE_ID)) {
   const style = document.createElement("style");
@@ -84,7 +54,7 @@ function settingsMenuState() {
     singlePageAppEnabled: state.app.singlePage.value,
     readerEnabled: state.reader.enabled.value,
     readerFullscreenEnabled: state.reader.fullscreen.value,
-    enhanceThumbsGridsEnabled: enhanceThumbsGridsEnabled(),
+    enhanceThumbsGridsEnabled: state.gallery.enhanceThumbs.value,
     enhanceSearchGridsEnabled: state.search.enhance.value,
     touchUiEnabled: state.touch.enabled.value,
   };
@@ -122,7 +92,7 @@ function continueReadingState(): { info: ReadButtonInfo; onClick: () => void } |
         return;
       }
 
-      openReaderFromUserAction(page.url, pageNum);
+      readerApp.openFromUserAction(page.url, pageNum);
     },
   };
 }
@@ -135,13 +105,17 @@ if (initialSettingsState.touchUiEnabled) {
 }
 const [settingsMenuOpen, setSettingsMenuOpenSignal] = createSignal(false);
 let settingsState = initialSettingsState;
+const readerApp = new ReaderApp({
+  enhanceThumbsGridsEnabled: () => settingsState.enhanceThumbsGridsEnabled,
+  onPageBarChange: replaceGalleryPageBar,
+  onReaderClosed: installContinueReadingButton,
+});
 const settingsMenuHost = document.createElement("div");
 settingsMenuHost.className = "fixed inset-0 z-[1150] pointer-events-none";
 settingsMenuHost.dataset.ehpeekPersistent = "true";
 document.body.append(settingsMenuHost);
 let galleryReadButtonMount: HTMLElement | null | undefined;
 let touchGalleryReadButtonMount: HTMLElement | undefined;
-let activeReaderClose: (() => void) | undefined;
 let pageGeneration = 0;
 let pageRoots = new Set<HTMLElement>();
 let pageOwnedHosts = new Set<HTMLElement>();
@@ -158,6 +132,10 @@ function renderPageInto(host: HTMLElement, view: () => JSX.Element, owned = fals
 
 function deactivatePage(): void {
   pageGeneration += 1;
+
+  if (settingsState.touchUiEnabled) {
+    resetTouchUiPage();
+  }
 
   for (const root of pageRoots) {
     unmountFrom(root);
@@ -189,55 +167,6 @@ function installSettingsMenu(): void {
           applySettingsMenuState(next);
         }}
         onOpenChange={setSettingsMenuOpen}
-      />
-    ),
-  );
-}
-
-function createReaderHost(): HTMLDivElement {
-  const host = document.createElement("div");
-  host.dataset.ehpeekReaderContainer = "true";
-  return host;
-}
-
-function openFullscreenReader(
-  options: Omit<FullscreenReaderOptions, "fullscreenTarget">,
-  existingHost?: HTMLDivElement,
-): void {
-  activeReaderClose?.();
-  removePreviousReaderRoot();
-
-  const host = existingHost ?? createReaderHost();
-  let closeReader = onClosed;
-  const close = () => {
-    closeReader();
-  };
-
-  function onClosed(): void {
-    unmountFrom(host);
-    host.remove();
-
-    if (activeReaderClose === close) {
-      activeReaderClose = undefined;
-    }
-  }
-
-  if (!host.isConnected) {
-    document.body.append(host);
-  }
-  activeReaderClose = close;
-  renderInto(
-    host,
-    () => (
-      <FullscreenReader
-        options={{ ...options, fullscreenTarget: host }}
-        actionsRef={(actions) => {
-          closeReader = actions.close;
-        }}
-        onActionsDispose={() => {
-          closeReader = onClosed;
-        }}
-        onClosed={onClosed}
       />
     ),
   );
@@ -364,7 +293,7 @@ function installTouchTopBar(): void {
   }
 }
 
-function installTouchGalleryPanel(): void {
+function installGalleryInfoPanel(): void {
   if (document.querySelector(".ehpeek-touch-gallery")) {
     return;
   }
@@ -372,8 +301,7 @@ function installTouchGalleryPanel(): void {
   const touchGalleryInfo = eh.readGalleryInfo(TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS);
 
   if (touchGalleryInfo.available) {
-    eh.applyTouchGalleryPanelPageStyle();
-    eh.prepareTouchGalleryComments();
+    prepareTouchGalleryPage();
     const mount = document.createElement("div");
 
     if (!eh.insertTouchGalleryPanel(mount)) {
@@ -383,7 +311,7 @@ function installTouchGalleryPanel(): void {
     renderPageInto(
       mount,
       () => (
-        <TouchGalleryPanel
+        <GalleryInfoPanel
           source={touchGalleryInfo}
           onPrimaryActionMount={(mount) => {
             if (touchGalleryReadButtonMount && touchGalleryReadButtonMount !== mount) {
@@ -422,7 +350,7 @@ function installTouchSearchPanel(): boolean {
     return false;
   }
 
-  eh.prepareTouchSearchPanel(touchSearchInfo, TOUCH_SEARCH_OPTION_CLASS);
+  prepareSearchPanel(touchSearchInfo);
   renderPageInto(mount, () => <TouchSearchPanel source={touchSearchInfo} />, true);
   renderPageInto(touchSearchInfo.categoryToggleMount, () => <TouchSearchCategoryToggle source={touchSearchInfo} />, true);
   renderPageInto(touchSearchInfo.searchActionMount, () => <TouchSearchAction action="search" source={touchSearchInfo} />, true);
@@ -439,11 +367,7 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   if (!settingsState.touchUiEnabled) {
     installDesktopSettingsLink();
   } else {
-    if (pageType.type === "favorites") {
-      eh.prepareTouchFavoritesPage();
-    } else if (pageType.type === "search") {
-      eh.prepareTouchSearchResultsPage();
-    }
+    prepareTouchResultsPage(pageType);
   }
 
   installContinueReadingButton();
@@ -456,7 +380,7 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
       () => (
         <EnhanceThumbsGrids
           enabled={settingsState.enhanceThumbsGridsEnabled}
-          onError={reportOpenError}
+          onError={(error) => readerApp.reportOpenError(error)}
           replaceGalleryPageBar={replaceGalleryPageBar}
         />
       ),
@@ -470,12 +394,25 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
     if (resultList && eh.searchPageNavigation()) {
       const host = document.createElement("div");
       document.body.append(host);
-      renderPageInto(host, () => <EnhanceSearchGrids resultList={resultList} />, true);
+      renderPageInto(
+        host,
+        () => (
+          <EnhanceSearchGrids
+            resultList={resultList}
+            onPageChange={() => {
+              if (settingsState.touchUiEnabled) {
+                prepareTouchResultsPage(eh.extractPageType());
+              }
+            }}
+          />
+        ),
+        true,
+      );
     }
   }
 
   if (pageType.type === "gallery" && state.reader.enabled.value && pageType.peekPage !== null) {
-    void openReaderFromHash();
+    void readerApp.openFromHash();
   }
 
   if (!settingsState.touchUiEnabled) {
@@ -493,7 +430,7 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   installTouchTopBar();
 
   if (pageType.type === "gallery") {
-    installTouchGalleryPanel();
+    installGalleryInfoPanel();
   } else if (pageType.type === "search") {
     if (!settingsState.singlePageAppEnabled) {
       await EhSyringe.waitForSearchUi();
@@ -507,227 +444,7 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   }
 }
 
-async function openReader(
-  startPageUrl: string,
-  preferredPageNum?: number,
-  fullscreenLaunch?: ReaderFullscreenLaunch,
-): Promise<void> {
-  if (!state.reader.enabled.value) {
-    return;
-  }
-
-  const pageType = eh.extractPageType();
-
-  if (pageType.type !== "gallery") {
-    return;
-  }
-
-  const landingIndex = eh.previewPageIndex();
-  const landingPages = eh.collectGalleryPages();
-  const pageSize = eh.computePreviewPageSize();
-  const maxPreviewIndex = eh.maxPreviewPageIndex();
-  const totalPages = eh.readShowingRange()?.total;
-  const provider = new GalleryPageProvider(
-    landingIndex,
-    landingPages,
-    pageSize,
-    maxPreviewIndex,
-    READER_WINDOW_SIZE,
-    eh.pullPreviewPage,
-  );
-  const startUrl = normalizeUrl(startPageUrl);
-  const hashPage = preferredPageNum ?? eh.peekPageFromHash();
-  const startPageNum = hashPage ?? eh.galleryPageNumber(startUrl);
-
-  if (!startPageNum) {
-    throw new Error(texts.errors.imageNotFound);
-  }
-
-  const landingPage = landingPages.find((page) => page.pageNum === startPageNum);
-  const seedPage = landingPage ?? (await provider.loadDisplayPages([startPageNum]))[0];
-
-  if (!seedPage || seedPage.pageNum !== startPageNum) {
-    throw new Error(texts.errors.imageNotFound);
-  }
-
-  const pages = [seedPage];
-  const startIndex = 0;
-
-  let lastPageNum = startPageNum;
-  const historySession = new ReaderHistorySession({
-    galleryId: pageType.galleryId,
-    token: pageType.token,
-    galleryUrl: eh.previewUrlForIndex(landingIndex),
-    totalPages,
-  });
-
-  if (!state.reader.enabled.value) {
-    historySession.dispose();
-    return;
-  }
-
-  const automaticFullscreen = fullscreenLaunch ? await fullscreenLaunch.result : undefined;
-
-  if (automaticFullscreen && document.fullscreenElement !== fullscreenLaunch?.host) {
-    historySession.dispose();
-    if (fullscreenLaunch?.viewport) {
-      await eh.restorePageViewport(fullscreenLaunch.viewport);
-    }
-    fullscreenLaunch?.host.remove();
-    return;
-  }
-
-  let fullscreenViewport = automaticFullscreen ? fullscreenLaunch?.viewport ?? null : null;
-  const restorePageViewport = async () => {
-    const snapshot = fullscreenViewport;
-    fullscreenViewport = null;
-
-    if (snapshot) {
-      await eh.restorePageViewport(snapshot);
-    }
-  };
-
-  openFullscreenReader({
-    galleryId: pageType.galleryId,
-    pages,
-    startIndex,
-    renderWindowSize: READER_WINDOW_SIZE,
-    preloadWindowSize: READER_WINDOW_SIZE,
-    nearConcurrentLoads: 3,
-    farConcurrentLoads: 6,
-    totalPages,
-    initialFullscreenOwned: automaticFullscreen === true,
-    onBeforeEnterFullscreen: () => {
-      fullscreenViewport = eh.preparePageViewportForFullscreen();
-    },
-    restorePageViewport,
-    loadPage: eh.loadEhImagePage,
-    loadPages: (pageNums) => provider.loadDisplayPages(pageNums),
-    onActivePageChange: (page) => {
-      if (page.pageNum) {
-        lastPageNum = page.pageNum;
-        if (enhanceThumbsGridsEnabled()) {
-          replaceGalleryPageBar(provider.previewIndexForPage(page.pageNum), maxPreviewIndex);
-        }
-      }
-
-      historySession.update(page.pageNum, totalPages);
-      eh.updatePeekLocation(page.pageNum, pageSize, maxPreviewIndex);
-    },
-    onExit: () => {
-      historySession.dispose();
-      installContinueReadingButton();
-      const exitIndex = lastPageNum ? provider.previewIndexForPage(lastPageNum) : landingIndex;
-      const galleryUrl = eh.previewUrlForIndex(exitIndex);
-
-      if (enhanceThumbsGridsEnabled()) {
-        replaceGalleryPageBar(exitIndex, maxPreviewIndex);
-        void navigateGalleryPreview(galleryUrl).catch(() => {
-          window.location.replace(galleryUrl);
-        });
-        return;
-      }
-
-      // If the page underneath already shows this preview page, keep it (just fix the URL);
-      // otherwise navigate the gallery to the preview page the reader ended on.
-      if (exitIndex === landingIndex) {
-        window.history.replaceState(window.history.state, "", galleryUrl);
-      } else {
-        window.location.replace(galleryUrl);
-      }
-    },
-    onOpenOriginalPage: (page) => {
-      historySession.dispose();
-      window.location.assign(page.url);
-    },
-  }, fullscreenLaunch?.host);
-}
-
-function reportOpenError(error: unknown): void {
-  const message = error instanceof Error ? error.message : texts.errors.loadFailed;
-  console.error("[ehpeek]", error);
-  window.alert(message);
-}
-
-function openReaderFromUserAction(startPageUrl: string, preferredPageNum?: number): void {
-  const fullscreenLaunch = requestConfiguredReaderFullscreen();
-  void openReader(startPageUrl, preferredPageNum, fullscreenLaunch).catch(async (error: unknown) => {
-    if (fullscreenLaunch) {
-      const fullscreenEntered = await fullscreenLaunch.result;
-      if (document.fullscreenElement === fullscreenLaunch.host) {
-        await document.exitFullscreen().catch((fullscreenError: unknown) => {
-          console.warn("[ehpeek] Failed to exit fullscreen", fullscreenError);
-        });
-      }
-      if (fullscreenEntered && fullscreenLaunch.viewport) {
-        await eh.restorePageViewport(fullscreenLaunch.viewport);
-      }
-      fullscreenLaunch.host.remove();
-    }
-    reportOpenError(error);
-  });
-}
-
-function requestConfiguredReaderFullscreen(): ReaderFullscreenLaunch | undefined {
-  if (!state.reader.enabled.value || !state.reader.fullscreen.value || document.fullscreenElement) {
-    return undefined;
-  }
-
-  const host = createReaderHost();
-  document.body.append(host);
-
-  if (!document.fullscreenEnabled || typeof host.requestFullscreen !== "function") {
-    return { host, result: Promise.resolve(false), viewport: null };
-  }
-
-  const viewport = eh.preparePageViewportForFullscreen();
-
-  return {
-    host,
-    viewport,
-    result: enterReaderFullscreen(host).then(
-      () => true,
-      async (error: unknown) => {
-        await eh.restorePageViewport(viewport);
-        console.warn("[ehpeek] Fullscreen request failed", error);
-        return false;
-      },
-    ),
-  };
-}
-
-function onDocumentClick(event: MouseEvent): void {
-  if (!state.reader.enabled.value) {
-    return;
-  }
-
-  const link = eh.findClickedImageLink(event.target);
-
-  if (!link) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-  openReaderFromUserAction(link.href);
-}
-
-async function openReaderFromHash(): Promise<void> {
-  const peekPage = eh.peekPageFromHash();
-
-  if (peekPage === null) {
-    return;
-  }
-
-  const pages = eh.collectGalleryPages();
-  const page = pages.find((item) => item.pageNum === peekPage) ?? pages[0];
-
-  if (page) {
-    await openReader(page.url).catch(reportOpenError);
-  }
-}
-
-document.addEventListener("click", onDocumentClick, true);
+document.addEventListener("click", readerApp.onDocumentClick, true);
 
 const singlePageInitialRoute = settingsState.singlePageAppEnabled ? eh.singlePageRoute(window.location.href) : null;
 
@@ -747,7 +464,7 @@ async function startSinglePageApp(initialPage: eh.PageType): Promise<void> {
   renderInto(
     host,
     () => (
-      <SinglePageApp
+      <SinglePage
         initialNodes={initialNodes}
         initialPage={initialPage}
         onPageActivate={activatePage}

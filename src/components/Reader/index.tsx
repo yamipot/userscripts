@@ -12,7 +12,7 @@ import {
   targetSummary,
 } from "../../utils";
 import type { ScrollMotion } from "../animation";
-import type { PointerDragEnd, PointerGestureCallbacks } from "../pointerGesture";
+import type { PointerDragEnd, PointerGestureCallbacks } from "../PointerGesture";
 import {
   PagesViewport,
   pageWindowNumbers,
@@ -31,6 +31,8 @@ import {
 } from "./Toolbar";
 import { ZoomOverlay, type ZoomOverlayActions, type ZoomOverlayImage } from "./ZoomOverlay";
 import readerCss from "./index.css";
+
+export { ReadButton, type ReadButtonInfo } from "./ReadButton";
 
 const VIEWER_ID = "ehpeek-reader";
 const STYLE_ID = "ehpeek-reader-style";

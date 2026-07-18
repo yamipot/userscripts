@@ -1,6 +1,6 @@
 import { createEffect } from "solid-js";
-import { registerGlobalStyle } from "../utils";
-import progressBarCss from "./Misc.css";
+import { registerGlobalStyle } from "../../utils";
+import progressBarCss from "./ProgressBar.css";
 
 const PROGRESS_BAR_CLASS = "ehpeek-progress-bar";
 const PROGRESS_BAR_CLASS_NAME = [

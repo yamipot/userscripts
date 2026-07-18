@@ -1,8 +1,6 @@
-import type { ReaderPage } from "../../readerTypes";
-import type { PointerDragEnd } from "../pointerGesture";
-import { loadingSpinnerElement } from "../Loading";
-import { createPointerGestureElement } from "../PointerGestureSurface";
-import { SwipeIndicator, type SwipeIndicatorState } from "./Misc";
+import { createPointerGestureElement, type PointerDragEnd } from "../PointerGesture";
+import { loadingSpinnerElement } from "../Widgets/Loading";
+import { SwipeIndicator, type SwipeIndicatorState } from "../Widgets/SwipeIndicator";
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import {
   SCROLL_PAGE_BAR_BOTTOM_CLASS,
@@ -11,11 +9,9 @@ import {
   setScrollPageBarWindowIndex,
 } from "./ScrollPageBar";
 import * as eh from "../../eh";
-import { state } from "../../state";
 import texts from "../../texts.json";
-import { clamp, requestText } from "../../utils";
+import { clamp } from "../../utils";
 
-const PREVIEW_CACHE_LIMIT = 10;
 const SWIPE_MIN_DISTANCE = 96;
 const SWIPE_INTENT_DISTANCE = 28;
 const HORIZONTAL_INTENT_RATIO = 2.2;
@@ -27,84 +23,12 @@ let swipeElement: HTMLElement | null = null;
 let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
 let galleryNavigationLoading = false;
 let replaceGalleryPageBar: ((currentIndex: number, maxIndex: number | null) => void) | null = null;
+let thumbsGridsEnabled = false;
 
 type SwipeState = {
   horizontal: boolean;
   cancelled: boolean;
 };
-
-export function enhanceThumbsGridsEnabled(): boolean {
-  return state.gallery.enhanceThumbs.value;
-}
-
-export class GalleryPageProvider {
-  private readonly previewCache = new Map<number, ReaderPage[]>();
-
-  constructor(
-    private readonly landingIndex: number,
-    private readonly landingPages: ReaderPage[],
-    private readonly pageSize: number,
-    private readonly maxPreviewIndex: number | null,
-    private readonly windowSize: number,
-    private readonly loadPreviewPage: (index: number, landingIndex: number, landingPages: ReaderPage[]) => Promise<ReaderPage[]>,
-  ) {
-    this.previewCache.set(landingIndex, landingPages);
-  }
-
-  previewIndexForPage(pageNum: number): number {
-    return eh.previewPageIndexForGalleryPage(pageNum, this.pageSize, this.maxPreviewIndex);
-  }
-
-  async loadDisplayPages(pageNums: number[]): Promise<ReaderPage[]> {
-    const previewIndexes = Array.from(new Set(pageNums.map((pageNum) => this.previewIndexForPage(pageNum)))).filter(
-      (value) => value >= 0 && (this.maxPreviewIndex === null || value <= this.maxPreviewIndex),
-    );
-    const requested = new Set(pageNums);
-    const chunks = await Promise.all(previewIndexes.map((index) => this.cachedPreviewPage(index)));
-    const byUrl = new Map<string, ReaderPage>();
-
-    for (const page of chunks.flat()) {
-      if (page.pageNum && requested.has(page.pageNum)) {
-        byUrl.set(page.url, page);
-      }
-    }
-
-    return Array.from(byUrl.values()).sort(
-      (left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER),
-    );
-  }
-
-  private async cachedPreviewPage(index: number): Promise<ReaderPage[]> {
-    const boundedIndex = this.maxPreviewIndex === null ? index : Math.min(index, this.maxPreviewIndex);
-
-    if (boundedIndex < 0) {
-      return [];
-    }
-
-    const cached = this.previewCache.get(boundedIndex);
-
-    if (cached) {
-      this.previewCache.delete(boundedIndex);
-      this.previewCache.set(boundedIndex, cached);
-      return cached;
-    }
-
-    const pages = await this.loadPreviewPage(boundedIndex, this.landingIndex, this.landingPages);
-    this.previewCache.set(boundedIndex, pages);
-
-    while (this.previewCache.size > PREVIEW_CACHE_LIMIT) {
-      const oldest = this.previewCache.keys().next().value;
-
-      if (oldest === undefined) {
-        break;
-      }
-
-      this.previewCache.delete(oldest);
-    }
-
-    return pages;
-  }
-}
 
 export function EnhanceThumbsGrids(props: {
   enabled: boolean;
@@ -158,6 +82,7 @@ export function EnhanceThumbsGrids(props: {
   };
 
   onMount(() => {
+    thumbsGridsEnabled = props.enabled;
     setSwipeGestureTarget = updateGestureTarget;
     replaceGalleryPageBar = props.replaceGalleryPageBar;
 
@@ -178,6 +103,10 @@ export function EnhanceThumbsGrids(props: {
       }
       if (replaceGalleryPageBar === props.replaceGalleryPageBar) {
         replaceGalleryPageBar = null;
+      }
+
+      if (thumbsGridsEnabled === props.enabled) {
+        thumbsGridsEnabled = false;
       }
     });
   });
@@ -240,11 +169,10 @@ export async function navigateGalleryPreview(
   eh.showPreviewPlaceholder(loadingSpinnerElement(texts.reader.loading, "lg"));
 
   try {
-    const html = await requestText(url);
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const nextMaxPreviewIndex = eh.maxPreviewPageIndex(doc, url);
+    const response = await eh.requestPage(url);
+    const nextMaxPreviewIndex = eh.maxPreviewPageIndex(response.document, url);
 
-    eh.replacePreviewContent(doc);
+    eh.replacePreviewContent(response.document);
     replaceGalleryPageBar?.(eh.previewPageIndexFromUrl(url) ?? eh.previewPageIndex(), nextMaxPreviewIndex);
     setThumbsGridSwipeTarget();
     if (options.scrollToPageBar) {
@@ -262,11 +190,11 @@ export async function navigateGalleryPreview(
 }
 
 function setThumbsGridSwipeTarget(): void {
-  if (!enhanceThumbsGridsEnabled()) {
+  if (!thumbsGridsEnabled) {
     return;
   }
 
-  const thumbs = document.querySelector<HTMLElement>("#gdt");
+  const thumbs = eh.thumbsGrid();
 
   if (!thumbs) {
     return;
@@ -294,7 +222,7 @@ function swipeProgressForDelta(dx: number): number {
 }
 
 function onPageBarClick(event: MouseEvent): void {
-  if (!enhanceThumbsGridsEnabled()) {
+  if (!thumbsGridsEnabled) {
     return;
   }
 

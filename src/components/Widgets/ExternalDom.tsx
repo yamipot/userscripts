@@ -1,6 +1,6 @@
 import { createEffect, onCleanup } from "solid-js";
 
-export function ExternalDomNode(props: { node: HTMLElement | null }) {
+export function DomNode(props: { node: HTMLElement | null }) {
   let root!: HTMLSpanElement;
 
   createEffect(() => {
@@ -17,7 +17,7 @@ export function ExternalDomNode(props: { node: HTMLElement | null }) {
   return <span ref={root} class="contents" />;
 }
 
-export function ExternalDomNodes(props: { clone?: boolean; nodes: HTMLElement[] }) {
+export function DomNodes(props: { clone?: boolean; nodes: HTMLElement[] }) {
   let root!: HTMLSpanElement;
 
   createEffect(() => {

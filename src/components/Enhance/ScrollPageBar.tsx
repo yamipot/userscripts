@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import { clamp } from "../../utils";
-import { createPointerGestureElement } from "../PointerGestureSurface";
+import { createPointerGestureElement } from "../PointerGesture";
 
 export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
 export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";

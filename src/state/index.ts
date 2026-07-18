@@ -2,6 +2,9 @@ export type ViewMode = "scroll" | "paged";
 export type ReadDirection = "ltr" | "rtl";
 export type RightTapAction = "previous" | "next";
 
+export { loadReaderHistory, ReaderHistorySession, type ReaderHistoryRecord } from "./readerHistory";
+export { addSearchHistory, loadSearchHistory, removeSearchHistory } from "./searchHistory";
+
 type StateValue<T> = {
   key: string;
   defaultValue: T;
@@ -26,7 +29,6 @@ export const state = {
   },
   search: {
     enhance: persisted("ehpeek:enhance-search:enabled", true),
-    history: persisted<string[]>("ehpeek:search:history", []),
   },
   touch: {
     enabled: persisted("ehpeek:touch-ui:enabled", true),

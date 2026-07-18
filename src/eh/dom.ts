@@ -626,6 +626,10 @@ export function prepareThumbsGridSwipeTargets(thumbs: HTMLElement): void {
   });
 }
 
+export function thumbsGrid(): HTMLElement | null {
+  return document.querySelector<HTMLElement>("#gdt");
+}
+
 export function restorePreview(snapshot: PreviewSnapshot): void {
   const currentThumbs = document.querySelector("#gdt");
 

@@ -43,7 +43,7 @@ const metadata = [
 mkdirSync(path.join(packageDir, "dist"), { recursive: true });
 
 await build({
-  entryPoints: [path.join(packageDir, "src/main.tsx")],
+  entryPoints: [path.join(packageDir, "src/App/index.tsx")],
   bundle: true,
   format: "iife",
   target: "es2020",
