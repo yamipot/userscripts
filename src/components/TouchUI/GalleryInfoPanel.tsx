@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import * as eh from "../../eh";
-import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryNewTagInfo, GalleryTag, GalleryTagAction, GalleryTagApiInfo, GalleryTagGroup, MyTagMode } from "../../eh";
+import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryNewTagInfo, GalleryTag, GalleryTagAction, GalleryTagGroup, MyTagMode } from "../../eh";
 import * as EhSyringe from "../../integrations/EhSyringe";
 import texts from "../../texts.json";
 import { DomNode, DomNodes } from "../Widgets/ExternalDom";
@@ -8,6 +8,7 @@ import { Icon } from "../Widgets/Icon";
 
 export const TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item block box-border w-full min-h-lg py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline textsize-md leading-[1.2]";
 const RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
+const RATING_ACTION_BUTTON_CLASS = "block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default";
 
 export function GalleryInfoPanel(props: {
   onPrimaryActionMount: (mount: HTMLElement) => void;
@@ -18,6 +19,7 @@ export function GalleryInfoPanel(props: {
   const hasCover = props.source.cover !== null;
   const [ratingValue, setRatingValue] = createSignal(rating?.value ?? 0);
   const [ratingPreview, setRatingPreview] = createSignal<number | null>(null);
+  const [ratingPickerOpen, setRatingPickerOpen] = createSignal(false);
   const [ratingSubmitted, setRatingSubmitted] = createSignal(rating?.rated ?? false);
   const [ratingUpdating, setRatingUpdating] = createSignal(false);
   const [ratingCount, setRatingCount] = createSignal(rating?.count ?? "");
@@ -25,7 +27,6 @@ export function GalleryInfoPanel(props: {
   const [tagGroups, setTagGroups] = createSignal(props.source.tagGroups);
   const [newTagVisible, setNewTagVisible] = createSignal(false);
   const displayedRating = createMemo(() => ratingPreview() ?? ratingValue());
-  const selectedRating = createMemo(() => ratingPreview() ?? selectableRating(ratingValue()));
   const ratingLabel = createMemo(() => ratingPreview() ? `Rate as ${ratingPreview()!.toFixed(1)} stars` : ratingValueLabel());
 
   onMount(() => {
@@ -37,22 +38,32 @@ export function GalleryInfoPanel(props: {
   });
   onCleanup(() => props.onPrimaryActionUnmount());
 
-  const submitRating = async (value: number) => {
-    if (!rating || !props.source.tagApi || ratingUpdating()) {
-      return;
+  const submitRating = async (value: number): Promise<boolean> => {
+    if (!rating || ratingUpdating()) {
+      return false;
+    }
+
+    const tagApi = eh.readGalleryTagApiInfo();
+
+    if (!tagApi) {
+      window.alert(texts.errors.loadFailed);
+      return false;
     }
 
     setRatingUpdating(true);
     try {
-      const result = await eh.setGalleryRating(props.source.tagApi, value);
+      const result = await eh.setGalleryRating(tagApi, value);
       setRatingValue(result.value);
       setRatingCount(String(result.count));
       setRatingValueLabel(formatRatingLabel(rating.label, result.average));
       setRatingPreview(null);
       setRatingSubmitted(true);
+      return true;
     } catch (error) {
+      setRatingPreview(null);
       console.error("[ehpeek]", error);
       window.alert(error instanceof Error ? error.message : texts.errors.loadFailed);
+      return false;
     } finally {
       setRatingUpdating(false);
     }
@@ -67,25 +78,6 @@ export function GalleryInfoPanel(props: {
 
     setNewTagVisible(true);
     queueMicrotask(() => eh.focusGalleryNewTag(newTag));
-  };
-
-  const handleRatingKeyDown = (event: KeyboardEvent) => {
-    if (!rating) {
-      return;
-    }
-
-    const nextValue = ratingFromKeyboard(event.key, selectedRating());
-
-    if (nextValue !== null) {
-      event.preventDefault();
-      setRatingPreview(nextValue);
-      return;
-    }
-
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      void submitRating(selectedRating());
-    }
   };
 
   return (
@@ -116,31 +108,30 @@ export function GalleryInfoPanel(props: {
                 {props.source.category}
               </div>
               {rating && (
-                <div class="ehpeek-touch-gallery-rating flex w-full min-w-0 flex-col items-center gap-4px text-center">
+                <button
+                  type="button"
+                  class="ehpeek-touch-gallery-rating flex w-full min-w-0 flex-col items-center gap-4px p-0 border-0 bg-transparent ehp-color-site-text font-inherit text-center cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"
+                  disabled={ratingUpdating()}
+                  aria-label="Rate gallery"
+                  onClick={() => {
+                    setRatingPreview(null);
+                    setRatingPickerOpen(true);
+                  }}
+                  onPointerLeave={() => {
+                    setRatingPreview(null);
+                  }}
+                  onBlur={() => {
+                    setRatingPreview(null);
+                  }}
+                >
                   <div
-                    class="ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"
-                    role="slider"
-                    tabIndex={0}
-                    aria-disabled={ratingUpdating() || !props.source.tagApi}
-                    aria-label="Rate gallery"
-                    aria-valuemin={0.5}
-                    aria-valuemax={5}
-                    aria-valuenow={selectedRating()}
-                    aria-valuetext={`${selectedRating().toFixed(1)} stars`}
+                    class="ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden"
                     onPointerMove={(event: PointerEvent) => {
-                      setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget as HTMLElement));
-                    }}
-                    onPointerLeave={() => {
-                      setRatingPreview(null);
-                    }}
-                    onClick={(event: MouseEvent) => {
-                      if (event.detail > 0) {
-                        void submitRating(ratingFromPointer(event.clientX, event.currentTarget as HTMLElement));
+                      if (event.pointerType !== "mouse") {
+                        return;
                       }
-                    }}
-                    onKeyDown={handleRatingKeyDown}
-                    onBlur={() => {
-                      setRatingPreview(null);
+
+                      setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget as HTMLElement));
                     }}
                   >
                     <span class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[rgba(255,255,255,0.25)]" aria-hidden="true">
@@ -171,7 +162,7 @@ export function GalleryInfoPanel(props: {
                       </span>
                     )}
                   </div>
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -201,7 +192,6 @@ export function GalleryInfoPanel(props: {
               <TouchGalleryTagGroup
                 group={group}
                 onNewTagOpen={props.source.newTag ? openNewTag : undefined}
-                tagApi={props.source.tagApi}
               />
             ))}
           </div>
@@ -210,6 +200,74 @@ export function GalleryInfoPanel(props: {
           {(newTag) => <TouchGalleryNewTag source={newTag} />}
         </Show>
       </div>
+      <Show when={ratingPickerOpen()}>
+        <div
+          class="ehpeek-touch-gallery-rating-dialog fixed inset-0 z-overlay flex items-center justify-center p-md bg-black/65"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rate gallery"
+          onClick={(event: MouseEvent) => {
+            if (event.target === event.currentTarget) {
+              setRatingPreview(null);
+              setRatingPickerOpen(false);
+            }
+          }}
+        >
+          <div class="box-border flex w-[min(92vw,420px)] flex-col gap-lg rounded-lg border ehp-color-site-border p-lg ehp-color-site-elevated ehp-color-site-text shadow-xl">
+            <div class="textsize-md font-700">Rate gallery</div>
+            <button
+              type="button"
+              class="relative inline-flex self-center max-w-full overflow-hidden p-0 border-0 bg-transparent cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"
+              disabled={ratingUpdating()}
+              aria-label={`Rate gallery: ${displayedRating().toFixed(1)} stars`}
+              onClick={(event: MouseEvent) => {
+                setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget as HTMLElement));
+              }}
+            >
+              <span class="flex gap-1px pointer-events-none text-[rgba(255,255,255,0.25)]" aria-hidden="true">
+                {RATING_STAR_INDEXES.map(() => (
+                  <Icon name="star" size={48} />
+                ))}
+              </span>
+              <span
+                class={`absolute top-0 left-0 flex gap-1px overflow-hidden pointer-events-none ${ratingSubmitted() ? "text-[var(--color-accent)]" : "ehp-color-site-accent"}`}
+                aria-hidden="true"
+                style={{ width: `${(displayedRating() / 5) * 100}%` }}
+              >
+                {RATING_STAR_INDEXES.map(() => (
+                  <Icon name="star" size={48} filled />
+                ))}
+              </span>
+            </button>
+            <div class="grid grid-cols-2 gap-sm pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]">
+              <button
+                type="button"
+                class={`${RATING_ACTION_BUTTON_CLASS} border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108`}
+                disabled={ratingUpdating()}
+                onClick={() => {
+                  void submitRating(displayedRating()).then((submitted) => {
+                    if (submitted) {
+                      setRatingPickerOpen(false);
+                    }
+                  });
+                }}
+              >
+                Submit
+              </button>
+              <button
+                type="button"
+                class={`${RATING_ACTION_BUTTON_CLASS} border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]`}
+                onClick={() => {
+                  setRatingPreview(null);
+                  setRatingPickerOpen(false);
+                }}
+              >
+                {texts.settings.close}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
     </section>
   );
 }
@@ -266,7 +324,6 @@ function TouchGalleryActionsMenu(props: { actions: HTMLElement[] }) {
 function TouchGalleryTagGroup(props: {
   group: GalleryTagGroup;
   onNewTagOpen?: () => void;
-  tagApi: GalleryTagApiInfo | null;
 }) {
   return (
     <section class="ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start">
@@ -275,7 +332,7 @@ function TouchGalleryTagGroup(props: {
       </div>
       <div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">
         {props.group.tags.map((tag) => (
-          <TouchGalleryTag tag={tag} onNewTagOpen={props.onNewTagOpen} tagApi={props.tagApi} />
+          <TouchGalleryTag tag={tag} onNewTagOpen={props.onNewTagOpen} />
         ))}
       </div>
     </section>
@@ -285,29 +342,15 @@ function TouchGalleryTagGroup(props: {
 function TouchGalleryTag(props: {
   tag: GalleryTag;
   onNewTagOpen?: () => void;
-  tagApi: GalleryTagApiInfo | null;
 }) {
   const [open, setOpen] = createSignal(false);
-  const [alignEnd, setAlignEnd] = createSignal(false);
   const [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(false);
   const tagSets = eh.readCachedMyTagSetOptions();
   const [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1");
   const [tagMode, setTagMode] = createSignal<MyTagMode>("marked");
   const [updating, setUpdating] = createSignal(false);
   let root!: HTMLDivElement;
-  let longPressTimer: number | undefined;
-  let longPressStart = { x: 0, y: 0 };
-  let longPressed = false;
   const closeMenu = () => setOpen(false);
-  const cancelLongPress = () => {
-    window.clearTimeout(longPressTimer);
-    longPressTimer = undefined;
-  };
-  const openMenu = () => {
-    const bounds = root.getBoundingClientRect();
-    setAlignEnd(bounds.left + bounds.width / 2 > window.innerWidth / 2);
-    setOpen(true);
-  };
 
   onMount(() => {
     const onClick = (event: MouseEvent) => {
@@ -325,23 +368,33 @@ function TouchGalleryTag(props: {
     document.addEventListener("keydown", onKeyDown);
 
     onCleanup(() => {
-      cancelLongPress();
       document.removeEventListener("click", onClick);
       document.removeEventListener("keydown", onKeyDown);
     });
   });
 
   const runTagAction = async (action: GalleryTagAction) => {
-    if (!props.tagApi) {
+    closeMenu();
+    const tagApi = eh.readGalleryTagApiInfo();
+
+    if (!tagApi) {
+      console.error("[ehpeek] Gallery tag vote could not start", {
+        action,
+        pathname: window.location.pathname,
+        reason: "gallery-api-context-unavailable",
+      });
+      window.alert("Gallery API context is unavailable. Check the console for details.");
       return;
     }
 
-    closeMenu();
     setUpdating(true);
     try {
-      await eh.runGalleryTagAction(props.tagApi, props.tag, action);
+      await eh.runGalleryTagAction(tagApi, props.tag, action);
     } catch (error) {
-      console.error("[ehpeek]", error);
+      console.error("[ehpeek] Gallery tag vote failed", {
+        action,
+        galleryId: tagApi.galleryId,
+      }, error);
       window.alert(error instanceof Error ? error.message : texts.errors.loadFailed);
     } finally {
       setUpdating(false);
@@ -368,9 +421,9 @@ function TouchGalleryTag(props: {
 
   return (
     <div ref={root} class="ehpeek-touch-gallery-tag-menu relative inline-flex max-w-full">
-      <a
-        href={props.tag.href}
-        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text no-underline font-inherit font-700 textsize-md cursor-pointer transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
+      <button
+        type="button"
+        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap appearance-none m-0 py-0 rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer select-none transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
         style={{
           "background-color": props.tag.appearance.backgroundColor,
           "border-color": props.tag.appearance.borderColor,
@@ -379,57 +432,65 @@ function TouchGalleryTag(props: {
         aria-label={props.tag.label}
         aria-haspopup="menu"
         aria-expanded={open()}
-        onClick={(event) => {
-          if (longPressed) {
-            event.preventDefault();
-            longPressed = false;
-          }
-        }}
-        onContextMenu={(event) => event.preventDefault()}
-        onPointerDown={(event) => {
-          longPressed = false;
-          longPressStart = { x: event.clientX, y: event.clientY };
-          cancelLongPress();
-          longPressTimer = window.setTimeout(() => {
-            longPressed = true;
-            openMenu();
-          }, 500);
-        }}
-        onPointerMove={(event) => {
-          if (Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) {
-            cancelLongPress();
-          }
-        }}
-        onPointerUp={cancelLongPress}
-        onPointerCancel={cancelLongPress}
+        onClick={() => setOpen((open) => !open)}
       >
         <TouchGalleryTagContent tag={props.tag} />
-      </a>
+      </button>
       <Show when={open()}>
         <div
-          class={`ehpeek-touch-gallery-tag-menu-panel absolute top-[calc(100%+6px)] z-overlay flex w-max min-w-240px max-w-[calc(100vw-24px)] flex-col overflow-hidden whitespace-nowrap border ehp-color-site-border rounded-sm ehp-color-site-elevated ${alignEnd() ? "right-0" : "left-0"}`}
-          role="menu"
+          class="ehpeek-touch-gallery-tag-menu-dialog fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"
+          role="dialog"
+          aria-modal="true"
+          aria-label={props.tag.label}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              closeMenu();
+            }
+          }}
         >
-          <button
-            type="button"
-            class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
-            role="menuitem"
-            disabled={updating() || !props.tagApi}
-            onClick={() => void runTagAction("voteUp")}
+          <div
+            class="ehpeek-touch-gallery-tag-menu-panel box-border flex w-full max-w-420px max-h-[calc(100dvh-32px)] flex-col overflow-x-hidden overflow-y-auto whitespace-nowrap border ehp-color-site-border rounded-md ehp-color-site-elevated shadow-xl"
+            role="menu"
+            onClick={closeMenu}
           >
-            <span class="w-24px text-center ehp-color-site-accent" aria-hidden="true">↑</span>
-            <span>{texts.gallery.voteUp}</span>
-          </button>
-          <button
-            type="button"
-            class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
-            role="menuitem"
-            disabled={updating() || !props.tagApi}
-            onClick={() => void runTagAction("voteDown")}
+          <Show
+            when={props.tag.vote !== null}
+            fallback={(
+              <>
+                <button
+                  type="button"
+                  class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
+                  role="menuitem"
+                  disabled={updating()}
+                  onClick={() => void runTagAction("voteUp")}
+                >
+                  <span class="w-24px text-center ehp-color-site-accent" aria-hidden="true">↑</span>
+                  <span>{texts.gallery.voteUp}</span>
+                </button>
+                <button
+                  type="button"
+                  class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
+                  role="menuitem"
+                  disabled={updating()}
+                  onClick={() => void runTagAction("voteDown")}
+                >
+                  <span class="w-24px text-center ehp-color-site-accent" aria-hidden="true">↓</span>
+                  <span>{texts.gallery.voteDown}</span>
+                </button>
+              </>
+            )}
           >
-            <span class="w-24px text-center ehp-color-site-accent" aria-hidden="true">↓</span>
-            <span>{texts.gallery.voteDown}</span>
-          </button>
+            <button
+              type="button"
+              class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
+              role="menuitem"
+              disabled={updating()}
+              onClick={() => void runTagAction("withdrawVote")}
+            >
+              <span class="w-24px text-center ehp-color-site-accent" aria-hidden="true">↺</span>
+              <span>{texts.gallery.withdrawVote}</span>
+            </button>
+          </Show>
           <a
             class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text no-underline font-inherit textsize-md text-left"
             href={props.tag.href}
@@ -492,6 +553,7 @@ function TouchGalleryTag(props: {
             <span class="w-24px text-center ehp-color-site-accent textsize-lg leading-none" aria-hidden="true">+</span>
             <span>{texts.gallery.addNewTag}</span>
           </button>
+          </div>
         </div>
       </Show>
       <Show when={favoriteDialogOpen()}>
@@ -545,7 +607,7 @@ function TouchGalleryTag(props: {
                 onClick={() => void updateFavoriteTag()}
               >
                 <Icon name="heart" />
-                <span>{texts.gallery.favoriteTag}</span>
+                <span>{texts.text.confirm}</span>
               </button>
             </div>
           </div>
@@ -720,10 +782,6 @@ function TouchGalleryFavoriteOption(props: {
   );
 }
 
-function selectableRating(value: number): number {
-  return Math.min(5, Math.max(0.5, Math.round(value * 2) / 2));
-}
-
 function formatRatingLabel(label: string, value: number): string {
   const formatted = value.toFixed(2);
   return /\d+(?:\.\d+)?/.test(label) ? label.replace(/\d+(?:\.\d+)?/, formatted) : `${label} ${formatted}`.trim();
@@ -733,24 +791,4 @@ function ratingFromPointer(clientX: number, element: HTMLElement): number {
   const rect = element.getBoundingClientRect();
   const progress = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
   return Math.max(0.5, Math.ceil(progress * 10) / 2);
-}
-
-function ratingFromKeyboard(key: string, value: number): number | null {
-  if (key === "ArrowRight" || key === "ArrowUp") {
-    return Math.min(5, value + 0.5);
-  }
-
-  if (key === "ArrowLeft" || key === "ArrowDown") {
-    return Math.max(0.5, value - 0.5);
-  }
-
-  if (key === "Home") {
-    return 0.5;
-  }
-
-  if (key === "End") {
-    return 5;
-  }
-
-  return null;
 }

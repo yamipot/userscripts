@@ -167,6 +167,13 @@ async function requestGalleryApi(
 ): Promise<Record<string, unknown>> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const requestLog = {
+    action: typeof payload.method === "string" ? payload.method : "unknown",
+    apiOrigin: new URL(info.apiUrl).origin,
+    galleryId: info.galleryId,
+  };
+
+  console.info("[ehpeek] Gallery API request started", requestLog);
 
   try {
     const response = await fetch(info.apiUrl, {
@@ -178,11 +185,16 @@ async function requestGalleryApi(
         gid: info.galleryId,
         token: info.token,
       }),
-      credentials: "include",
+      credentials: "same-origin",
       headers: {
-        "Content-Type": "application/json; charset=utf-8",
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
       },
       signal: controller.signal,
+    });
+
+    console.info("[ehpeek] Gallery API response received", {
+      ...requestLog,
+      status: response.status,
     });
 
     if (!response.ok) {
@@ -202,6 +214,9 @@ async function requestGalleryApi(
     }
 
     return record;
+  } catch (error) {
+    console.error("[ehpeek] Gallery API request failed", requestLog, error);
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }

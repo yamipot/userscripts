@@ -37,7 +37,7 @@
     "categories": "Favorite category"
   },
   "gallery": {
-    "favoriteTag": "Favorite Tag",
+    "favoriteTag": "Favorite",
     "removeFavoriteTag": "Remove My Tag",
     "tagCollection": "Collection",
     "tagBehavior": "Behavior",
@@ -46,6 +46,7 @@
     "hideTag": "Hide",
     "voteUp": "Vote Up",
     "voteDown": "Vote Down",
+    "withdrawVote": "Withdraw Vote",
     "showTaggedGalleries": "Show Tagged Galleries",
     "showTagDefinition": "Show Tag Definition",
     "addNewTag": "Add New Tag"
@@ -95,6 +96,9 @@
     "loadFailed": "Could not load this page",
     "openOriginal": "Open original page",
     "dismiss": "Dismiss"
+  },
+  "text": {
+    "confirm": "Confirm"
   },
   "errors": {
     "imageNotFound": "Image not found",

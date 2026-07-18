@@ -57,10 +57,6 @@ export type GalleryPageBarMount = {
 };
 
 export type PageViewportSnapshot = {
-  content: string | null;
-  created: boolean;
-  meta: HTMLMetaElement;
-  scale: number;
   scrollX: number;
   scrollY: number;
 };
@@ -82,9 +78,10 @@ export type GalleryTag = {
   label: string;
   myTag: { id: string; tagSet: string } | null;
   name: string;
+  vote: "down" | "up" | null;
 };
 
-export type GalleryTagAction = "voteDown" | "voteUp";
+export type GalleryTagAction = "voteDown" | "voteUp" | "withdrawVote";
 
 export type GalleryNewTagInfo = {
   button: HTMLInputElement | HTMLButtonElement;
@@ -714,61 +711,17 @@ export function resetTouchPageLayout(): void {
 }
 
 export function preparePageViewportForFullscreen(): PageViewportSnapshot {
-  const existing = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
-  const meta = existing ?? document.createElement("meta");
-  const scale = Math.max(0.1, window.visualViewport?.scale ?? 1);
-  const snapshot: PageViewportSnapshot = {
-    content: existing?.getAttribute("content") ?? null,
-    created: !existing,
-    meta,
-    scale,
+  return {
     scrollX: window.scrollX,
     scrollY: window.scrollY,
   };
-
-  if (!existing) {
-    meta.name = "viewport";
-    document.head.append(meta);
-  }
-
-  meta.content = lockedViewportContent(snapshot.content, scale);
-  return snapshot;
 }
 
 export async function restorePageViewport(snapshot: PageViewportSnapshot): Promise<void> {
   await nextAnimationFrame();
-
-  if (snapshot.created) {
-    snapshot.meta.remove();
-  } else if (snapshot.content === null) {
-    snapshot.meta.removeAttribute("content");
-  } else {
-    snapshot.meta.setAttribute("content", snapshot.content);
-  }
-
   await nextAnimationFrame();
   await nextAnimationFrame();
   window.scrollTo(snapshot.scrollX, snapshot.scrollY);
-}
-
-function lockedViewportContent(content: string | null, scale: number): string {
-  const preserved = (content ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(
-      (item) =>
-        item &&
-        !/^(?:initial-scale|minimum-scale|maximum-scale|user-scalable|viewport-fit)\s*=/i.test(item),
-    );
-  const value = String(Math.round(scale * 1000) / 1000);
-  return [
-    ...preserved,
-    `initial-scale=${value}`,
-    `minimum-scale=${value}`,
-    `maximum-scale=${value}`,
-    "user-scalable=no",
-    "viewport-fit=cover",
-  ].join(", ");
 }
 
 function nextAnimationFrame(): Promise<void> {
@@ -1902,6 +1855,7 @@ function readGalleryTag(tag: HTMLAnchorElement): GalleryTag | null {
       ? { id: tag.dataset.ehpeekMyTagId, tagSet: tag.dataset.ehpeekMyTagSet }
       : null,
     name,
+    vote: tag.classList.contains("tup") ? "up" : tag.classList.contains("tdn") ? "down" : null,
   };
 }
 
@@ -1922,7 +1876,16 @@ export async function runGalleryTagAction(
   tag: GalleryTag,
   action: GalleryTagAction,
 ): Promise<void> {
-  const tagPane = await updateGalleryTagVote(info, tag.name, action === "voteUp" ? 1 : -1);
+  const vote = action === "voteUp"
+    ? 1
+    : action === "voteDown"
+      ? -1
+      : tag.vote === "up"
+        ? -1
+        : tag.vote === "down"
+          ? 1
+          : 0;
+  const tagPane = await updateGalleryTagVote(info, tag.name, vote);
   const tagList = document.querySelector<HTMLElement>("#taglist");
 
   if (!tagList) {
@@ -1988,7 +1951,7 @@ function readGalleryNewTagInfo(): GalleryNewTagInfo | null {
   };
 }
 
-function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.location.href): boolean {
+export function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.location.href): boolean {
   if (galleryApiSession) {
     return true;
   }
@@ -1998,6 +1961,10 @@ function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.
     .find((text) => text.includes("var api_url") && text.includes("var apikey"));
 
   if (!script) {
+    console.warn("[ehpeek] Gallery API session capture failed", {
+      reason: "api-script-not-found",
+      pathname: new URL(baseUrl).pathname,
+    });
     return false;
   }
 
@@ -2006,6 +1973,12 @@ function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.
   const apiUid = scriptNumberValue(script, "apiuid");
 
   if (!apiUrlValue || !apiKey || apiUid === null) {
+    console.warn("[ehpeek] Gallery API session capture failed", {
+      reason: "api-values-missing",
+      hasApiKey: Boolean(apiKey),
+      hasApiUid: apiUid !== null,
+      hasApiUrl: Boolean(apiUrlValue),
+    });
     return false;
   }
 
@@ -2013,7 +1986,7 @@ function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.
   const pageUrl = new URL(baseUrl);
   const allowedHost =
     apiUrl.origin === pageUrl.origin ||
-    (apiUrl.protocol === "https:" && apiUrl.hostname === "api.e-hentai.org");
+    (apiUrl.protocol === "https:" && ["api.e-hentai.org", "s.exhentai.org"].includes(apiUrl.hostname));
 
   if (
     !allowedHost ||
@@ -2023,6 +1996,13 @@ function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.
     apiUid <= 0 ||
     !/^[A-Za-z0-9_-]{8,128}$/.test(apiKey)
   ) {
+    console.warn("[ehpeek] Gallery API session capture failed", {
+      reason: "api-values-invalid",
+      apiOrigin: apiUrl.origin,
+      apiPathname: apiUrl.pathname,
+      apiUidValid: Number.isSafeInteger(apiUid) && apiUid > 0,
+      apiKeyLength: apiKey.length,
+    });
     return false;
   }
 
@@ -2034,10 +2014,22 @@ function captureGalleryApiSession(root: ParentNode = document, baseUrl = window.
   return true;
 }
 
-function readGalleryTagApiInfo(): GalleryTagApiInfo | null {
+export function readGalleryTagApiInfo(): GalleryTagApiInfo | null {
   const galleryMatch = window.location.pathname.match(/^\/g\/(\d+)\/([^/]+)/i);
 
-  if (!galleryMatch || (!galleryApiSession && !captureGalleryApiSession())) {
+  if (!galleryMatch) {
+    console.warn("[ehpeek] Gallery API context unavailable", {
+      reason: "gallery-path-invalid",
+      pathname: window.location.pathname,
+    });
+    return null;
+  }
+
+  if (!galleryApiSession && !captureGalleryApiSession()) {
+    console.warn("[ehpeek] Gallery API context unavailable", {
+      reason: "api-session-unavailable",
+      galleryId: Number(galleryMatch[1]),
+    });
     return null;
   }
 
@@ -2046,6 +2038,11 @@ function readGalleryTagApiInfo(): GalleryTagApiInfo | null {
   const session = galleryApiSession;
 
   if (!session || !Number.isSafeInteger(galleryId) || galleryId <= 0 || !/^[A-Za-z0-9]+$/.test(token)) {
+    console.warn("[ehpeek] Gallery API context unavailable", {
+      reason: "gallery-identity-invalid",
+      galleryId,
+      hasSession: Boolean(session),
+    });
     return null;
   }
 

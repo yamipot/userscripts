@@ -17,6 +17,7 @@ export {
 export {
   applySiteTheme,
   cacheMyTagSetOptions,
+  captureGalleryApiSession,
   applyTouchGalleryPanelPageStyle,
   findSearchNavigationLink,
   favoriteGalleryTag,
@@ -38,6 +39,7 @@ export {
   parseGalleryFavoriteOptions,
   prepareGalleryNewTag,
   readGalleryInfo,
+  readGalleryTagApiInfo,
   readMyTagAppearances,
   readCachedMyTagSetOptions,
   readMyTagSetOptions,

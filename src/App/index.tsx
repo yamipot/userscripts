@@ -652,6 +652,7 @@ if (singlePageInitialRoute) {
 }
 
 async function startSinglePageApp(initialPage: eh.PageType): Promise<void> {
+  eh.captureGalleryApiSession();
   await EhSyringe.waitForInitialUi();
   eh.prepareSinglePageContent(document.body, window.location.href);
   const initialNodes = eh.singlePageContentNodes();
