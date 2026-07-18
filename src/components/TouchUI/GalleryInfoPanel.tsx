@@ -335,8 +335,12 @@ function TouchGalleryTag(props: {
     <div ref={root} class="ehpeek-touch-gallery-tag-menu relative inline-flex max-w-full">
       <button
         type="button"
-        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit textsize-md cursor-pointer transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
-        style={props.tag.appearance}
+        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
+        style={{
+          "background-color": props.tag.appearance.backgroundColor,
+          "border-color": props.tag.appearance.borderColor,
+          color: props.tag.appearance.color,
+        }}
         aria-label={props.tag.label}
         aria-haspopup="menu"
         aria-expanded={open()}
@@ -432,7 +436,7 @@ function TouchGalleryTagContent(props: { tag: GalleryTag }) {
     onCleanup(EhSyringe.mirrorTranslatedContent(props.tag.contentSource, host));
   });
 
-  return <span ref={host} class="contents" translate="no" />;
+  return <span ref={host} class="contents [&_*]:!bg-transparent [&_*]:!text-inherit" translate="no" />;
 }
 
 function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {

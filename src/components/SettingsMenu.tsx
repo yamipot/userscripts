@@ -8,6 +8,7 @@ export type SettingsMenuState = {
   readerFullscreenEnabled: boolean;
   enhanceThumbsGridsEnabled: boolean;
   enhanceSearchGridsEnabled: boolean;
+  myTagsEnabled: boolean;
   readHistoryEnabled: boolean;
   searchHistoryEnabled: boolean;
   touchUiEnabled: boolean;
@@ -210,6 +211,12 @@ export function SettingsMenu(props: {
                 description={texts.settings.enhanceThumbsHelp}
                 label={texts.settings.enhanceThumbsLabel}
                 onChange={(value) => setDraft("enhanceThumbsGridsEnabled", value)}
+              />
+              <SwitchButton
+                checked={draft.myTagsEnabled}
+                description={texts.settings.myTagsHelp}
+                label={texts.settings.myTagsLabel}
+                onChange={(value) => setDraft("myTagsEnabled", value)}
               />
               <SwitchButton
                 checked={draft.readHistoryEnabled}

@@ -95,6 +95,12 @@ export type GalleryTagAppearance = {
   color: string;
 };
 
+export type MyTagAppearance = {
+  backgroundColor: string;
+  color: string;
+  name: string;
+};
+
 export type GalleryCategoryAppearance = {
   "background-color": string;
   "background-image": string;
@@ -1694,6 +1700,84 @@ export function readGalleryTagGroups(): GalleryTagGroup[] {
   }
 
   return Array.from(groups, ([namespace, tags]) => ({ namespace, tags }));
+}
+
+export function isMyTagsPage(root: ParentNode = document): boolean {
+  return root.querySelector("#usertags_outer") !== null;
+}
+
+export function readMyTagAppearances(root: ParentNode): MyTagAppearance[] {
+  const defaultColor = root.querySelector<HTMLInputElement>("#tagcolor")?.value.trim() ?? "";
+  const output: MyTagAppearance[] = [];
+
+  for (const item of Array.from(root.querySelectorAll<HTMLElement>("#usertags_outer > [id^='usertag_']"))) {
+    const preview = item.querySelector<HTMLElement>("[id^='tagpreview_'][title]");
+    const name = normalizeTagName(preview?.title ?? "");
+
+    if (!preview || !name) {
+      continue;
+    }
+
+    const itemColor = item.querySelector<HTMLInputElement>("input[id^='tagcolor_']")?.value ?? "";
+    const backgroundColor = normalizeTagColor(itemColor) || normalizeTagColor(defaultColor);
+    output.push({
+      name,
+      backgroundColor,
+      color: readableTagColor(backgroundColor),
+    });
+  }
+
+  return output;
+}
+
+export function readMyTagSetOptions(root: ParentNode): Array<{ selected: boolean; value: string }> {
+  return Array.from(root.querySelectorAll<HTMLOptionElement>("#tagset_outer select option"), (option) => ({
+    selected: option.selected,
+    value: option.value,
+  }));
+}
+
+export function isMyTagSetEnabled(root: ParentNode): boolean {
+  return root.querySelector<HTMLInputElement>("#tagset_enable")?.checked ?? true;
+}
+
+export function applyMyTagAppearances(appearances: MyTagAppearance[], root: ParentNode = document): void {
+  const byName = new Map(appearances.map((appearance) => [appearance.name, appearance]));
+
+  for (const tag of Array.from(root.querySelectorAll<HTMLAnchorElement>("#taglist a"))) {
+    const name = galleryTagName(tag);
+    const appearance = name ? byName.get(normalizeTagName(name)) : undefined;
+    const container = tag.closest<HTMLElement>("div.gt, div.gtl, div.gtw") ?? tag;
+
+    if (!appearance) {
+      continue;
+    }
+
+    if (appearance.backgroundColor) {
+      container.style.setProperty("background-color", appearance.backgroundColor, "important");
+      tag.style.setProperty("color", appearance.color, "important");
+    }
+  }
+}
+
+function normalizeTagName(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeTagColor(value: string): string {
+  const color = value.trim();
+  return /^#[\da-f]{6}$/i.test(color) ? color : "";
+}
+
+function readableTagColor(backgroundColor: string): "#000000" | "#ffffff" {
+  const red = Number.parseInt(backgroundColor.slice(1, 3), 16) / 255;
+  const green = Number.parseInt(backgroundColor.slice(3, 5), 16) / 255;
+  const blue = Number.parseInt(backgroundColor.slice(5, 7), 16) / 255;
+  const linear = (channel: number) => channel <= 0.04045
+    ? channel / 12.92
+    : ((channel + 0.055) / 1.055) ** 2.4;
+  const luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  return luminance > 0.179 ? "#000000" : "#ffffff";
 }
 
 function readGalleryTag(tag: HTMLAnchorElement): GalleryTag | null {

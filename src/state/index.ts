@@ -23,6 +23,7 @@ export const state = {
   },
   gallery: {
     enhanceThumbs: persisted("ehpeek:enhance-thumbs:enabled", true),
+    myTags: persisted("ehpeek:my-tags:enabled", true),
     readHistory: persisted("ehpeek:read-history:enabled", true),
   },
   search: {

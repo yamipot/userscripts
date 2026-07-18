@@ -3,6 +3,7 @@ import { EnhanceSearchGrids } from "../components/Enhance/EnhanceSearchGrids";
 import { EnhanceThumbsGrids } from "../components/Enhance/EnhanceThumbsGrids";
 import { loadReadHistory, ReadButton, type ReadButtonInfo, ReadHistorySession } from "../components/Enhance/ReadHistory";
 import { SearchHistory } from "../components/Enhance/SearchHistory";
+import { applyMyTagsEnhance } from "../components/Enhance/MyTags";
 import {
   GalleryPageDescription,
   SCROLL_PAGE_BAR_BOTTOM_CLASS,
@@ -68,6 +69,7 @@ function settingsMenuState() {
     readerFullscreenEnabled: state.reader.fullscreen.value,
     enhanceThumbsGridsEnabled: state.gallery.enhanceThumbs.value,
     enhanceSearchGridsEnabled: state.search.enhance.value,
+    myTagsEnabled: state.gallery.myTags.value,
     readHistoryEnabled: state.gallery.readHistory.value,
     searchHistoryEnabled: state.search.history.value,
     touchUiEnabled: state.touch.enabled.value,
@@ -81,6 +83,7 @@ function defaultSettingsMenuState(): ReturnType<typeof settingsMenuState> {
     readerFullscreenEnabled: state.reader.fullscreen.defaultValue,
     enhanceThumbsGridsEnabled: state.gallery.enhanceThumbs.defaultValue,
     enhanceSearchGridsEnabled: state.search.enhance.defaultValue,
+    myTagsEnabled: state.gallery.myTags.defaultValue,
     readHistoryEnabled: state.gallery.readHistory.defaultValue,
     searchHistoryEnabled: state.search.history.defaultValue,
     touchUiEnabled: state.touch.enabled.defaultValue,
@@ -93,6 +96,7 @@ function applySettingsMenuState(next: ReturnType<typeof settingsMenuState>): voi
   state.reader.fullscreen.set(next.readerFullscreenEnabled);
   state.gallery.enhanceThumbs.set(next.enhanceThumbsGridsEnabled);
   state.search.enhance.set(next.enhanceSearchGridsEnabled);
+  state.gallery.myTags.set(next.myTagsEnabled);
   state.gallery.readHistory.set(next.readHistoryEnabled);
   state.search.history.set(next.searchHistoryEnabled);
   state.touch.enabled.set(next.touchUiEnabled);
@@ -151,6 +155,7 @@ let galleryReadButtonMount: HTMLElement | null | undefined;
 let touchGalleryReadButtonMount: HTMLElement | undefined;
 let originalReadHistorySession: ReadHistorySession | undefined;
 let touchFavoritesCategorySelect: eh.TouchFavoritesCategorySelectInfo | null = null;
+let stopMyTagsEnhance: (() => void) | undefined;
 let pageGeneration = 0;
 let pageRoots = new Set<HTMLElement>();
 let pageOwnedHosts = new Set<HTMLElement>();
@@ -191,6 +196,8 @@ function deactivatePage(): void {
   pageGeneration += 1;
   originalReadHistorySession?.dispose();
   originalReadHistorySession = undefined;
+  stopMyTagsEnhance?.();
+  stopMyTagsEnhance = undefined;
 
   if (settingsState.touchUiEnabled) {
     resetTouchUiPage();
@@ -485,6 +492,14 @@ async function activatePage(nextPage: eh.PageType): Promise<void> {
   pageType = nextPage;
   const resultsPage = pageType.type === "search" || pageType.type === "favorites";
   const generation = ++pageGeneration;
+
+  if (settingsState.myTagsEnabled) {
+    stopMyTagsEnhance = await applyMyTagsEnhance(pageType.type === "gallery");
+  }
+
+  if (generation !== pageGeneration) {
+    return;
+  }
 
   if (resultsPage) {
     const searchSource = eh.readSearchHistorySource();
