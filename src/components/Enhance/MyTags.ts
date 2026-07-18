@@ -36,6 +36,7 @@ async function fetchMyTags(initialDocument?: Document): Promise<MyTagAppearance[
     }
 
     const options = eh.readMyTagSetOptions(initial);
+    eh.cacheMyTagSetOptions(options);
     const documents = options.length > 0
       ? await Promise.all(options.map(async (option) => {
           if (option.selected) {
@@ -44,9 +45,9 @@ async function fetchMyTags(initialDocument?: Document): Promise<MyTagAppearance[
           return (await requestMyTags(option.value)).document;
         }))
       : [initial];
-    const appearances = documents
-      .filter(eh.isMyTagSetEnabled)
-      .flatMap((document) => eh.readMyTagAppearances(document));
+    const appearances = documents.flatMap((document, index) => eh.isMyTagSetEnabled(document)
+      ? eh.readMyTagAppearances(document, options[index]?.value ?? "1")
+      : []);
     const unique = Array.from(new Map(appearances.map((appearance) => [appearance.name, appearance])).values());
     saveMyTags(unique);
     return unique;
@@ -98,6 +99,8 @@ function isMyTagAppearance(value: unknown): value is MyTagAppearance {
   return (
     typeof item.name === "string" &&
     typeof item.backgroundColor === "string" &&
-    typeof item.color === "string"
+    typeof item.color === "string" &&
+    typeof item.id === "string" &&
+    typeof item.tagSet === "string"
   );
 }

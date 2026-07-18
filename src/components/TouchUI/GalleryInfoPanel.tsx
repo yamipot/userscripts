@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import * as eh from "../../eh";
-import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryNewTagInfo, GalleryTag, GalleryTagAction, GalleryTagApiInfo, GalleryTagGroup } from "../../eh";
+import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryNewTagInfo, GalleryTag, GalleryTagAction, GalleryTagApiInfo, GalleryTagGroup, MyTagMode } from "../../eh";
 import * as EhSyringe from "../../integrations/EhSyringe";
 import texts from "../../texts.json";
 import { DomNode, DomNodes } from "../Widgets/ExternalDom";
@@ -289,9 +289,25 @@ function TouchGalleryTag(props: {
 }) {
   const [open, setOpen] = createSignal(false);
   const [alignEnd, setAlignEnd] = createSignal(false);
+  const [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(false);
+  const tagSets = eh.readCachedMyTagSetOptions();
+  const [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1");
+  const [tagMode, setTagMode] = createSignal<MyTagMode>("marked");
   const [updating, setUpdating] = createSignal(false);
   let root!: HTMLDivElement;
+  let longPressTimer: number | undefined;
+  let longPressStart = { x: 0, y: 0 };
+  let longPressed = false;
   const closeMenu = () => setOpen(false);
+  const cancelLongPress = () => {
+    window.clearTimeout(longPressTimer);
+    longPressTimer = undefined;
+  };
+  const openMenu = () => {
+    const bounds = root.getBoundingClientRect();
+    setAlignEnd(bounds.left + bounds.width / 2 > window.innerWidth / 2);
+    setOpen(true);
+  };
 
   onMount(() => {
     const onClick = (event: MouseEvent) => {
@@ -309,6 +325,7 @@ function TouchGalleryTag(props: {
     document.addEventListener("keydown", onKeyDown);
 
     onCleanup(() => {
+      cancelLongPress();
       document.removeEventListener("click", onClick);
       document.removeEventListener("keydown", onKeyDown);
     });
@@ -331,11 +348,29 @@ function TouchGalleryTag(props: {
     }
   };
 
+  const updateFavoriteTag = async () => {
+    closeMenu();
+    setUpdating(true);
+    try {
+      if (props.tag.myTag) {
+        await eh.removeGalleryTagFavorite(props.tag);
+      } else {
+        await eh.favoriteGalleryTag(props.tag, selectedTagSet(), tagMode());
+      }
+      window.location.reload();
+    } catch (error) {
+      console.error("[ehpeek]", error);
+      window.alert(error instanceof Error ? error.message : texts.errors.loadFailed);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div ref={root} class="ehpeek-touch-gallery-tag-menu relative inline-flex max-w-full">
-      <button
-        type="button"
-        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
+      <a
+        href={props.tag.href}
+        class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text no-underline font-inherit font-700 textsize-md cursor-pointer transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
         style={{
           "background-color": props.tag.appearance.backgroundColor,
           "border-color": props.tag.appearance.borderColor,
@@ -344,18 +379,32 @@ function TouchGalleryTag(props: {
         aria-label={props.tag.label}
         aria-haspopup="menu"
         aria-expanded={open()}
-        onClick={() => {
-          if (!open()) {
-            const bounds = root.getBoundingClientRect();
-            setAlignEnd(bounds.left + bounds.width / 2 > window.innerWidth / 2);
-            setOpen(true);
-          } else {
-            closeMenu();
+        onClick={(event) => {
+          if (longPressed) {
+            event.preventDefault();
+            longPressed = false;
           }
         }}
+        onContextMenu={(event) => event.preventDefault()}
+        onPointerDown={(event) => {
+          longPressed = false;
+          longPressStart = { x: event.clientX, y: event.clientY };
+          cancelLongPress();
+          longPressTimer = window.setTimeout(() => {
+            longPressed = true;
+            openMenu();
+          }, 500);
+        }}
+        onPointerMove={(event) => {
+          if (Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) {
+            cancelLongPress();
+          }
+        }}
+        onPointerUp={cancelLongPress}
+        onPointerCancel={cancelLongPress}
       >
         <TouchGalleryTagContent tag={props.tag} />
-      </button>
+      </a>
       <Show when={open()}>
         <div
           class={`ehpeek-touch-gallery-tag-menu-panel absolute top-[calc(100%+6px)] z-overlay flex w-max min-w-240px max-w-[calc(100vw-24px)] flex-col overflow-hidden whitespace-nowrap border ehp-color-site-border rounded-sm ehp-color-site-elevated ${alignEnd() ? "right-0" : "left-0"}`}
@@ -401,6 +450,35 @@ function TouchGalleryTag(props: {
             <Icon name="external-link" />
             <span>{texts.gallery.showTagDefinition}</span>
           </a>
+          <Show
+            when={!props.tag.myTag}
+            fallback={(
+              <button
+                type="button"
+                class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-t ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
+                role="menuitem"
+                disabled={updating()}
+                onClick={() => void updateFavoriteTag()}
+              >
+                <Icon name="heart" filled />
+                <span>{texts.gallery.removeFavoriteTag}</span>
+              </button>
+            )}
+          >
+            <button
+              type="button"
+              class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-t ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
+              role="menuitem"
+              disabled={updating()}
+              onClick={() => {
+                closeMenu();
+                setFavoriteDialogOpen(true);
+              }}
+            >
+              <Icon name="heart" />
+              <span>{texts.gallery.favoriteTag}</span>
+            </button>
+          </Show>
           <button
             type="button"
             class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"
@@ -414,6 +492,63 @@ function TouchGalleryTag(props: {
             <span class="w-24px text-center ehp-color-site-accent textsize-lg leading-none" aria-hidden="true">+</span>
             <span>{texts.gallery.addNewTag}</span>
           </button>
+        </div>
+      </Show>
+      <Show when={favoriteDialogOpen()}>
+        <div
+          class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"
+          role="dialog"
+          aria-modal="true"
+          aria-label={texts.gallery.favoriteTag}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setFavoriteDialogOpen(false);
+            }
+          }}
+        >
+          <div class="box-border flex w-full max-w-420px flex-col gap-lg rounded-md border ehp-color-site-border ehp-color-site-elevated p-lg shadow-xl">
+            <div class="ehp-color-site-text textsize-lg font-700">{texts.gallery.favoriteTag}</div>
+            <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+              <span>{texts.gallery.tagCollection}</span>
+              <select
+                class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
+                value={selectedTagSet()}
+                onChange={(event) => setSelectedTagSet(event.currentTarget.value)}
+              >
+                {tagSets.map((option) => <option value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+              <span>{texts.gallery.tagBehavior}</span>
+              <select
+                class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
+                value={tagMode()}
+                onChange={(event) => setTagMode(event.currentTarget.value as MyTagMode)}
+              >
+                <option value="marked">{texts.gallery.markTag}</option>
+                <option value="watched">{texts.gallery.watchTag}</option>
+                <option value="hidden">{texts.gallery.hideTag}</option>
+              </select>
+            </label>
+            <div class="grid grid-cols-2 gap-md">
+              <button
+                type="button"
+                class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"
+                onClick={() => setFavoriteDialogOpen(false)}
+              >
+                {texts.settings.close}
+              </button>
+              <button
+                type="button"
+                class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"
+                disabled={updating()}
+                onClick={() => void updateFavoriteTag()}
+              >
+                <Icon name="heart" />
+                <span>{texts.gallery.favoriteTag}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </Show>
     </div>

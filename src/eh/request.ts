@@ -81,6 +81,49 @@ export async function updateGalleryFavorite(actionUrl: string, value: string): P
   });
 }
 
+export type MyTagMode = "hidden" | "marked" | "watched";
+
+export async function addMyTag(tagName: string, tagSet: string, mode: MyTagMode): Promise<PageResponse> {
+  const body = new URLSearchParams();
+  body.set("usertag_action", "add");
+  body.set("tagname_new", tagName);
+  body.set("tagcolor_new", "");
+  body.set("tagweight_new", "10");
+  if (mode === "watched") {
+    body.set("tagwatch_new", "on");
+  } else if (mode === "hidden") {
+    body.set("taghide_new", "on");
+  }
+
+  const url = new URL("/mytags", window.location.origin);
+  url.searchParams.set("tagset", tagSet);
+
+  return requestPage(url.href, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+}
+
+export async function deleteMyTag(tagId: string, tagSet: string): Promise<PageResponse> {
+  const body = new URLSearchParams();
+  body.set("usertag_action", "mass");
+  body.set("usertag_target", "0");
+  body.append("modify_usertags[]", tagId);
+  const url = new URL("/mytags", window.location.origin);
+  url.searchParams.set("tagset", tagSet);
+
+  return requestPage(url.href, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+}
+
 export async function updateGalleryRating(
   info: GalleryTagApiInfo,
   value: number,

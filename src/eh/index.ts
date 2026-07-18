@@ -4,18 +4,22 @@ import * as dom from "./dom";
 import { requestPage } from "./request";
 
 export {
+  addMyTag,
   requestPage,
   updateGalleryFavorite,
   type GalleryRatingResult,
   type GalleryTagApiInfo,
+  type MyTagMode,
   type PageRequestOptions,
   type PageResponse,
 } from "./request";
 
 export {
   applySiteTheme,
+  cacheMyTagSetOptions,
   applyTouchGalleryPanelPageStyle,
   findSearchNavigationLink,
+  favoriteGalleryTag,
   galleryContinueReadingButtonMountTarget,
   insertTouchGalleryPanel,
   insertTouchSearchPanel,
@@ -35,6 +39,7 @@ export {
   prepareGalleryNewTag,
   readGalleryInfo,
   readMyTagAppearances,
+  readCachedMyTagSetOptions,
   readMyTagSetOptions,
   readGalleryTagGroups,
   readShowingRange,
@@ -44,6 +49,7 @@ export {
   prepareTouchSearchPanel,
   replaceGalleryPageBarMounts,
   runGalleryTagAction,
+  removeGalleryTagFavorite,
   observeGalleryTagChanges,
   focusGalleryNewTag,
   restorePreview,
@@ -74,6 +80,7 @@ export type {
   GalleryTagAction,
   GalleryTagGroup,
   MyTagAppearance,
+  MyTagSetOption,
   SearchHistorySource,
   TouchSearchPanelInfo,
   TouchFavoritesCategorySelectInfo,

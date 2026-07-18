@@ -37,6 +37,13 @@
     "categories": "Favorite category"
   },
   "gallery": {
+    "favoriteTag": "Favorite Tag",
+    "removeFavoriteTag": "Remove My Tag",
+    "tagCollection": "Collection",
+    "tagBehavior": "Behavior",
+    "markTag": "Mark",
+    "watchTag": "Watch",
+    "hideTag": "Hide",
     "voteUp": "Vote Up",
     "voteDown": "Vote Down",
     "showTaggedGalleries": "Show Tagged Galleries",
@@ -65,7 +72,7 @@
     "enhanceSearchHelp": "Adds swipe navigation to search pages",
     "enhanceThumbsLabel": "Thumbs Grids",
     "enhanceThumbsHelp": "Adds swipe navigation and scrollable pages bar for gallery preview",
-    "myTagsLabel": "My Tag Color",
+    "myTagsLabel": "My Tag",
     "myTagsHelp": "Highlights your saved tags with colors in gallery",
     "readHistoryLabel": "Read History",
     "readHistoryHelp": "Remembers reading progress",

@@ -2,10 +2,13 @@ import type { ReaderPage } from "../readerTypes";
 import texts from "../texts.json";
 import { normalizeUrl } from "../utils";
 import {
+  addMyTag,
+  deleteMyTag,
   updateGalleryRating,
   updateGalleryTagVote,
   type GalleryRatingResult,
   type GalleryTagApiInfo,
+  type MyTagMode,
 } from "./request";
 import galleryRearrange from "./galleryRearrange.css";
 
@@ -77,6 +80,7 @@ export type GalleryTag = {
   definitionHref: string;
   href: string;
   label: string;
+  myTag: { id: string; tagSet: string } | null;
   name: string;
 };
 
@@ -98,7 +102,15 @@ export type GalleryTagAppearance = {
 export type MyTagAppearance = {
   backgroundColor: string;
   color: string;
+  id: string;
   name: string;
+  tagSet: string;
+};
+
+export type MyTagSetOption = {
+  label: string;
+  selected: boolean;
+  value: string;
 };
 
 export type GalleryCategoryAppearance = {
@@ -1706,7 +1718,7 @@ export function isMyTagsPage(root: ParentNode = document): boolean {
   return root.querySelector("#usertags_outer") !== null;
 }
 
-export function readMyTagAppearances(root: ParentNode): MyTagAppearance[] {
+export function readMyTagAppearances(root: ParentNode, tagSet: string): MyTagAppearance[] {
   const defaultColor = root.querySelector<HTMLInputElement>("#tagcolor")?.value.trim() ?? "";
   const output: MyTagAppearance[] = [];
 
@@ -1720,18 +1732,27 @@ export function readMyTagAppearances(root: ParentNode): MyTagAppearance[] {
 
     const itemColor = item.querySelector<HTMLInputElement>("input[id^='tagcolor_']")?.value ?? "";
     const backgroundColor = normalizeTagColor(itemColor) || normalizeTagColor(defaultColor);
+    const id = item.id.match(/^usertag_(\d+)$/)?.[1] ?? "";
+
+    if (!id) {
+      continue;
+    }
+
     output.push({
       name,
       backgroundColor,
       color: readableTagColor(backgroundColor),
+      id,
+      tagSet,
     });
   }
 
   return output;
 }
 
-export function readMyTagSetOptions(root: ParentNode): Array<{ selected: boolean; value: string }> {
+export function readMyTagSetOptions(root: ParentNode): MyTagSetOption[] {
   return Array.from(root.querySelectorAll<HTMLOptionElement>("#tagset_outer select option"), (option) => ({
+    label: option.textContent?.trim() ?? option.value,
     selected: option.selected,
     value: option.value,
   }));
@@ -1739,6 +1760,27 @@ export function readMyTagSetOptions(root: ParentNode): Array<{ selected: boolean
 
 export function isMyTagSetEnabled(root: ParentNode): boolean {
   return root.querySelector<HTMLInputElement>("#tagset_enable")?.checked ?? true;
+}
+
+export function cacheMyTagSetOptions(options: MyTagSetOption[]): void {
+  window.localStorage.setItem("ehpeek:my-tag-sets", JSON.stringify(options));
+}
+
+export function readCachedMyTagSetOptions(): MyTagSetOption[] {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem("ehpeek:my-tag-sets") ?? "[]");
+    return Array.isArray(value)
+      ? value.filter((option): option is MyTagSetOption => (
+          option !== null &&
+          typeof option === "object" &&
+          typeof option.label === "string" &&
+          typeof option.selected === "boolean" &&
+          typeof option.value === "string"
+        ))
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export function applyMyTagAppearances(appearances: MyTagAppearance[], root: ParentNode = document): void {
@@ -1756,8 +1798,34 @@ export function applyMyTagAppearances(appearances: MyTagAppearance[], root: Pare
     if (appearance.backgroundColor) {
       container.style.setProperty("background-color", appearance.backgroundColor, "important");
       tag.style.setProperty("color", appearance.color, "important");
+      tag.dataset.ehpeekMyTagId = appearance.id;
+      tag.dataset.ehpeekMyTagSet = appearance.tagSet;
     }
   }
+}
+
+export async function favoriteGalleryTag(tag: GalleryTag, tagSet: string, mode: MyTagMode): Promise<void> {
+  const response = await addMyTag(tag.name, tagSet, mode);
+
+  if (new URL(response.url).origin !== window.location.origin || !isMyTagsPage(response.document)) {
+    throw new Error("My Tags page is unavailable");
+  }
+
+  window.localStorage.removeItem("ehpeek:my-tags");
+}
+
+export async function removeGalleryTagFavorite(tag: GalleryTag): Promise<void> {
+  if (!tag.myTag) {
+    return;
+  }
+
+  const response = await deleteMyTag(tag.myTag.id, tag.myTag.tagSet);
+
+  if (new URL(response.url).origin !== window.location.origin || !isMyTagsPage(response.document)) {
+    throw new Error("My Tags page is unavailable");
+  }
+
+  window.localStorage.removeItem("ehpeek:my-tags");
 }
 
 function normalizeTagName(value: string): string {
@@ -1801,6 +1869,9 @@ function readGalleryTag(tag: HTMLAnchorElement): GalleryTag | null {
     definitionHref: `https://ehwiki.org/wiki/${encodeURIComponent(name.replace(/^[a-z]+:\s*/i, ""))}`,
     href: tag.href,
     label,
+    myTag: tag.dataset.ehpeekMyTagId && tag.dataset.ehpeekMyTagSet
+      ? { id: tag.dataset.ehpeekMyTagId, tagSet: tag.dataset.ehpeekMyTagSet }
+      : null,
     name,
   };
 }
