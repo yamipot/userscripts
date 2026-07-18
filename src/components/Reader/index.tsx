@@ -13,8 +13,11 @@ import {
 } from "../../utils";
 import type { ScrollMotion } from "../animation";
 import type { PointerDragEnd, PointerGestureCallbacks } from "../pointerGesture";
-import { createPointerGestureElement, type PointerGestureSurfaceHandle } from "../PointerGestureSurface";
-import { PagesViewport, PagesViewportView, type PagesViewportViewHandle } from "./Viewport";
+import {
+  PagesViewport,
+  type PagesViewportActions,
+  type PagesViewportCallbacks,
+} from "./Viewport";
 import {
   initialToolbarState,
   Toolbar,
@@ -24,7 +27,7 @@ import {
   type ToolbarCallbacks,
   type ToolbarState,
 } from "./Toolbar";
-import { createZoomOverlay, type ZoomOverlay, type ZoomOverlayImage } from "./ZoomOverlay";
+import { ZoomOverlay, type ZoomOverlayActions, type ZoomOverlayImage } from "./ZoomOverlay";
 import readerCss from "./index.css";
 
 const VIEWER_ID = "ehpeek-reader";
@@ -138,15 +141,7 @@ type PagesGestureCallbacks = {
   onNativeScroll: () => void;
 };
 
-type PagesGestureHandle = {
-  dragging: () => boolean;
-};
-
 type Direction = -1 | 1;
-type ViewportDragState = {
-  startScroll: number;
-};
-
 type LoadTarget = {
   pageNum: number;
   page: ReaderPage;
@@ -386,6 +381,13 @@ function handlePagesKeydown(event: KeyboardEvent, callbacks: PagesGestureCallbac
   }
 }
 
+const EMPTY_VIEWPORT_CALLBACKS: PagesViewportCallbacks = {
+  onNativeScroll: () => {},
+  onReloadPage: () => {},
+  onWheel: () => {},
+  pointer: {},
+};
+
 export function FullscreenReader(props: {
   handleRef: (handle: FullscreenReaderHandle | null) => void;
   onClosed: () => void;
@@ -398,44 +400,30 @@ export function FullscreenReader(props: {
     viewMode: state.reader.viewMode.value,
   });
   const [session, setSession] = createSignal<ReaderSession | null>(null);
-  let gestureHandle: PagesGestureHandle | null = null;
-  let pointerCallbacks!: PointerGestureCallbacks;
-  let scroller!: HTMLDivElement;
-  let viewportView!: PagesViewportViewHandle;
-  let zoomOverlay!: HTMLDivElement;
-  let zoomImage!: HTMLImageElement;
-
-  createPointerGestureElement(
-    () => session() ? scroller : null,
-    () => pointerCallbacks,
-    (handle: PointerGestureSurfaceHandle | null) => {
-      gestureHandle = handle
-        ? {
-            dragging: () => handle.gesture()?.isDragging() ?? false,
-          }
-        : null;
-    },
-  );
+  const [viewportCallbacks, setViewportCallbacks] = createSignal<PagesViewportCallbacks>(EMPTY_VIEWPORT_CALLBACKS);
+  let viewportActions: PagesViewportActions | null = null;
+  let zoomOverlayActions: ZoomOverlayActions | null = null;
 
   onMount(() => {
     const previousDocumentOverflow = document.documentElement.style.overflow;
     const previousBodyOverflow = document.body.style.overflow;
-    const nextSession = new ReaderSession(props.options, {
-      close: props.onClosed,
-      isDragging: () => gestureHandle?.dragging() ?? false,
-      setRootState: (nextState) => setRootState(nextState),
-      setToolbarState: (nextState) => setToolbarState(nextState),
-    }, {
-      scroller,
-      viewportView,
-      zoomOverlay,
-      zoomImage,
-    });
+    const nextSession = new ReaderSession(
+      props.options,
+      {
+        close: props.onClosed,
+        setRootState: (nextState) => setRootState(nextState),
+        setToolbarState: (nextState) => setToolbarState(nextState),
+      },
+      {
+        viewport: viewportActions!,
+        zoomOverlay: zoomOverlayActions!,
+      },
+    );
 
     registerGlobalStyle(STYLE_ID, readerCss);
     document.documentElement.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
-    pointerCallbacks = pagesPointerGestureCallbacks(nextSession.gestureCallbacks);
+    setViewportCallbacks(() => nextSession.viewportCallbacks);
     setSession(nextSession);
     props.handleRef({
       close: () => nextSession.close(),
@@ -444,25 +432,14 @@ export function FullscreenReader(props: {
     const onKeydown = (event: KeyboardEvent): void => {
       handlePagesKeydown(event, nextSession.gestureCallbacks);
     };
-    const onWheel = (event: WheelEvent): void => {
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      nextSession.gestureCallbacks.onWheel(delta, event);
-    };
-    const onScroll = (): void => {
-      nextSession.gestureCallbacks.onNativeScroll();
-    };
 
     document.addEventListener("keydown", onKeydown, true);
-    scroller.addEventListener("scroll", onScroll);
-    scroller.addEventListener("wheel", onWheel);
     nextSession.open();
 
     onCleanup(() => {
       props.handleRef(null);
       nextSession.dispose();
       document.removeEventListener("keydown", onKeydown, true);
-      scroller.removeEventListener("scroll", onScroll);
-      scroller.removeEventListener("wheel", onWheel);
       document.documentElement.style.overflow = previousDocumentOverflow;
       document.body.style.overflow = previousBodyOverflow;
     });
@@ -481,49 +458,31 @@ export function FullscreenReader(props: {
           {(currentSession) => <Toolbar callbacks={currentSession.toolbarCallbacks} state={toolbarState} />}
         </Show>
       </header>
-      <div
-        ref={scroller}
-        class={
-          "w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden " +
-          "[&[data-dragging=true]]:(cursor-grabbing select-none) " +
-          "[#ehpeek-reader[data-view-mode=paged]_&]:(overflow-hidden touch-none select-none)"
-        }
-        tabIndex={-1}
-      >
-        <PagesViewportView
-          handleRef={(handle) => {
-            if (handle) {
-              viewportView = handle;
-            }
-          }}
-        />
-      </div>
-      <div
-        ref={zoomOverlay}
-        class="fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none"
-        hidden
-        style={{ display: "none" }}
-      >
-        <img
-          ref={zoomImage}
-          class="block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]"
-          alt=""
-        />
-      </div>
+      <PagesViewport
+        actionsRef={(actions) => {
+          viewportActions = actions;
+        }}
+        callbacks={viewportCallbacks()}
+        mode={rootState.viewMode}
+        readDirection={rootState.readDirection}
+        totalPages={props.options.totalPages}
+      />
+      <ZoomOverlay
+        actionsRef={(actions) => {
+          zoomOverlayActions = actions;
+        }}
+      />
     </div>
   );
 }
 
-type ReaderViewElements = {
-  scroller: HTMLElement;
-  viewportView: PagesViewportViewHandle;
-  zoomOverlay: HTMLElement;
-  zoomImage: HTMLImageElement;
+type ReaderComponentActions = {
+  viewport: PagesViewportActions;
+  zoomOverlay: ZoomOverlayActions;
 };
 
 type ReaderSessionBindings = {
   close: () => void;
-  isDragging: () => boolean;
   setRootState: (state: ReaderRootState) => void;
   setToolbarState: (state: ToolbarState) => void;
 };
@@ -531,6 +490,7 @@ type ReaderSessionBindings = {
 class ReaderSession {
   readonly gestureCallbacks: PagesGestureCallbacks;
   readonly toolbarCallbacks: ToolbarCallbacks;
+  readonly viewportCallbacks: PagesViewportCallbacks;
   private toolbarState: ToolbarState;
   private rootState: ReaderRootState;
   private readonly pages = new Map<number, ReaderPage>();
@@ -550,13 +510,11 @@ class ReaderSession {
   private readonly onBeforeEnterFullscreen: (() => void) | undefined;
   private readonly restorePageViewport: (() => Promise<void>) | undefined;
   private readonly closeComponent: () => void;
-  private readonly isDragging: () => boolean;
   private readonly setRootComponentState: (state: ReaderRootState) => void;
   private readonly setToolbarComponentState: (state: ToolbarState) => void;
-  private readonly viewport: PagesViewport;
-  private readonly zoomOverlay: ZoomOverlay;
+  private readonly viewport: PagesViewportActions;
+  private readonly zoomOverlay: ZoomOverlayActions;
   private scrollFrame: number | null = null;
-  private resizeFrame: number | null = null;
   private progressNavigationTimer: number | null = null;
   private fullscreenHintTimer: number | null = null;
   private tapTimer: number | null = null;
@@ -569,7 +527,6 @@ class ReaderSession {
     | null = null;
   private pendingProgressNavigationPageNum: number | null = null;
   private progressNavigating = false;
-  private viewportDrag: ViewportDragState | null = null;
   private pagedTargetPageNumber: number | null = null;
   private syncToken = 0;
   private historyEntry = false;
@@ -580,7 +537,7 @@ class ReaderSession {
   private keepReaderAfterFullscreenExit = false;
   private readonly initialFullscreenHint: boolean;
 
-  constructor(options: FullscreenReaderOptions, bindings: ReaderSessionBindings, view: ReaderViewElements) {
+  constructor(options: FullscreenReaderOptions, bindings: ReaderSessionBindings, components: ReaderComponentActions) {
     this.fullscreenTarget = options.fullscreenTarget;
     this.fullscreenWasActive = document.fullscreenElement === this.fullscreenTarget;
     this.galleryId = options.galleryId;
@@ -607,7 +564,6 @@ class ReaderSession {
     this.initialFullscreenHint = options.initialFullscreenHint ?? false;
     this.ownsFullscreen = options.initialFullscreenOwned ?? false;
     this.closeComponent = bindings.close;
-    this.isDragging = bindings.isDragging;
     this.setRootComponentState = bindings.setRootState;
     this.setToolbarComponentState = bindings.setToolbarState;
     this.toolbarState = initialToolbarState();
@@ -616,16 +572,8 @@ class ReaderSession {
       toolbarOpen: false,
       viewMode: state.reader.viewMode.value,
     };
-    this.viewport = new PagesViewport({
-      element: view.scroller,
-      view: view.viewportView,
-      mode: () => state.reader.viewMode.value,
-      readDirection: () => state.reader.readDirection.value,
-      closed: () => this.closed,
-      totalPages: () => this.totalPages,
-      onReloadPage: (pageNum) => this.reloadPage(pageNum),
-    });
-    this.zoomOverlay = createZoomOverlay({ element: view.zoomOverlay, image: view.zoomImage });
+    this.viewport = components.viewport;
+    this.zoomOverlay = components.zoomOverlay;
     this.toolbarCallbacks = {
       onReadDirectionClick: () => this.toggleReadDirection(),
       onRightTapClick: () => this.toggleRightTapAction(),
@@ -658,6 +606,12 @@ class ReaderSession {
       onPinchEnd: () => this.zoomOverlay.endPinch(),
       onNativeScroll: () => this.handleNativeScroll(),
     };
+    this.viewportCallbacks = {
+      onNativeScroll: this.gestureCallbacks.onNativeScroll,
+      onReloadPage: (pageNum) => this.reloadPage(pageNum),
+      onWheel: this.gestureCallbacks.onWheel,
+      pointer: pagesPointerGestureCallbacks(this.gestureCallbacks),
+    };
     this.imageQueue = new TwoTierImageQueue(
       (target) => options.loadPage(target.page, target.index),
       (pageNum) => this.viewport.markPageLoading(pageNum),
@@ -674,7 +628,7 @@ class ReaderSession {
       return;
     }
 
-    this.viewport.scrollerElement().focus({ preventScroll: true });
+    this.viewport.focus();
 
     if (this.onExit) {
       window.history.pushState({ ehpeekReader: true }, "", window.location.href);
@@ -682,7 +636,6 @@ class ReaderSession {
       window.addEventListener("popstate", this.onPopState);
     }
 
-    window.addEventListener("resize", this.onResize);
     document.addEventListener("fullscreenchange", this.onFullscreenChange);
     this.syncInitialUi();
     if (this.initialFullscreenHint) {
@@ -740,7 +693,6 @@ class ReaderSession {
     this.cancelProgressNavigation();
     this.cancelPendingTap();
     this.imageQueue.dispose();
-    window.removeEventListener("resize", this.onResize);
     window.removeEventListener("popstate", this.onPopState);
     document.removeEventListener("fullscreenchange", this.onFullscreenChange);
     this.clearFullscreenHintTimer();
@@ -759,11 +711,6 @@ class ReaderSession {
     if (this.scrollFrame !== null) {
       window.cancelAnimationFrame(this.scrollFrame);
       this.scrollFrame = null;
-    }
-
-    if (this.resizeFrame !== null) {
-      window.cancelAnimationFrame(this.resizeFrame);
-      this.resizeFrame = null;
     }
 
     this.viewport.stopMotion();
@@ -952,15 +899,15 @@ class ReaderSession {
     const imageUrl = loaded.imageUrl;
     const width = positiveNumber(loaded.width);
     const height = positiveNumber(loaded.height);
-    const image = this.viewport.createPageImage(target.pageNum, {
+    const slotImage = {
       imageUrl,
       highPriority: target.pageNum === this.currentPageNum,
       width,
       height,
-    });
+    };
 
     try {
-      await loadImage(image);
+      await this.viewport.loadPageImage(target.pageNum, token, slotImage);
     } catch (error) {
       const message = error instanceof Error ? error.message : texts.errors.imageLoadFailed;
       this.viewport.setPageError(target.pageNum, token, message);
@@ -975,7 +922,6 @@ class ReaderSession {
         width,
         height,
       });
-      this.viewport.setPageImage(target.pageNum, token, { imageUrl, highPriority: target.pageNum === this.currentPageNum, width, height }, image);
 
       if (target.pageNum === this.currentPageNum) {
         this.updatePageNumber();
@@ -1027,7 +973,7 @@ class ReaderSession {
 
     event.preventDefault();
 
-    if (this.isDragging()) {
+    if (this.viewport.isDragging()) {
       return;
     }
 
@@ -1050,10 +996,7 @@ class ReaderSession {
       return;
     }
 
-    this.viewport.stopMotion();
-    this.viewportDrag = {
-      startScroll: this.viewport.startDragPosition(),
-    };
+    this.viewport.beginDrag();
   }
 
   private handleDragMove(info: GestureDragMove, event: PointerEvent | MouseEvent): void {
@@ -1062,9 +1005,8 @@ class ReaderSession {
       return;
     }
 
-    const drag = this.viewportDrag;
-
-    if (!drag) {
+    const before = this.viewport.scrollTop();
+    if (!this.viewport.moveDrag({ dx: info.dx, dy: info.dy })) {
       return;
     }
 
@@ -1075,9 +1017,8 @@ class ReaderSession {
     debugLog("drag move", {
       pointerType: pointerTypeForEvent(event),
       clientY: info.clientY,
-      before: this.viewport.scrollTop(),
+      before,
     });
-    this.viewport.dragPage(drag.startScroll, { dx: info.dx, dy: info.dy });
   }
 
   private handleDragEnd(info: GestureDragEnd, event: PointerEvent | MouseEvent): void {
@@ -1091,7 +1032,7 @@ class ReaderSession {
       dx: info.dx,
       dy: info.dy,
     });
-    this.viewportDrag = null;
+    this.viewport.cancelDrag();
 
     if (state.reader.viewMode.value !== "paged") {
       this.viewport.moveToTop(this.viewport.scrollTop());
@@ -1114,7 +1055,7 @@ class ReaderSession {
       return;
     }
 
-    if (this.isDragging() || state.reader.viewMode.value === "paged") {
+    if (this.viewport.isDragging() || state.reader.viewMode.value === "paged") {
       return;
     }
 
@@ -1146,7 +1087,7 @@ class ReaderSession {
   }
 
   private handleTap(info: GestureTap, event: PointerEvent | MouseEvent): void {
-    this.viewportDrag = null;
+    this.viewport.cancelDrag();
 
     if (this.consumeDoubleTap(info, event)) {
       return;
@@ -1211,7 +1152,7 @@ class ReaderSession {
   private handlePinchStart(info: { clientX: number; clientY: number }): boolean {
     this.cancelPendingTap();
     this.viewport.stopMotion();
-    this.viewportDrag = null;
+    this.viewport.cancelDrag();
 
     if (this.zoomOverlay.active()) {
       this.zoomOverlay.startPinch({ centerX: info.clientX, centerY: info.clientY });
@@ -1241,7 +1182,7 @@ class ReaderSession {
     }
 
     this.viewport.stopMotion();
-    this.viewportDrag = null;
+    this.viewport.cancelDrag();
     this.zoomOverlay.start(image, { centerX: point.clientX, centerY: point.clientY });
     this.zoomOverlay.movePinch({ centerX: point.clientX, centerY: point.clientY, scale: 2 });
     this.zoomOverlay.endPinch();
@@ -1518,17 +1459,6 @@ class ReaderSession {
     }
   }
 
-  private readonly onResize = (): void => {
-    if (this.resizeFrame !== null) {
-      return;
-    }
-
-    this.resizeFrame = window.requestAnimationFrame(() => {
-      this.resizeFrame = null;
-      this.viewport.resizePages();
-    });
-  };
-
   private setMode(mode: ViewMode): void {
     if (mode === state.reader.viewMode.value) {
       return;
@@ -1630,23 +1560,6 @@ function startImageDownload(url: string, name?: string): boolean {
     console.error("[ehpeek]", error);
     window.alert(texts.errors.downloadFailed);
     return false;
-  }
-}
-
-async function loadImage(image: HTMLImageElement): Promise<void> {
-  if (image.complete && image.naturalWidth > 0) {
-    return;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    image.addEventListener("load", () => resolve(), { once: true });
-    image.addEventListener("error", () => reject(new Error(texts.errors.imageLoadFailed)), { once: true });
-  });
-
-  try {
-    await image.decode();
-  } catch {
-    // Loaded is enough.
   }
 }
 
