@@ -29,6 +29,11 @@ export {
   searchPageNavigation,
   searchResultList,
   searchTopNavigationBar,
+  singlePageContentNodes,
+  importSinglePageContent,
+  resetTouchPageLayout,
+  singlePageNavigationLink,
+  singlePageSearchForm,
   setGalleryRating,
   settingsMenuMountTarget,
   showPreviewPlaceholder,
@@ -39,6 +44,7 @@ export type {
   GalleryFavoriteInfo,
   GalleryFavoriteOption,
   GalleryInfo,
+  GalleryTag,
   GalleryTagGroup,
   TouchSearchPanelInfo,
   TouchTopBarInfo,
@@ -134,6 +140,34 @@ export function extractPageType(url = window.location.href): PageType {
       type: "other",
       url,
     };
+  }
+}
+
+export function singlePageRoute(url: string): PageType | null {
+  const page = extractPageType(url);
+
+  if (page.type === "search" || page.type === "favorites") {
+    return page;
+  }
+
+  if (page.type !== "gallery") {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url, window.location.href);
+    let unsupportedParameter = false;
+    parsed.searchParams.forEach((_value, key) => {
+      unsupportedParameter ||= key !== "p";
+    });
+    const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    let unsupportedHash = false;
+    hash.forEach((_value, key) => {
+      unsupportedHash ||= key !== "peek_page";
+    });
+    return unsupportedParameter || unsupportedHash ? null : page;
+  } catch {
+    return null;
   }
 }
 

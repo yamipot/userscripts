@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import * as eh from "../../eh";
-import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryTagGroup } from "../../eh";
+import type { GalleryFavoriteInfo, GalleryFavoriteOption, GalleryInfo, GalleryTag, GalleryTagGroup } from "../../eh";
+import * as EhSyringe from "../../integrations/EhSyringe";
 import texts from "../../texts.json";
 import { requestText } from "../../utils";
 import { Icon } from "../Icon";
@@ -256,12 +257,22 @@ function TouchGalleryTagGroup(props: { group: GalleryTagGroup }) {
             style={tag.appearance}
             aria-label={tag.label}
           >
-            <DomNode node={tag.content} />
+            <TouchGalleryTagContent tag={tag} />
           </a>
         ))}
       </div>
     </section>
   );
+}
+
+function TouchGalleryTagContent(props: { tag: GalleryTag }) {
+  let host!: HTMLSpanElement;
+
+  onMount(() => {
+    onCleanup(EhSyringe.mirrorTranslatedContent(props.tag.contentSource, host));
+  });
+
+  return <span ref={host} class="contents" translate="no" />;
 }
 
 function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {

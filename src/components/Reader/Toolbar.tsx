@@ -62,7 +62,6 @@ export type ToolbarState = {
   downloadAvailable: boolean;
   downloadDialog: ReaderDownloadDialog | null;
   fullscreenActive: boolean;
-  fullscreenHint: boolean;
   open: boolean;
   progress: PageProgress;
 };
@@ -77,7 +76,6 @@ export function initialToolbarState(): ToolbarState {
     downloadAvailable: false,
     downloadDialog: null,
     fullscreenActive: false,
-    fullscreenHint: false,
     open: false,
     progress: {
       pageNum: 1,
@@ -211,20 +209,6 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           onCommit={props.callbacks.onProgressCommit}
         />
       </div>
-      <Show when={props.state.fullscreenHint}>
-        <div
-          class={
-            "fixed z-3 left-1/2 -translate-x-1/2 w-[min(88vw,520px)] " +
-            "bottom-[calc(76px+env(safe-area-inset-bottom,0px))] coarse:bottom-[calc(96px+env(safe-area-inset-bottom,0px))] " +
-            "px-lg py-md rounded-md bg-[var(--color-badge)] ehp-color-text shadow-lg pointer-events-none " +
-            "font-sans textsize-md font-600 leading-[1.4] text-center"
-          }
-          role="status"
-          aria-live="polite"
-        >
-          {texts.reader.fullscreenHint}
-        </div>
-      </Show>
       <Show when={props.state.downloadDialog} keyed>
         {(downloadDialog) => (
         <div

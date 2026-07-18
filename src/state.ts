@@ -11,6 +11,9 @@ type StateValue<T> = {
 };
 
 export const state = {
+  app: {
+    singlePage: persisted("ehpeek:single-page-app:enabled", false),
+  },
   reader: {
     enabled: persisted("ehpeek:reader:enabled", true),
     fullscreen: persisted("ehpeek:reader:fullscreen", false),

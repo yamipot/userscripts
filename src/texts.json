@@ -11,7 +11,6 @@
     "openOriginalPage": "Open original image page",
     "enterFullscreen": "Enter fullscreen",
     "exitFullscreen": "Exit fullscreen",
-    "fullscreenHint": "Fullscreen is unavailable. Hide the bottom toolbar from your browser menu.",
     "download": "Download",
     "downloadDisplayedImage": "Displayed image",
     "downloadOriginalImage": "Original image",
@@ -36,16 +35,25 @@
   "settings": {
     "openSettings": "Settings",
     "menuLabel": "Ehpeek",
+    "showHelp": "What does this setting do?",
+    "singlePageAppOn": "Single Page App: on",
+    "singlePageAppOff": "Single Page App: off",
+    "singlePageAppHelp": "Loads pages without a full page refresh",
     "readerOn": "Reader: on",
     "readerOff": "Reader: off",
+    "readerHelp": "Opens gallery images in Ehpeek's reader",
     "readerFullscreenOn": "Reader fullscreen: on",
     "readerFullscreenOff": "Reader fullscreen: off",
+    "readerFullscreenHelp": "Fullscreen when reader opens",
     "enhanceSearchOn": "Enhance Search Grids: on",
     "enhanceSearchOff": "Enhance Search Grids: off",
+    "enhanceSearchHelp": "Adds swipe navigation to Search pages",
     "enhanceThumbsOn": "Enhance Thumbs Preview: on",
     "enhanceThumbsOff": "Enhance Thumbs Preview: off",
+    "enhanceThumbsHelp": "Adds swipe navigation and scrollable pages bar for Gallery thumbnails preview",
     "touchUiOn": "Touch UI: on",
     "touchUiOff": "Touch UI: off",
+    "touchUiHelp": "Uses touch-friendly navigation UI.",
     "apply": "Apply",
     "close": "Close"
   },
@@ -54,6 +62,11 @@
     "hideCategories": "Hide Categories",
     "history": "Search History",
     "deleteHistory": "Delete search history item"
+  },
+  "singlePageApp": {
+    "loadFailed": "Could not load this page",
+    "openOriginal": "Open original page",
+    "dismiss": "Dismiss"
   },
   "errors": {
     "imageNotFound": "Image not found",

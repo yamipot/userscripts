@@ -18,6 +18,8 @@ const TOUCH_SEARCH_RESULTS_WRAPPER_CLASS_NAME =
   "ehpeek-touch-search-results box-border !min-w-0 !w-full !max-w-full overflow-x-auto";
 const TOUCH_SEARCH_RESULT_LIST_CLASS_NAME = "!min-w-0 !w-full !max-w-full";
 const GALLERY_PAGE_DESCRIPTION_SELECTOR = ".gpc:not(.eh-syringe-ignore)";
+const SINGLE_PAGE_PERSISTENT_SELECTOR =
+  "[data-ehpeek-persistent], #eh-syringe-popup-button, #eh-syringe-popup-back, .eh-syringe-lite-auto-complete-list";
 
 export type PreviewSnapshot = {
   description: Node | null;
@@ -56,7 +58,7 @@ export type GalleryTagGroup = {
 
 export type GalleryTag = {
   appearance: GalleryTagAppearance;
-  content: HTMLElement;
+  contentSource: HTMLElement;
   href: string;
   label: string;
 };
@@ -230,6 +232,48 @@ export function searchTopNavigationBar(root: ParentNode = document): HTMLElement
   return searchNavigationBars(root)[0] ?? null;
 }
 
+export function singlePageContentNodes(root: HTMLElement = document.body): Node[] {
+  return Array.from(root.childNodes).filter(
+    (node) => !(node instanceof Element && node.matches(SINGLE_PAGE_PERSISTENT_SELECTOR)),
+  );
+}
+
+export function importSinglePageContent(doc: Document, baseUrl: string): Node[] {
+  absolutizeDocumentUrls(doc, baseUrl);
+  return Array.from(doc.body.childNodes, (node) => document.importNode(node, true));
+}
+
+export function singlePageNavigationLink(target: EventTarget | null): HTMLAnchorElement | null {
+  const link = target instanceof Element ? target.closest<HTMLAnchorElement>("a[href]") : null;
+
+  if (!(link instanceof HTMLAnchorElement) || link.hasAttribute("data-ehpeek-single-page-bypass")) {
+    return null;
+  }
+
+  return link;
+}
+
+export function singlePageSearchForm(target: EventTarget | null): HTMLFormElement | null {
+  const form = target instanceof HTMLFormElement ? target : null;
+
+  if (!form || !form.matches("#searchbox form, #fsdiv form")) {
+    return null;
+  }
+
+  return form;
+}
+
+export function resetTouchPageLayout(): void {
+  document.documentElement.classList.remove(
+    ...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "),
+    ...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "),
+  );
+  document.body.classList.remove(
+    ...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "),
+    ...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "),
+  );
+}
+
 export function preparePageViewportForFullscreen(): PageViewportSnapshot {
   const existing = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
   const meta = existing ?? document.createElement("meta");
@@ -292,6 +336,30 @@ function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => resolve());
   });
+}
+
+function absolutizeDocumentUrls(doc: Document, baseUrl: string): void {
+  const attributes: Array<[string, string]> = [
+    ["a[href]", "href"],
+    ["area[href]", "href"],
+    ["form[action]", "action"],
+    ["img[src]", "src"],
+    ["input[src]", "src"],
+    ["script[src]", "src"],
+    ["source[src]", "src"],
+  ];
+
+  for (const [selector, attribute] of attributes) {
+    for (const element of Array.from(doc.querySelectorAll<HTMLElement>(selector))) {
+      const value = element.getAttribute(attribute);
+
+      if (!value || value.startsWith("#") || /^(?:data|javascript|mailto):/i.test(value)) {
+        continue;
+      }
+
+      element.setAttribute(attribute, normalizeUrl(value, baseUrl));
+    }
+  }
 }
 
 export function readTouchSearchPanelInfo(root: ParentNode = document): TouchSearchPanelInfo | null {
@@ -1030,17 +1098,13 @@ function readGalleryTag(tag: HTMLAnchorElement): GalleryTag | null {
   const container = tag.closest<HTMLElement>("div.gt, div.gtl, div.gtw") ?? tag;
   const tagStyle = window.getComputedStyle(tag);
   const containerStyle = window.getComputedStyle(container);
-  const content = document.createElement("span");
-  content.className = "contents";
-  content.append(...Array.from(tag.childNodes, (node) => node.cloneNode(true)));
-
   return {
     appearance: {
       backgroundColor: containerStyle.backgroundColor,
       borderColor: containerStyle.borderColor,
       color: tagStyle.color,
     },
-    content,
+    contentSource: tag,
     href: tag.href,
     label,
   };

@@ -1,8 +1,9 @@
-import { createEffect, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, createUniqueId, onCleanup, onMount, Show } from "solid-js";
 import { createStore } from "solid-js/store";
 import texts from "../texts.json";
 
 export type SettingsMenuState = {
+  singlePageAppEnabled: boolean;
   readerEnabled: boolean;
   readerFullscreenEnabled: boolean;
   enhanceThumbsGridsEnabled: boolean;
@@ -21,22 +22,53 @@ const SETTINGS_DOT_CLASS =
 
 function SwitchButton(props: {
   checked: boolean;
+  description: string;
   labelOff: string;
   labelOn: string;
   onChange: (value: boolean) => void;
 }) {
+  const [helpOpen, setHelpOpen] = createSignal(false);
+  const helpId = `ehpeek-setting-help-${createUniqueId()}`;
+
   return (
-    <button
-      type="button"
-      class="flex w-full min-h-lg touch:min-h-xl items-center justify-between gap-lg touch:gap-xl py-md px-md touch:py-lg rounded-xs border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text cursor-pointer font-inherit text-left textsize-lg [-webkit-tap-highlight-color:transparent]"
-      onClick={(event: MouseEvent) => {
-        event.stopPropagation();
-        props.onChange(!props.checked);
-      }}
-    >
-      <span>{props.checked ? props.labelOn : props.labelOff}</span>
-      <span class={`${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`} />
-    </button>
+    <div class="border-0 border-b ehp-color-site-border-subtle-b">
+      <div class="flex items-stretch">
+        <button
+          type="button"
+          class="flex min-w-0 flex-1 min-h-lg touch:min-h-xl items-center justify-between gap-lg touch:gap-xl py-md pl-md pr-sm touch:py-lg rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text cursor-pointer font-inherit text-left textsize-lg [-webkit-tap-highlight-color:transparent]"
+          aria-describedby={helpOpen() ? helpId : undefined}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            props.onChange(!props.checked);
+          }}
+        >
+          <span>{props.checked ? props.labelOn : props.labelOff}</span>
+          <span class={`${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`} />
+        </button>
+        <button
+          type="button"
+          class="flex flex-none w-32px touch:w-40px min-h-lg touch:min-h-xl items-center justify-center p-0 rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit textsize-md font-700 [-webkit-tap-highlight-color:transparent]"
+          aria-label={texts.settings.showHelp}
+          aria-controls={helpId}
+          aria-expanded={helpOpen()}
+          title={texts.settings.showHelp}
+          onClick={(event: MouseEvent) => {
+            event.stopPropagation();
+            setHelpOpen((open) => !open);
+          }}
+        >
+          <span class="flex w-20px h-20px items-center justify-center rounded-full border border-[var(--color-site-border-subtle)] leading-none">?</span>
+        </button>
+      </div>
+      <Show when={helpOpen()}>
+        <p
+          id={helpId}
+          class="box-border w-full m-0 px-md pb-md text-left whitespace-normal [overflow-wrap:anywhere] [contain:inline-size] textsize-md leading-[1.35] opacity-75"
+        >
+          {props.description}
+        </p>
+      </Show>
+    </div>
   );
 }
 
@@ -91,33 +123,45 @@ export function SettingsMenu(props: {
 
   return (
     <Show when={props.open}>
-      <div ref={menu} class="ehpeek-settings-menu fixed top-24px right-24px z-overlay min-w-260px p-sm border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-lg leading-[1.2]">
+      <div ref={menu} class="ehpeek-settings-menu pointer-events-auto fixed top-24px right-24px z-overlay min-w-260px max-h-[calc(100vh-48px)] overflow-y-auto p-sm border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-lg leading-[1.2]">
+        <SwitchButton
+          checked={draft.singlePageAppEnabled}
+          description={texts.settings.singlePageAppHelp}
+          labelOn={texts.settings.singlePageAppOn}
+          labelOff={texts.settings.singlePageAppOff}
+          onChange={(value) => setDraft("singlePageAppEnabled", value)}
+        />
         <SwitchButton
           checked={draft.readerEnabled}
+          description={texts.settings.readerHelp}
           labelOn={texts.settings.readerOn}
           labelOff={texts.settings.readerOff}
           onChange={(value) => setDraft("readerEnabled", value)}
         />
         <SwitchButton
           checked={draft.readerFullscreenEnabled}
+          description={texts.settings.readerFullscreenHelp}
           labelOn={texts.settings.readerFullscreenOn}
           labelOff={texts.settings.readerFullscreenOff}
           onChange={(value) => setDraft("readerFullscreenEnabled", value)}
         />
         <SwitchButton
           checked={draft.enhanceSearchGridsEnabled}
+          description={texts.settings.enhanceSearchHelp}
           labelOn={texts.settings.enhanceSearchOn}
           labelOff={texts.settings.enhanceSearchOff}
           onChange={(value) => setDraft("enhanceSearchGridsEnabled", value)}
         />
         <SwitchButton
           checked={draft.enhanceThumbsGridsEnabled}
+          description={texts.settings.enhanceThumbsHelp}
           labelOn={texts.settings.enhanceThumbsOn}
           labelOff={texts.settings.enhanceThumbsOff}
           onChange={(value) => setDraft("enhanceThumbsGridsEnabled", value)}
         />
         <SwitchButton
           checked={draft.touchUiEnabled}
+          description={texts.settings.touchUiHelp}
           labelOn={texts.settings.touchUiOn}
           labelOff={texts.settings.touchUiOff}
           onChange={(value) => setDraft("touchUiEnabled", value)}
