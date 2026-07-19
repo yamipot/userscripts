@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ehpeek: E-H/ExH viewer
 // @namespace    ehpeek
-// @version      260718.1825
+// @version      260719.0039
 // @description  A mobile-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -1846,13 +1846,31 @@ body #gdt[class],
     );
   }
   function preparePageViewportForFullscreen() {
-    return {
+    let existing = document.querySelector('meta[name="viewport"]'), meta = existing ?? document.createElement("meta"), scale = Math.max(0.1, window.visualViewport?.scale ?? 1), snapshot = {
+      content: existing?.getAttribute("content") ?? null,
+      created: !existing,
+      meta,
+      scale,
       scrollX: window.scrollX,
       scrollY: window.scrollY
     };
+    return existing || (meta.name = "viewport", document.head.append(meta)), meta.content = lockedViewportContent(snapshot.content, scale), snapshot;
   }
   async function restorePageViewport(snapshot) {
-    await nextAnimationFrame(), await nextAnimationFrame(), await nextAnimationFrame(), window.scrollTo(snapshot.scrollX, snapshot.scrollY);
+    await nextAnimationFrame(), snapshot.created ? snapshot.meta.remove() : snapshot.content === null ? snapshot.meta.removeAttribute("content") : snapshot.meta.setAttribute("content", snapshot.content), await nextAnimationFrame(), await nextAnimationFrame(), window.scrollTo(snapshot.scrollX, snapshot.scrollY);
+  }
+  function lockedViewportContent(content, scale) {
+    let preserved = (content ?? "").split(",").map((item) => item.trim()).filter(
+      (item) => item && !/^(?:initial-scale|minimum-scale|maximum-scale|user-scalable|viewport-fit)\s*=/i.test(item)
+    ), value = String(Math.round(scale * 1e3) / 1e3);
+    return [
+      ...preserved,
+      `initial-scale=${value}`,
+      `minimum-scale=${value}`,
+      `maximum-scale=${value}`,
+      "user-scalable=no",
+      "viewport-fit=cover"
+    ].join(", ");
   }
   function nextAnimationFrame() {
     return new Promise((resolve) => {
@@ -3585,7 +3603,7 @@ body #gdt[class],
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260718.1825", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260719.0039", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -3596,7 +3614,7 @@ body #gdt[class],
         }, insert(_el$23, () => texts_default.settings.default), _el$24.$$click = (event) => {
           event.stopPropagation(), close();
         }, insert(_el$24, () => texts_default.settings.close), createRenderEffect((_p$) => {
-          var _v$8 = readerOptionsOpen(), _v$9 = readerOptionsOpen() ? texts_default.settings.hideReaderOptions : texts_default.settings.showReaderOptions, _v$0 = enhanceOpen(), _v$1 = enhanceOpen() ? texts_default.settings.hideEnhance : texts_default.settings.showEnhance, _v$10 = texts_default.navigation.github, _v$11 = `${texts_default.navigation.github}: 260718.1825`;
+          var _v$8 = readerOptionsOpen(), _v$9 = readerOptionsOpen() ? texts_default.settings.hideReaderOptions : texts_default.settings.showReaderOptions, _v$0 = enhanceOpen(), _v$1 = enhanceOpen() ? texts_default.settings.hideEnhance : texts_default.settings.showEnhance, _v$10 = texts_default.navigation.github, _v$11 = `${texts_default.navigation.github}: 260719.0039`;
           return _v$8 !== _p$.e && setAttribute(_el$10, "aria-expanded", _p$.e = _v$8), _v$9 !== _p$.t && setAttribute(_el$10, "aria-label", _p$.t = _v$9), _v$0 !== _p$.a && setAttribute(_el$15, "aria-expanded", _p$.a = _v$0), _v$1 !== _p$.o && setAttribute(_el$15, "aria-label", _p$.o = _v$1), _v$10 !== _p$.i && setAttribute(_el$19, "aria-label", _p$.i = _v$10), _v$11 !== _p$.n && setAttribute(_el$19, "title", _p$.n = _v$11), _p$;
         }, {
           e: void 0,
@@ -5623,7 +5641,7 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
           })()];
         }
       })), createRenderEffect((_p$) => {
-        var _v$4 = props.content.state === "error" ? "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center textsize-md font-700 leading-1" : "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] leading-1 text-center " + (props.content.kind === "end" ? "p-xl [direction:ltr] textsize-xl font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 [font-variant-numeric:tabular-nums]"), _v$5 = props.content.state === "loading" ? "status" : void 0, _v$6 = props.content.state === "loading" ? `${texts_default.reader.loading} ${props.text}` : void 0;
+        var _v$4 = props.content.state === "error" ? "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center textsize-md font-700 leading-1" : "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] text-center " + (props.content.kind === "end" ? "p-xl [direction:ltr] textsize-xl font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 leading-[1] [font-variant-numeric:tabular-nums]"), _v$5 = props.content.state === "loading" ? "status" : void 0, _v$6 = props.content.state === "loading" ? `${texts_default.reader.loading} ${props.text}` : void 0;
         return _v$4 !== _p$.e && className(_el$5, _p$.e = _v$4), _v$5 !== _p$.t && setAttribute(_el$5, "role", _p$.t = _v$5), _v$6 !== _p$.a && setAttribute(_el$5, "aria-label", _p$.a = _v$6), _p$;
       }, {
         e: void 0,
@@ -6384,9 +6402,10 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
       __publicField(this, "historyEntry", !1);
       __publicField(this, "closing", !1);
       __publicField(this, "closed", !1);
+      __publicField(this, "fullscreenExitPromise", null);
       __publicField(this, "keepReaderAfterFullscreenExit", !1);
       __publicField(this, "onPopState", () => {
-        this.historyEntry && (this.historyEntry = !1, this.finishClose(), this.onExit?.());
+        this.historyEntry && (this.historyEntry = !1, this.finishClose(), this.finishReaderExit());
       });
       __publicField(this, "onImageLoaded", (target, loaded, token) => {
         pageWindowNumbers(this.currentPageNum, this.renderWindowSize).includes(target.pageNum) && this.installImage(target, loaded, token);
@@ -6433,19 +6452,28 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
           this.closing = !0, window.history.back();
           return;
         }
-        this.finishClose();
+        this.finishClose(), this.finishReaderExit();
       }
     }
     syncInitialUi() {
       this.syncFullscreenState(), this.syncReaderControls(), this.updatePageNumber();
     }
+    async finishReaderExit() {
+      await this.fullscreenExitPromise;
+      try {
+        await this.restorePageViewport?.();
+      } catch (error) {
+        console.warn("[ehpeek] Failed to restore page viewport", error);
+      }
+      this.onExit?.();
+    }
     finishClose() {
       this.cleanup() && this.closeComponent();
     }
     cleanup() {
-      return this.closed ? !1 : (this.closed = !0, this.cancelProgressNavigation(), this.cancelPendingTap(), this.imageQueue.dispose(), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("fullscreenchange", this.onFullscreenChange), document.fullscreenElement === this.fullscreenTarget && document.exitFullscreen().then(() => this.restorePageViewport?.()).catch((error) => {
+      return this.closed ? !1 : (this.closed = !0, this.cancelProgressNavigation(), this.cancelPendingTap(), this.imageQueue.dispose(), window.removeEventListener("popstate", this.onPopState), document.removeEventListener("fullscreenchange", this.onFullscreenChange), document.fullscreenElement === this.fullscreenTarget && (this.fullscreenExitPromise = document.exitFullscreen().catch((error) => {
         console.warn("[ehpeek] Failed to exit fullscreen", error);
-      }), clearReaderFullscreenScale(this.fullscreenTarget), this.scrollFrame !== null && (window.cancelAnimationFrame(this.scrollFrame), this.scrollFrame = null), this.viewport.stopMotion(), !0);
+      })), clearReaderFullscreenScale(this.fullscreenTarget), this.scrollFrame !== null && (window.cancelAnimationFrame(this.scrollFrame), this.scrollFrame = null), this.viewport.stopMotion(), !0);
     }
     setCurrentPageNumber(pageNumber, scrollIntoView, scrollMotion = "instant") {
       this.pagedTargetPageNumber = null;
@@ -6747,12 +6775,15 @@ html[data-ehpeek-touch-ui="true"] .touch\\:border-spacing-6px{--un-border-spacin
         }
     }
     async finishFullscreenExit(keepReaderOpen) {
+      if (!keepReaderOpen) {
+        this.close();
+        return;
+      }
       try {
         await this.restorePageViewport?.();
       } catch (error) {
         console.warn("[ehpeek] Failed to restore page viewport", error);
       }
-      keepReaderOpen || this.close();
     }
     syncFullscreenState() {
       this.callbacks.onFullscreenChange(document.fullscreenElement === this.fullscreenTarget);
