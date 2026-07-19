@@ -10,6 +10,8 @@
  * before taking ownership and return `null` when the feature cannot be resolved.
  * `inplace`, `clone`, and `move` fix ownership immediately without applying
  * presentation changes; `move` also detaches the source node.
+ * Use `DomNode.observe` for asynchronously inserted source nodes and choose
+ * ownership in its acquire callback; use `ManagedDomNode.observe` after ownership.
  *
  * Feature results separate detached values in `data` from owned nodes in
  * `elems`. Every `elems` property must be `ManagedDomNode`,
@@ -22,7 +24,23 @@
  * Delayed DOM changes are exposed as small, named functions in `transforms`.
  * Each function changes one coherent part of the managed result, may be called
  * repeatedly, and accepts only the component-owned presentation inputs it uses.
+ * Persistent observable values belong in component state. A feature may expose
+ * non-null `actions` only for imperative effects on its managed nodes.
+ * An action may accept a component-owned ref as a semantic mount or mirror
+ * target, but it must never return a raw original-page node.
+ * Keep one-off resolve/apply helpers inside their feature function; only parsers
+ * shared by multiple features or repeated document loads belong at module scope.
  */
 export * from "./core";
+export * as EhSyringe from "./ehSyringe";
 export * from "./galleryInfo";
+export * from "./gallery";
+export * from "./search";
+export * from "./galleryPage";
+export * from "./galleryPreview";
+export * from "./resultsPage";
+export * from "./reader";
+export * from "./searchPanel";
+export * from "./singlePage";
 export * from "./topBar";
+export * from "./viewport";

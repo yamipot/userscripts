@@ -1,18 +1,27 @@
 import texts from "../../texts.json";
 import {
+  favoriteGalleryTag,
+  parseGalleryFavoriteOptions,
   readGalleryTagApiInfo,
-  readGalleryTagGroups,
-  readShowingRange,
-} from "../dom";
+  removeGalleryTagFavorite,
+  runGalleryTagAction,
+  setGalleryRating,
+} from "./gallery";
 import type {
   GalleryCategoryAppearance,
   GalleryFavoriteInfo,
   GalleryRatingInfo,
+  GalleryTagData,
 } from "../types";
-import { createAnchor, DomNode, type ManagedDomElements } from "./core";
+import { galleryTagNameFromUrl } from "../url";
+import { requestPage, updateGalleryFavorite, type MyTagMode } from "../request";
+import { createAnchor, DomNode, type ManagedDomElements, type ManagedDomNode } from "./core";
+import type { GalleryPreviewData } from "./galleryPreview";
+import { applyTouchGalleryPanelPageStyle } from "./galleryPage";
 
 /** Reads and takes ownership of E-H's gallery header for GalleryInfoPanel. */
-export function galleryInfo() {
+export function galleryInfo(preview: GalleryPreviewData | null) {
+  applyTouchGalleryPanelPageStyle();
   const mount = createAnchor("gallery-info");
   if (!mount) {
     return null;
@@ -149,6 +158,60 @@ export function galleryInfo() {
         node,
       }));
 
+  const readTag = (tag: DomNode<HTMLAnchorElement>) => {
+    const label = tag.text() || tag.attribute("ehs-tag")?.trim() || tag.attribute("title")?.trim() || "";
+    const href = tag.attribute("href") ?? "";
+    const name = galleryTagNameFromUrl(href);
+    if (!label || !name || !href) {
+      return null;
+    }
+    const container = tag.closest<HTMLElement>("div.gt, div.gtl, div.gtw") ?? tag;
+    const tagStyle = tag.computedStyle();
+    const containerStyle = container.computedStyle();
+    const myTagId = tag.attribute("data-ehpeek-my-tag-id");
+    const myTagSet = tag.attribute("data-ehpeek-my-tag-set");
+    return {
+      data: {
+        appearance: {
+          backgroundColor: containerStyle.backgroundColor,
+          borderColor: containerStyle.borderColor,
+          color: tagStyle.color,
+        },
+        definitionHref: `https://ehwiki.org/wiki/${encodeURIComponent(name.replace(/^[a-z]+:\s*/i, ""))}`,
+        href,
+        label,
+        myTag: myTagId && myTagSet ? { id: myTagId, tagSet: myTagSet } : null,
+        name,
+        vote: tag.hasClass("tup") ? "up" as const : tag.hasClass("tdn") ? "down" as const : null,
+      },
+      source: tag,
+    };
+  };
+
+  const readTagGroups = () => {
+    const rows = page.all<HTMLTableRowElement>("#taglist tr");
+    if (rows.length > 0) {
+      return rows
+        .map((row) => ({
+          namespace: row.one<HTMLElement>(".tc, td:first-child")?.text().replace(/:$/, "") || "tag",
+          tags: row.all<HTMLAnchorElement>("a").map(readTag).filter((tag) => tag !== null).slice(0, 30),
+        }))
+        .filter((group) => group.tags.length > 0);
+    }
+    return [{
+      namespace: "tag",
+      tags: page.all<HTMLAnchorElement>("#taglist a").map(readTag).filter((tag) => tag !== null).slice(0, 60),
+    }].filter((group) => group.tags.length > 0);
+  };
+
+  const manageTagGroups = (): GalleryInfoTagGroup[] => readTagGroups().map((group) => ({
+    namespace: group.namespace,
+    tags: group.tags.flatMap(({ data: tag, source }) => {
+      const contentSource = source.owned() ?? source.inplace();
+      return contentSource ? [{ ...tag, contentSource }] : [];
+    }),
+  }));
+
   const meta = readMeta();
   const category = page.one<HTMLElement>("#gdc");
   const categoryStyle = category?.one<HTMLElement>("[class*='ct']") ?? category;
@@ -163,19 +226,17 @@ export function galleryInfo() {
   const scripts = page
     .all<HTMLScriptElement>("script")
     .map((script) => script.text());
-  const actions = readActions();
+  const actionSources = readActions();
   const tagContentSources: DomNode<HTMLElement>[] = [];
-  const tagGroups = readGalleryTagGroups().map((group) => ({
-    ...group,
-    tags: group.tags.map(({ contentSource, ...tag }) => {
-      const contentSourceIndex =
-        tagContentSources.push(DomNode.from(contentSource)) - 1;
+  const tagGroups = readTagGroups().map((group) => ({
+    namespace: group.namespace,
+    tags: group.tags.map(({ data: tag, source }) => {
+      const contentSourceIndex = tagContentSources.push(source) - 1;
       return { ...tag, contentSourceIndex };
     }),
   }));
-  const totalPages = readShowingRange(document)?.total;
+  const totalPages = preview?.totalImages ?? null;
   const data = {
-    available: true,
     category: category?.text() ?? "",
     categoryAppearance: readCategory(categoryStyle),
     favorite: readFavorite(favorite, scripts),
@@ -197,7 +258,6 @@ export function galleryInfo() {
       .filter((value): value is string => Boolean(value))
       .slice(0, 6)
       .map((value) => ({ value })),
-    tagApi: readGalleryTagApiInfo(),
     tagGroups,
     titleMain: page.one<HTMLElement>("#gn")?.text() ?? "",
     titleSub: page.one<HTMLElement>("#gj")?.text() ?? "",
@@ -210,7 +270,7 @@ export function galleryInfo() {
   const sources = [
     host,
     ...hostChildSources,
-    ...actions.map(({ node }) => node),
+    ...actionSources.map(({ node }) => node),
     ...tagContentSources,
     ...(coverUrl && coverSource ? [coverSource] : []),
     ...(newTag && newTagButton && newTagField && newTagForm
@@ -230,7 +290,7 @@ export function galleryInfo() {
   const coverElem = coverUrl
     ? (coverSource ?? DomNode.from(document.createElement("img"))).clone()
     : null;
-  const actionElems = actions
+  const actionElems = actionSources
     .map(({ node }) => node.clone(false))
     .filter((action) => action !== null);
   const newTagButtonElem = newTagButton?.inplace() ?? null;
@@ -249,7 +309,7 @@ export function galleryInfo() {
     .filter((content) => content !== null);
   if (
     (coverUrl && !coverElem) ||
-    actionElems.length !== actions.length ||
+    actionElems.length !== actionSources.length ||
     hostChildElems.length !== hostChildSources.length ||
     (newTag && newTagButton && newTagField && newTagForm && !newTagElem) ||
     !hostElem ||
@@ -292,7 +352,7 @@ export function galleryInfo() {
           classes: { replace: className },
           styles: { remove: "all" },
         });
-        action.setTextUnlessInput(actions[index]?.label ?? "");
+        action.setTextUnlessInput(actionSources[index]?.label ?? "");
       });
     },
     newTag(classes: {
@@ -324,7 +384,46 @@ export function galleryInfo() {
     },
   };
 
-  return { data, elems, transforms };
+  const actions = {
+    async favoriteOptions(actionUrl: string, favorited: boolean) {
+      const response = await requestPage(actionUrl);
+      return parseGalleryFavoriteOptions(response.document, favorited);
+    },
+    async favoriteTag(tag: GalleryTagData, tagSet: string, mode: MyTagMode): Promise<void> {
+      await favoriteGalleryTag(tag, tagSet, mode);
+    },
+    observeTagGroups(onChange: (groups: GalleryInfoTagGroup[]) => void) {
+      const tagList = page.one<HTMLElement>("#taglist");
+      const managedTagList = tagList?.owned() ?? tagList?.inplace();
+      return managedTagList?.observe(() => onChange(manageTagGroups())) ?? (() => undefined);
+    },
+    async rate(value: number) {
+      const api = readGalleryTagApiInfo();
+      if (!api) {
+        throw new Error("Gallery API context is unavailable.");
+      }
+      return setGalleryRating(api, value);
+    },
+    async removeFavoriteTag(tag: GalleryTagData): Promise<void> {
+      await removeGalleryTagFavorite(tag);
+    },
+    async tagAction(tag: GalleryTagData, action: import("../types").GalleryTagAction): Promise<void> {
+      const api = readGalleryTagApiInfo();
+      if (!api) {
+        throw new Error("Gallery API context is unavailable.");
+      }
+      await runGalleryTagAction(api, tag, action);
+    },
+    async updateFavorite(actionUrl: string, value: string): Promise<void> {
+      await updateGalleryFavorite(actionUrl, value);
+    },
+  };
+
+  return { actions, data, elems, transforms };
 }
 
 export type GalleryInfoResult = NonNullable<ReturnType<typeof galleryInfo>>;
+export type GalleryInfoTagGroup = {
+  namespace: string;
+  tags: Array<GalleryTagData & { contentSource: ManagedDomNode }>;
+};

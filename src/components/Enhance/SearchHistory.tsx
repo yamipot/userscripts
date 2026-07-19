@@ -1,12 +1,11 @@
 import { createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
-import type { SearchHistorySource } from "../../eh";
+import type { SearchHistoryResult } from "../../eh";
+import { addSearchHistory, loadSearchHistory, removeSearchHistory } from "../../state";
 
-const SEARCH_HISTORY_KEY = "ehpeek:search:history";
-
-export function SearchHistory(props: { source: SearchHistorySource }) {
+export function SearchHistory(props: { source: SearchHistoryResult }) {
   let dropdown: HTMLElement | undefined;
   const [searchValue, setSearchValue] = createSignal(
-    untrack(() => props.source.searchInput.value),
+    untrack(() => props.source.data.value),
   );
   const [history, setHistory] = createSignal<string[]>(loadSearchHistory());
   const [open, setOpen] = createSignal(false);
@@ -15,24 +14,13 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
   const itemButtons: HTMLButtonElement[] = [];
   const visiblePosition = () => open() && !searchValue().trim() && history().length > 0 ? position() : null;
   const selectHistory = (item: string) => {
-    const input = props.source.searchInput;
-    input.value = item;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.focus();
-    input.setSelectionRange(item.length, item.length);
+    props.source.actions.select(item);
     setOpen(false);
   };
 
   onMount(() => {
-    const input = props.source.searchInput;
-    const form = input.form;
     const updatePosition = () => {
-      const rect = input.getBoundingClientRect();
-      setPosition({
-        left: rect.left,
-        top: rect.bottom,
-        width: rect.width,
-      });
+      setPosition(props.source.actions.position());
     };
     const showHistory = () => {
       updatePosition();
@@ -68,52 +56,44 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
         setOpen(false);
       }
     };
-    const updateSearchValue = () => {
-      setSearchValue(input.value);
-
-      if (!input.value.trim() && document.activeElement === input) {
+    const updateSearchValue = (value: string, focused: boolean) => {
+      setSearchValue(value);
+      if (!value.trim() && focused) {
         showHistory();
       }
     };
-    const recordSearch = () => {
-      const value = input.value.trim();
+    const recordSearch = (sourceValue: string) => {
+      const value = sourceValue.trim();
 
       if (!value) {
         return;
       }
 
-      const next = [value, ...loadSearchHistory().filter((item) => item !== value)];
-      saveSearchHistory(next);
-      setHistory(next);
+      setHistory(addSearchHistory(value));
     };
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
 
-      if (target === input || (target instanceof Node && dropdown?.contains(target))) {
+      if (props.source.actions.isInputTarget(target) || (target instanceof Node && dropdown?.contains(target))) {
         return;
       }
 
       setOpen(false);
     };
 
-    input.addEventListener("input", updateSearchValue);
-    input.addEventListener("focus", showHistory);
-    input.addEventListener("pointerdown", showHistory);
-    input.addEventListener("keydown", onInputKeyDown);
-    form?.addEventListener("submit", recordSearch);
-    props.source.searchSubmit.addEventListener("click", recordSearch);
+    const disconnect = props.source.actions.connect({
+      onFocus: showHistory,
+      onInput: updateSearchValue,
+      onKeyDown: onInputKeyDown,
+      onSubmit: recordSearch,
+    });
     document.addEventListener("pointerdown", closeOnOutsidePointer, true);
     document.addEventListener("scroll", updatePosition, true);
     window.addEventListener("resize", updatePosition);
-    updateSearchValue();
+    updateSearchValue(props.source.data.value, false);
 
     onCleanup(() => {
-      input.removeEventListener("input", updateSearchValue);
-      input.removeEventListener("focus", showHistory);
-      input.removeEventListener("pointerdown", showHistory);
-      input.removeEventListener("keydown", onInputKeyDown);
-      form?.removeEventListener("submit", recordSearch);
-      props.source.searchSubmit.removeEventListener("click", recordSearch);
+      disconnect();
       document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
       document.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
@@ -152,9 +132,7 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
                 type="button"
                 class="appearance-none inline-flex w-60px min-h-lg flex-none items-center justify-center border-0 border-l ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text textsize-xl font-inherit leading-1 cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"
                 onClick={() => {
-                  const next = history().filter((candidate) => candidate !== item);
-                  saveSearchHistory(next);
-                  setHistory(next);
+                  setHistory(removeSearchHistory(item));
                 }}
               >
                 ×
@@ -165,12 +143,4 @@ export function SearchHistory(props: { source: SearchHistorySource }) {
       )}
     </Show>
   );
-}
-
-function loadSearchHistory(): string[] {
-  return GM_getValue<string[]>(SEARCH_HISTORY_KEY, []);
-}
-
-function saveSearchHistory(history: string[]): void {
-  GM_setValue(SEARCH_HISTORY_KEY, history);
 }

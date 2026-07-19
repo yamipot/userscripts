@@ -1,3 +1,5 @@
+import { DomNode, ManagedDomNode } from "./core";
+
 const ROOT_CLASS = "ehs-injected";
 const TRANSLATED_LANGUAGE = "zh-hans";
 const INITIALIZED_SELECTOR = "#eh-syringe-popup-button";
@@ -12,13 +14,15 @@ const INJECTION_TIMEOUT_MS = 3_000;
 const ROUTE_TRANSLATION_TIMEOUT_MS = 450;
 const ROUTE_TRANSLATION_QUIET_MS = 48;
 let initialUiReady: Promise<void> | null = null;
-let tagTipInput: HTMLInputElement | null = null;
+let tagTipInput: ManagedDomNode<HTMLInputElement> | null = null;
 
+/** Waits for EhSyringe's initial translation pass before EhPeek transforms the page. */
 export function waitForInitialUi(): Promise<void> {
   initialUiReady ??= waitForExpectedInitialUi();
   return initialUiReady;
 }
 
+/** Waits for EhSyringe's Search controls and translated results before Search transforms run. */
 export async function waitForSearchUi(): Promise<void> {
   await waitForInitialUi();
 
@@ -27,6 +31,7 @@ export async function waitForSearchUi(): Promise<void> {
   }
 }
 
+/** Waits for EhSyringe to translate content inserted by a SinglePage route. */
 export async function waitForRouteTranslation(
   root: HTMLElement,
 ): Promise<void> {
@@ -63,65 +68,25 @@ export async function waitForRouteTranslation(
   }
 }
 
-export function mirrorTranslatedContent(
-  source: HTMLElement,
-  target: HTMLElement,
-): () => void {
-  const update = () => {
-    target.replaceChildren(
-      ...Array.from(source.childNodes, (node) => node.cloneNode(true)),
-    );
-    const language = source.getAttribute("lang");
-
-    if (language) {
-      target.setAttribute("lang", language);
-    } else {
-      target.removeAttribute("lang");
-    }
-  };
-  const observer = new MutationObserver(update);
-
-  update();
-  observer.observe(source, {
-    attributes: true,
-    attributeFilter: ["lang"],
-    characterData: true,
-    childList: true,
-    subtree: true,
-  });
-
-  return () => observer.disconnect();
-}
-
-export function reuseTagTipInput(target: HTMLInputElement): HTMLInputElement;
+/** Rebinds EhSyringe tag suggestions to TouchUI's component-owned search input. */
 export function reuseTagTipInput(
   target: ManagedDomNode<HTMLInputElement>,
 ): ManagedDomNode<HTMLInputElement>;
 export function reuseTagTipInput(
-  target: HTMLInputElement | ManagedDomNode<HTMLInputElement>,
-): HTMLInputElement | ManagedDomNode<HTMLInputElement> {
+  target: ManagedDomNode<HTMLInputElement>,
+): ManagedDomNode<HTMLInputElement> {
   captureTagTipInput();
 
-  if (!tagTipInput || tagTipInput.isConnected) {
+  if (!tagTipInput || tagTipInput.Component().isConnected) {
     return target;
   }
 
-  if (target instanceof ManagedDomNode) {
-    if (target.isNode(tagTipInput)) {
-      return target;
-    }
-
-    target.copyAttributesTo(tagTipInput);
-    tagTipInput.value = target.inputValue();
-    return target.replaceInput(tagTipInput);
-  }
-
-  if (tagTipInput === target) {
+  if (target === tagTipInput) {
     return target;
   }
 
-  copyInputAttributes(target, tagTipInput);
-  tagTipInput.value = target.value;
+  target.copyAttributesTo(tagTipInput.Component());
+  tagTipInput.setInputValue(target.inputValue());
   target.replaceWith(tagTipInput);
   return tagTipInput;
 }
@@ -245,7 +210,7 @@ function watchForSuccessfulInjection(): void {
 }
 
 function initialUiLoaded(): boolean {
-  return isInjected() && Boolean(document.querySelector(INITIALIZED_SELECTOR));
+  return isInjected() && Boolean(DomNode.from(document).one(INITIALIZED_SELECTOR));
 }
 
 function wasDetected(): boolean {
@@ -257,7 +222,7 @@ function setDetected(detected: boolean): void {
 }
 
 function isInjected(): boolean {
-  return document.documentElement.classList.contains(ROOT_CLASS);
+  return DomNode.from(document.documentElement).hasClass(ROOT_CLASS);
 }
 
 function isTranslatingUi(): boolean {
@@ -266,9 +231,9 @@ function isTranslatingUi(): boolean {
 }
 
 function searchUiReady(): boolean {
+  const page = DomNode.from(document);
   return Boolean(
-    document.querySelector(SEARCH_SUBMIT_SELECTOR) &&
-      document.querySelector(CLEAR_BUTTON_SELECTOR),
+    page.one(SEARCH_SUBMIT_SELECTOR) && page.one(CLEAR_BUTTON_SELECTOR),
   );
 }
 
@@ -277,41 +242,18 @@ function captureTagTipInput(): boolean {
     return true;
   }
 
-  const list = document.querySelector<HTMLElement>(TAG_TIP_LIST_SELECTOR);
+  const page = DomNode.from(document);
+  const listSource = page.one<HTMLElement>(TAG_TIP_LIST_SELECTOR);
+  const list = listSource?.owned() ?? listSource?.inplace();
   if (!list) {
     return false;
   }
 
-  list.classList.add(...TAG_TIP_LIST_CLASS_NAME.split(" "));
+  list.transform({ classes: { add: TAG_TIP_LIST_CLASS_NAME.split(" ") } });
 
-  tagTipInput = document.querySelector<HTMLInputElement>(
-    TAG_TIP_INPUT_SELECTOR,
-  );
+  const input = page.one<HTMLInputElement>(TAG_TIP_INPUT_SELECTOR);
+  tagTipInput = input?.owned() ?? input?.inplace() ?? null;
   return tagTipInput !== null;
-}
-
-function copyInputAttributes(
-  source: HTMLInputElement,
-  target: HTMLInputElement,
-): void {
-  const injectedAttributes = Array.from(target.attributes)
-    .filter(
-      (attribute) =>
-        attribute.name === "autocomplete" || attribute.name.startsWith("ehs-"),
-    )
-    .map((attribute) => [attribute.name, attribute.value] as const);
-
-  for (const attribute of Array.from(target.attributes)) {
-    target.removeAttribute(attribute.name);
-  }
-
-  for (const attribute of Array.from(source.attributes)) {
-    target.setAttribute(attribute.name, attribute.value);
-  }
-
-  for (const [name, value] of injectedAttributes) {
-    target.setAttribute(name, value);
-  }
 }
 
 function watchForTagTipInput(): void {
@@ -335,4 +277,3 @@ function watchForTagTipInput(): void {
 
 watchForSuccessfulInjection();
 watchForTagTipInput();
-import { ManagedDomNode } from "../eh/transform";

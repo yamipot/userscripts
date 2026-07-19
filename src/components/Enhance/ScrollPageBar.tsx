@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, untrack } from "solid-js";
 import { clamp } from "../../utils";
 import { createPointerGestureElement } from "../PointerGesture";
+import type { ManagedDomNode } from "../../eh/transform";
 
 export const SCROLL_PAGE_BAR_CLASS = "ehpeek-scroll-page-bar";
 export const SCROLL_PAGE_BAR_TOP_CLASS = "ehpeek-scroll-page-bar-top";
@@ -39,7 +40,7 @@ export function GalleryPageDescription(props: { text: string }) {
   return <div class="w-full mb-xs text-center textsize-sm">{props.text}</div>;
 }
 
-export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDivElement }) {
+export function ScrollPageBar(options: ScrollPageBarOptions & { element: ManagedDomNode<HTMLDivElement> }) {
   const maxIndex = untrack(() => Math.max(0, options.maxIndex ?? options.currentIndex));
   const currentIndex = untrack(() => clamp(options.currentIndex, 0, maxIndex));
   const [windowIndex, setWindowIndex] = createSignal(
@@ -87,12 +88,13 @@ export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDiv
   );
 
   createEffect(() => {
-    options.element.className = `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}`;
-    options.element.setAttribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex()));
+    options.element
+      .transform({ classes: { replace: `${SCROLL_PAGE_BAR_CLASS} ${PAGE_BAR_CLASS} ${options.top ? `${SCROLL_PAGE_BAR_TOP_CLASS} ${PAGE_BAR_TOP_CLASS}` : `${SCROLL_PAGE_BAR_BOTTOM_CLASS} ${PAGE_BAR_BOTTOM_CLASS}`}` } })
+      .attribute(SCROLL_PAGE_BAR_WINDOW_INDEX_ATTR, String(windowIndex()));
   });
 
   createPointerGestureElement(
-    () => options.element,
+    () => options.element.Component(),
     () => ({
       shouldCaptureDrag: draggable,
       dragAxis: "x",

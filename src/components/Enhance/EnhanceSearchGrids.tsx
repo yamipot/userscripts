@@ -12,18 +12,18 @@ const SWIPE_MAX_VERTICAL_RATIO = 0.38;
 const NAVIGATION_REQUEST_EVENT = "ehpeek:navigation-request";
 
 let installed = false;
-let swipeElement: HTMLElement | null = null;
 let setSearchLoading: ((loading: boolean) => void) | null = null;
 let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
 let onSearchPageChange: (() => void) | null = null;
 let searchNavigationLoading = false;
+let searchSource: eh.SearchResultsResult | null = null;
 
 type SwipeState = {
   horizontal: boolean;
   cancelled: boolean;
 };
 
-export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultList: HTMLElement }) {
+export function EnhanceSearchGrids(props: { onPageChange?: () => void; source: eh.SearchResultsResult }) {
   const [gestureTarget, setGestureTarget] = createSignal<HTMLElement | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [swipeIndicatorState, setSwipeIndicatorState] = createSignal<SwipeIndicatorState>({
@@ -75,7 +75,8 @@ export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultLis
     setSearchLoading = updateLoading;
     setSwipeGestureTarget = updateGestureTarget;
     onSearchPageChange = handlePageChange;
-    setResultListSwipeTarget(props.resultList);
+    searchSource = props.source;
+    setResultListSwipeTarget();
 
     if (!installed) {
       installed = true;
@@ -94,7 +95,7 @@ export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultLis
       if (onSearchPageChange === handlePageChange) {
         onSearchPageChange = null;
       }
-
+      searchSource = null;
     });
   });
 
@@ -127,23 +128,23 @@ export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultLis
   );
 }
 
-function setResultListSwipeTarget(resultList: HTMLElement): void {
-  resultList.style.touchAction = "pan-y";
-  resultList.style.overscrollBehaviorX = "contain";
-  swipeElement = resultList;
+function setResultListSwipeTarget(): void {
+  const resultList = searchSource?.actions.swipeTarget();
+  if (!resultList) {
+    return;
+  }
   setSwipeGestureTarget?.(resultList);
 }
 
 function onSearchNavigationClick(event: MouseEvent): void {
-  const link = eh.findSearchNavigationLink(event.target);
-
-  if (!link) {
+  const url = searchSource?.actions.navigationUrlForClick(event.target);
+  if (!url) {
     return;
   }
 
   event.preventDefault();
   event.stopPropagation();
-  void navigateSearchPage(link.href);
+  void navigateSearchPage(url);
 }
 
 async function navigateSearchPage(url: string): Promise<void> {
@@ -162,31 +163,33 @@ async function navigateSearchPage(url: string): Promise<void> {
 
   searchNavigationLoading = true;
   setSearchLoading?.(true);
-  swipeElement?.setAttribute("aria-busy", "true");
+  searchSource?.actions.setBusy(true);
 
   try {
-    const resultList = await eh.replaceSearchPageContentFromUrl(url);
-    window.history.pushState(window.history.state, "", url);
+    const nextSource = await searchSource?.actions.navigate(url);
+    if (!nextSource) {
+      throw new Error(texts.errors.searchPageContentNotFound);
+    }
+    searchSource = nextSource;
     onSearchPageChange?.();
-    setResultListSwipeTarget(resultList);
-    eh.searchTopNavigationBar()?.scrollIntoView({ block: "start", behavior: "auto" });
+    setResultListSwipeTarget();
+    searchSource.actions.scrollToTop();
   } catch (error) {
     console.error("[ehpeek]", error);
   } finally {
     searchNavigationLoading = false;
     setSearchLoading?.(false);
-    swipeElement?.removeAttribute("aria-busy");
+    searchSource?.actions.setBusy(false);
   }
 }
 
 function swipeUrlForDelta(dx: number): string | null {
-  const nav = eh.searchPageNavigation();
-
-  if (!nav) {
+  const data = searchSource?.data;
+  if (!data) {
     return null;
   }
 
-  return dx < 0 ? nav.nextUrl : nav.previousUrl;
+  return dx < 0 ? data.nextUrl : data.previousUrl;
 }
 
 function swipeProgressForDelta(dx: number): number {

@@ -1,0 +1,211 @@
+import { normalizeUrl } from "../../utils";
+import { galleryIdentityFromUrl } from "../url";
+import { captureGalleryApiSession } from "./gallery";
+import { DomNode, type ManagedDomElements } from "./core";
+
+const PERSISTENT_SELECTOR =
+  "[data-ehpeek-persistent], #eh-syringe-popup-button, #eh-syringe-popup-back, .eh-syringe-lite-auto-complete-list";
+
+export type NavigationRequest = {
+  body?: FormData;
+  method: "GET" | "POST";
+  url: string;
+};
+
+/** Owns and sanitizes one original E-H document for the SinglePage route lifecycle. */
+export function singlePageDocument(
+  root: Document | HTMLElement = document,
+  baseUrl = window.location.href,
+) {
+  const documentSource = DomNode.from(root);
+  const container = root instanceof Document ? DomNode.from(root.body) : DomNode.from(root);
+  const page = container;
+  const persistent = (node: DomNode<HTMLElement>) =>
+    node.matches(PERSISTENT_SELECTOR) || node.closest(PERSISTENT_SELECTOR) !== null;
+  const scriptSources = page.all<HTMLScriptElement>("script").filter((script) => !persistent(script));
+  const scriptTexts = scriptSources.map((script) => script.text());
+  const sources = page.all<HTMLElement>("*").filter((node) => !persistent(node));
+  const contentSources = container.children().filter((node) => !persistent(node));
+
+  captureGalleryApiSession(root, baseUrl);
+
+  const own = <T extends HTMLElement>(source: DomNode<T>) => {
+    const existing = source.owned();
+    if (existing) {
+      return existing;
+    }
+    return source.inplace();
+  };
+
+  const absoluteAttributes: Array<[string, string]> = [
+    ["a[href]", "href"],
+    ["area[href]", "href"],
+    ["form[action]", "action"],
+    ["img[src]", "src"],
+    ["input[src]", "src"],
+    ["source[src]", "src"],
+  ];
+  for (const [selector, attribute] of absoluteAttributes) {
+    for (const source of page.all<HTMLElement>(selector).filter((node) => !persistent(node))) {
+      const value = source.attribute(attribute);
+      if (!value || value.startsWith("#") || /^(?:data|javascript|mailto):/i.test(value)) {
+        continue;
+      }
+      own(source)?.attribute(attribute, normalizeUrl(value, baseUrl));
+    }
+  }
+
+  const fileSearch = page.one<HTMLElement>("#fsdiv");
+  const uploadScript = scriptTexts.find((text) => text.includes("ulhost")) ?? "";
+  const uploadBase = uploadScript.match(/\bulhost\s*=\s*["']([^"']+)["']/)?.[1];
+  if (fileSearch && uploadBase) {
+    own(fileSearch)?.attribute(
+      "data-ehpeek-file-search-action",
+      new URL("image_lookup.php", normalizeUrl(uploadBase, baseUrl)).href,
+    );
+  }
+
+  for (const source of page.all<HTMLAnchorElement>("#gd5 a[onclick]")) {
+    const popupUrl = (source.attribute("onclick") ?? "").match(/\bpopUp\(['"]([^'"]+)['"]/)?.[1];
+    if (!popupUrl) {
+      continue;
+    }
+    own(source)?.transform({
+      attributes: {
+        set: {
+          "data-ehpeek-gallery-utility": "true",
+          href: new URL(popupUrl, baseUrl).href,
+          rel: "noopener noreferrer",
+          target: "_blank",
+        },
+      },
+    });
+  }
+
+  const ratingScript = scriptTexts.find((text) => text.includes("display_rating"));
+  const rating = ratingScript ? scriptNumberValue(ratingScript, "display_rating") : null;
+  const ratingImage = page.one<HTMLElement>("#rating_image");
+  if (ratingImage && rating !== null) {
+    own(ratingImage)?.attribute("data-ehpeek-rating", String(rating));
+  }
+
+  const gallery = galleryIdentityFromUrl(baseUrl);
+  const favoriteScript = scriptTexts.find((text) => text.includes("popbase") && text.includes("addfav"));
+  const favoriteMatch = favoriteScript?.match(
+    /popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"&]+)&act="/,
+  );
+  const favorite = page.one<HTMLElement>("#fav");
+  if (
+    favorite &&
+    gallery &&
+    Number(favoriteMatch?.[1]) === gallery.galleryId &&
+    favoriteMatch?.[2] === gallery.token
+  ) {
+    own(favorite)?.attribute(
+      "data-ehpeek-action-url",
+      `/gallerypopups.php?gid=${favoriteMatch[1]}&t=${favoriteMatch[2]}&act=addfav`,
+    );
+  }
+
+  for (const source of sources) {
+    const managedSource = own(source);
+    if (!managedSource) {
+      continue;
+    }
+    const inlineAttributes = source.attributeNames().filter((name) => /^on/i.test(name));
+    const handlers = inlineAttributes.map((name) => source.attribute(name) ?? "");
+    const attributes: Record<string, string> = {};
+    if (handlers.some((handler) => handler.includes("toggle_advsearch"))) {
+      attributes["data-ehpeek-search-advanced-toggle"] = "true";
+    }
+    if (handlers.some((handler) => handler.includes("toggle_filesearch"))) {
+      attributes["data-ehpeek-search-file-toggle"] = "true";
+    }
+    if (handlers.some((handler) => handler.includes("inline_set=dm_"))) {
+      attributes["data-ehpeek-grid-mode-source"] = "true";
+    }
+    managedSource.transform({
+      attributes: {
+        remove: inlineAttributes,
+        set: attributes,
+      },
+    });
+  }
+
+  scriptSources.forEach((script) => own(script)?.remove());
+  const content = contentSources.flatMap((source) => {
+    const node = source.owned() ?? own(source);
+    if (!node) {
+      return [];
+    }
+    node.remove();
+    return [node];
+  });
+  const elems = { content } satisfies ManagedDomElements;
+  const data = {
+    title: documentSource.one<HTMLTitleElement>("title")?.text() ?? "",
+  };
+  const actions = {
+    mount(host: HTMLElement): void {
+      host.replaceChildren(...content.map((node) => node.Component()));
+    },
+    navigationRequest(event: MouseEvent | SubmitEvent): NavigationRequest | null {
+      if (event instanceof MouseEvent) {
+        const link = event.target instanceof Element
+          ? DomNode.from(event.target).closest<HTMLAnchorElement>("a[href]")
+          : null;
+        if (
+          !link ||
+          link.hasAttribute("data-ehpeek-single-page-bypass") ||
+          (link.attribute("target") && link.attribute("target") !== "_self") ||
+          link.hasAttribute("download")
+        ) {
+          return null;
+        }
+        return {
+          method: "GET",
+          url: new URL(link.attribute("href") ?? "", window.location.href).href,
+        };
+      }
+
+      const form = event.target instanceof HTMLFormElement ? DomNode.from(event.target) : null;
+      if (!form || (!form.matches("#searchbox form, #fsdiv form") && !form.one("[name='f_search']"))) {
+        return null;
+      }
+      const method = (form.attribute("method") ?? "GET").toUpperCase();
+      if (method !== "GET" && method !== "POST") {
+        return null;
+      }
+      const formElement = form.owned()?.Component();
+      if (!formElement) {
+        return null;
+      }
+      const data = new FormData(formElement, event.submitter);
+      const url = new URL(form.attribute("action") || window.location.href, window.location.href);
+      if (method === "GET") {
+        url.search = "";
+        url.hash = "";
+        data.forEach((value, key) => {
+          if (typeof value === "string") {
+            url.searchParams.append(key, value);
+          }
+        });
+        return { method, url: url.href };
+      }
+      return { body: data, method, url: url.href };
+    },
+  };
+
+  return { actions, data, elems };
+}
+
+export type SinglePageDocumentResult = ReturnType<typeof singlePageDocument>;
+
+function scriptNumberValue(script: string, name: string): number | null {
+  const match = script.match(new RegExp(`\\b(?:var\\s+)?${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`));
+  if (!match) {
+    return null;
+  }
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}

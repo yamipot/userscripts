@@ -23,7 +23,6 @@ export type IconName =
   | "star";
 
 export function Icon(props: {
-  className?: string;
   filled?: boolean;
   name: IconName;
   size?: number | string;
@@ -34,7 +33,7 @@ export function Icon(props: {
 
   return (
     <svg
-      class={`ehpeek-icon block flex-none${props.className ? ` ${props.className}` : ""}`}
+      class="ehpeek-icon block flex-none"
       width={props.size ?? 24}
       height={props.size ?? 24}
       viewBox="0 0 24 24"

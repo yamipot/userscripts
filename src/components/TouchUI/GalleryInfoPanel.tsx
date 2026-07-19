@@ -7,18 +7,15 @@ import {
   Show,
   untrack,
 } from "solid-js";
-import * as eh from "../../eh";
 import type {
-  GalleryFavoriteInfo,
   GalleryFavoriteOption,
   GalleryTagAction,
-  GalleryTagData,
-  GalleryTagGroup,
   MyTagMode,
 } from "../../eh";
-import { ManagedDomNode, type GalleryInfoResult } from "../../eh/transform";
-import * as EhSyringe from "../../integrations/EhSyringe";
+import { type GalleryInfoResult, type GalleryInfoTagGroup } from "../../eh/transform";
+import * as EhSyringe from "../../eh/transform/ehSyringe";
 import texts from "../../texts.json";
+import { state } from "../../state";
 import { DomNode, DomNodes } from "../Widgets/ExternalDom";
 import { Icon } from "../Widgets/Icon";
 
@@ -42,13 +39,7 @@ const RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
 const RATING_ACTION_BUTTON_CLASS =
   "block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default";
 
-type GalleryPanelTagGroup = Omit<GalleryTagGroup, "tags"> & {
-  tags: Array<
-    GalleryTagData & {
-      contentSource: HTMLElement | ManagedDomNode;
-    }
-  >;
-};
+type GalleryPanelTagGroup = GalleryInfoTagGroup;
 
 export function GalleryInfoPanel(props: {
   onPrimaryActionMount: (mount: HTMLElement) => void;
@@ -94,9 +85,7 @@ export function GalleryInfoPanel(props: {
   );
 
   onMount(() => {
-    const stopObservingTags = eh.observeGalleryTagChanges(() => {
-      setTagGroups(eh.readGalleryTagGroups());
-    });
+    const stopObservingTags = source.actions.observeTagGroups(setTagGroups);
 
     onCleanup(stopObservingTags);
   });
@@ -107,16 +96,9 @@ export function GalleryInfoPanel(props: {
       return false;
     }
 
-    const tagApi = eh.readGalleryTagApiInfo();
-
-    if (!tagApi) {
-      window.alert(texts.errors.loadFailed);
-      return false;
-    }
-
     setRatingUpdating(true);
     try {
-      const result = await eh.setGalleryRating(tagApi, value);
+      const result = await source.actions.rate(value);
       setRatingValue(result.value);
       setRatingCount(String(result.count));
       setRatingValueLabel(formatRatingLabel(rating.label, result.average));
@@ -244,7 +226,7 @@ export function GalleryInfoPanel(props: {
         </div>
       </div>
       <div class="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-87px mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-xs bg-[var(--color-site-elevated)] shadow-[0_2px_10px_var(--color-shadow-panel)]">
-        <TouchGalleryFavoriteButton source={source.data.favorite} />
+        <TouchGalleryFavoriteButton source={source} />
         <div
           class="ehpeek-touch-gallery-primary-actions flex min-w-0 border-0 border-l-8 border-solid border-l-[var(--color-site-page)]"
           ref={(node) => {
@@ -266,6 +248,7 @@ export function GalleryInfoPanel(props: {
             <For each={tagGroups()}>{(group) => (
               <TouchGalleryTagGroup
                 group={group}
+                source={source}
                 onNewTagOpen={hasNewTag() ? openNewTag : undefined}
               />
             )}</For>
@@ -355,10 +338,6 @@ export function GalleryInfoPanel(props: {
   );
 }
 
-export function prepareGalleryInfoPanel(): void {
-  eh.applyTouchGalleryPanelPageStyle();
-}
-
 function TouchGalleryActionsMenu(props: {
   actions: GalleryInfoResult["elems"]["actions"];
 }) {
@@ -409,6 +388,7 @@ function TouchGalleryActionsMenu(props: {
 
 function TouchGalleryTagGroup(props: {
   group: GalleryPanelTagGroup;
+  source: GalleryInfoResult;
   onNewTagOpen?: () => void;
 }) {
   return (
@@ -418,7 +398,7 @@ function TouchGalleryTagGroup(props: {
       </div>
       <div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">
         <For each={props.group.tags}>{(tag) => (
-          <TouchGalleryTag tag={tag} onNewTagOpen={props.onNewTagOpen} />
+          <TouchGalleryTag source={props.source} tag={tag} onNewTagOpen={props.onNewTagOpen} />
         )}</For>
       </div>
     </section>
@@ -426,12 +406,13 @@ function TouchGalleryTagGroup(props: {
 }
 
 function TouchGalleryTag(props: {
+  source: GalleryInfoResult;
   tag: GalleryPanelTagGroup["tags"][number];
   onNewTagOpen?: () => void;
 }) {
   const [open, setOpen] = createSignal(false);
   const [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(false);
-  const tagSets = eh.readCachedMyTagSetOptions();
+  const tagSets = state.gallery.myTagSets.reload();
   const [selectedTagSet, setSelectedTagSet] = createSignal(
     tagSets.find((option) => option.selected)?.value ??
       tagSets[0]?.value ??
@@ -465,29 +446,14 @@ function TouchGalleryTag(props: {
 
   const runTagAction = async (action: GalleryTagAction) => {
     closeMenu();
-    const tagApi = eh.readGalleryTagApiInfo();
-
-    if (!tagApi) {
-      console.error("[ehpeek] Gallery tag vote could not start", {
-        action,
-        pathname: window.location.pathname,
-        reason: "gallery-api-context-unavailable",
-      });
-      window.alert(
-        "Gallery API context is unavailable. Check the console for details.",
-      );
-      return;
-    }
-
     setUpdating(true);
     try {
-      await eh.runGalleryTagAction(tagApi, props.tag, action);
+      await props.source.actions.tagAction(props.tag, action);
     } catch (error) {
       console.error(
         "[ehpeek] Gallery tag vote failed",
         {
           action,
-          galleryId: tagApi.galleryId,
         },
         error,
       );
@@ -504,10 +470,11 @@ function TouchGalleryTag(props: {
     setUpdating(true);
     try {
       if (props.tag.myTag) {
-        await eh.removeGalleryTagFavorite(props.tag);
+        await props.source.actions.removeFavoriteTag(props.tag);
       } else {
-        await eh.favoriteGalleryTag(props.tag, selectedTagSet(), tagMode());
+        await props.source.actions.favoriteTag(props.tag, selectedTagSet(), tagMode());
       }
+      state.gallery.myTagAppearances.clear();
       window.location.reload();
     } catch (error) {
       console.error("[ehpeek]", error);
@@ -765,11 +732,7 @@ function TouchGalleryTagContent(props: {
   let host!: HTMLSpanElement;
 
   onMount(() => {
-    onCleanup(
-      props.tag.contentSource instanceof ManagedDomNode
-        ? props.tag.contentSource.mirrorContentTo(host)
-        : EhSyringe.mirrorTranslatedContent(props.tag.contentSource, host),
-    );
+    onCleanup(props.tag.contentSource.mirrorContentTo(host));
   });
 
   return (
@@ -781,9 +744,9 @@ function TouchGalleryTagContent(props: {
   );
 }
 
-function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
+function TouchGalleryFavoriteButton(props: { source: GalleryInfoResult }) {
   const [favorite, setFavorite] = createSignal(
-    untrack(() => ({ ...props.source })),
+    untrack(() => ({ ...props.source.data.favorite })),
   );
   const [open, setOpen] = createSignal(false);
   const [loadingState, setLoadingState] = createSignal<
@@ -820,13 +783,10 @@ function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
     setLoadingState("loading");
 
     try {
-      const response = await eh.requestPage(currentFavorite.actionUrl);
-      setOptions(
-        eh.parseGalleryFavoriteOptions(
-          response.document,
-          currentFavorite.favorited,
-        ),
-      );
+      setOptions(await props.source.actions.favoriteOptions(
+        currentFavorite.actionUrl,
+        currentFavorite.favorited,
+      ));
       setLoadingState("idle");
     } catch (error) {
       console.error("[ehpeek]", error);
@@ -876,6 +836,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
                 <TouchGalleryFavoriteOption
                   actionUrl={favorite().actionUrl}
                   option={option}
+                  source={props.source}
                   onApplied={() => {
                     setFavorite({
                       ...favorite(),
@@ -910,6 +871,7 @@ function TouchGalleryFavoriteOption(props: {
   actionUrl: string;
   option: GalleryFavoriteOption;
   onApplied: () => void;
+  source: GalleryInfoResult;
 }) {
   return (
     <button
@@ -918,8 +880,8 @@ function TouchGalleryFavoriteOption(props: {
       aria-pressed={props.option.selected}
       onClick={(event: MouseEvent) => {
         event.stopPropagation();
-        void eh
-          .updateGalleryFavorite(props.actionUrl, props.option.value)
+        void props.source.actions
+          .updateFavorite(props.actionUrl, props.option.value)
           .then(props.onApplied)
           .catch((error) => {
             console.error("[ehpeek]", error);

@@ -6,7 +6,7 @@ import {
   type ReaderPageProvider,
 } from "../components/Reader";
 import { navigateGalleryPreview } from "../components/Enhance/EnhanceThumbsGrids";
-import { ReadHistorySession } from "../components/Enhance/ReadHistory";
+import { ReadHistorySession } from "../state/readHistory";
 import * as eh from "../eh";
 import type { LoadedReaderPage, ReaderPage } from "../readerTypes";
 import { state } from "../state";
@@ -30,29 +30,37 @@ export type ReaderCallbacks = {
 
 let activeReaderClose: (() => void) | undefined;
 
-export function onReaderDocumentClick(event: MouseEvent, callbacks: ReaderCallbacks): void {
+export function onReaderDocumentClick(
+  event: MouseEvent,
+  callbacks: ReaderCallbacks,
+  preview: eh.GalleryPreviewResult | null,
+): void {
   if (!state.reader.enabled.value) {
     return;
   }
 
-  const link = eh.findClickedImageLink(event.target);
+  if (!preview) {
+    return;
+  }
+  const pageUrl = preview.actions.imageUrlForClick(event.target);
 
-  if (!link) {
+  if (!pageUrl) {
     return;
   }
 
   event.preventDefault();
   event.stopPropagation();
-  openReaderFromUserAction(link.href, callbacks);
+  openReaderFromUserAction(pageUrl, callbacks, preview);
 }
 
 export function openReaderFromUserAction(
   startPageUrl: string,
   callbacks: ReaderCallbacks,
+  preview: eh.GalleryPreviewResult,
   preferredPageNum?: number,
 ): void {
   const fullscreenLaunch = requestConfiguredFullscreen();
-  void openReader(startPageUrl, callbacks, preferredPageNum, fullscreenLaunch).catch(async (error: unknown) => {
+  void openReader(startPageUrl, callbacks, preview, preferredPageNum, fullscreenLaunch).catch(async (error: unknown) => {
     if (fullscreenLaunch) {
       const fullscreenEntered = await fullscreenLaunch.result;
       if (document.fullscreenElement === fullscreenLaunch.host) {
@@ -69,24 +77,34 @@ export function openReaderFromUserAction(
   });
 }
 
-export async function openReaderFromHash(callbacks: ReaderCallbacks): Promise<void> {
+export async function openReaderFromHash(
+  callbacks: ReaderCallbacks,
+  preview: eh.GalleryPreviewResult,
+): Promise<void> {
   const peekPage = eh.peekPageFromHash();
 
   if (peekPage === null) {
     return;
   }
 
-  const pages = eh.collectGalleryPages();
+  const pages = preview.data.pages;
   const page = pages.find((item) => item.pageNum === peekPage) ?? pages[0];
 
   if (page) {
-    await openReader(page.url, callbacks).catch(reportReaderOpenError);
+    await openReader(page.url, callbacks, preview).catch(reportReaderOpenError);
   }
 }
 
-export async function openOriginalReader(pageNum: number): Promise<void> {
-  const provider = new GalleryPageProvider(eh.computePreviewPageSize(), eh.maxPreviewPageIndex());
-  provider.cachePages(eh.collectGalleryPages());
+export async function openOriginalReader(
+  pageNum: number,
+  source: eh.GalleryPreviewResult,
+): Promise<void> {
+  const preview = source.data;
+  if (preview.pageSize === null) {
+    throw new Error(texts.errors.previewPageSizeUnknown);
+  }
+  const provider = new GalleryPageProvider(preview.pageSize, preview.maxIndex);
+  provider.cachePages(preview.pages);
   const page = (await provider.getPages([pageNum]))[0];
 
   if (!page || page.pageNum !== pageNum) {
@@ -99,6 +117,7 @@ export async function openOriginalReader(pageNum: number): Promise<void> {
 async function openReader(
   startPageUrl: string,
   callbacks: ReaderCallbacks,
+  source: eh.GalleryPreviewResult,
   preferredPageNum?: number,
   fullscreenLaunch?: ReaderFullscreenLaunch,
 ): Promise<void> {
@@ -112,13 +131,16 @@ async function openReader(
     return;
   }
 
-  const currentPreviewIndex = eh.previewPageIndex();
-  const currentPages = eh.collectGalleryPages();
-  const pageSize = eh.computePreviewPageSize();
-  const maxPreviewIndex = eh.maxPreviewPageIndex();
-  const totalPages = eh.readShowingRange()?.total;
+  const preview = source.data;
+  const currentPreviewIndex = preview.currentIndex;
+  if (preview.pageSize === null) {
+    throw new Error(texts.errors.previewPageSizeUnknown);
+  }
+  const pageSize = preview.pageSize;
+  const maxPreviewIndex = preview.maxIndex;
+  const totalPages = preview.totalImages ?? undefined;
   const provider = new GalleryPageProvider(pageSize, maxPreviewIndex);
-  provider.cachePages(currentPages);
+  provider.cachePages(preview.pages);
   const startPageNum = preferredPageNum ?? eh.peekPageFromHash() ?? eh.galleryPageNumber(startPageUrl);
 
   if (!startPageNum) {
@@ -129,7 +151,7 @@ async function openReader(
     ? new ReadHistorySession({
       galleryId: pageType.galleryId,
       token: pageType.token,
-      galleryUrl: eh.previewUrlForIndex(currentPreviewIndex),
+      galleryUrl: preview.currentUrl,
       totalPages,
     })
     : null;
@@ -167,7 +189,7 @@ async function openReader(
     provider,
     totalPages,
     onBeforeEnterFullscreen: () => {
-      fullscreenViewport = eh.preparePageViewportForFullscreen();
+      fullscreenViewport = eh.pageViewportForFullscreen();
     },
     restorePageViewport,
     onActivePageChange: (page) => {
@@ -261,7 +283,7 @@ function requestConfiguredFullscreen(): ReaderFullscreenLaunch | undefined {
     return { host, result: Promise.resolve(false), viewport: null };
   }
 
-  const viewport = eh.preparePageViewportForFullscreen();
+  const viewport = eh.pageViewportForFullscreen();
 
   return {
     host,

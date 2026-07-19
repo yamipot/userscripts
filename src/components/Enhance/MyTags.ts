@@ -1,55 +1,39 @@
 import * as eh from "../../eh";
-import type { MyTagAppearance } from "../../eh";
+import type { MyTagsPageData } from "../../eh";
+import { state, type MyTagAppearance } from "../../state";
 
-const MY_TAGS_STORAGE_KEY = "ehpeek:my-tags";
-
-export async function applyMyTagsEnhance(gallery: boolean): Promise<() => void> {
-  if (eh.isMyTagsPage()) {
-    const appearances = await fetchMyTags(document);
-    if (appearances) {
-      saveMyTags(appearances);
-    }
-    return () => undefined;
-  }
-
-  if (!gallery) {
-    return () => undefined;
-  }
-
-  const cached = loadMyTags();
-  const appearances = cached ?? await fetchMyTags();
+export async function applyMyTagsEnhance(): Promise<() => void> {
+  const appearances = state.gallery.myTagAppearances.stored()
+    ? state.gallery.myTagAppearances.reload()
+    : await refreshMyTags();
 
   if (appearances) {
-    eh.applyMyTagAppearances(appearances);
-    return eh.observeGalleryTagChanges(() => eh.applyMyTagAppearances(appearances));
+    return eh.galleryMyTags(appearances);
   }
 
   return () => undefined;
 }
 
-async function fetchMyTags(initialDocument?: Document): Promise<MyTagAppearance[] | null> {
+export async function refreshMyTags(initialPage?: MyTagsPageData): Promise<MyTagAppearance[] | null> {
   try {
-    const initial = initialDocument ?? (await requestMyTags()).document;
-
-    if (!eh.isMyTagsPage(initial)) {
+    const initialData = initialPage ?? eh.myTagsPageData(await requestMyTags());
+    if (!initialData) {
       return null;
     }
 
-    const options = eh.readMyTagSetOptions(initial);
-    eh.cacheMyTagSetOptions(options);
-    const documents = options.length > 0
+    const options = initialData.options;
+    state.gallery.myTagSets.set(options);
+    const pages = options.length > 0
       ? await Promise.all(options.map(async (option) => {
           if (option.selected) {
-            return initial;
+            return initialData;
           }
-          return (await requestMyTags(option.value)).document;
+          return eh.myTagsPageData(await requestMyTags(option.value), option.value);
         }))
-      : [initial];
-    const appearances = documents.flatMap((document, index) => eh.isMyTagSetEnabled(document)
-      ? eh.readMyTagAppearances(document, options[index]?.value ?? "1")
-      : []);
+      : [initialData];
+    const appearances = pages.flatMap((page) => page?.enabled ? page.appearances : []);
     const unique = Array.from(new Map(appearances.map((appearance) => [appearance.name, appearance])).values());
-    saveMyTags(unique);
+    state.gallery.myTagAppearances.set(unique);
     return unique;
   } catch (error) {
     console.error("[ehpeek] Could not load My Tags", error);
@@ -64,43 +48,9 @@ async function requestMyTags(tagSet?: string) {
   }
   const response = await eh.requestPage(url.href);
 
-  if (new URL(response.url).origin !== window.location.origin || !eh.isMyTagsPage(response.document)) {
+  if (!eh.isSameOriginUrl(response.url)) {
     throw new Error("My Tags page is unavailable");
   }
 
-  return response;
-}
-
-function loadMyTags(): MyTagAppearance[] | null {
-  const value = window.localStorage.getItem(MY_TAGS_STORAGE_KEY);
-
-  if (value === null) {
-    return null;
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter(isMyTagAppearance) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveMyTags(appearances: MyTagAppearance[]): void {
-  window.localStorage.setItem(MY_TAGS_STORAGE_KEY, JSON.stringify(appearances));
-}
-
-function isMyTagAppearance(value: unknown): value is MyTagAppearance {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const item = value as Record<string, unknown>;
-  return (
-    typeof item.name === "string" &&
-    typeof item.backgroundColor === "string" &&
-    typeof item.color === "string" &&
-    typeof item.id === "string" &&
-    typeof item.tagSet === "string"
-  );
+  return response.document;
 }

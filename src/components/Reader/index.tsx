@@ -12,6 +12,7 @@ import {
   targetSummary,
 } from "../../utils";
 import type { ScrollMotion } from "../animation";
+import { lockPageScroll } from "../../eh/transform/viewport";
 import type { PointerDragEnd, PointerGestureCallbacks } from "../PointerGesture";
 import {
   PagesViewport,
@@ -506,8 +507,7 @@ export function FullscreenReader(props: {
   };
 
   onMount(() => {
-    const previousDocumentOverflow = document.documentElement.style.overflow;
-    const previousBodyOverflow = document.body.style.overflow;
+    const unlockPageScroll = lockPageScroll();
     readerSession = new ReaderSession(
       props.options,
       {
@@ -519,8 +519,6 @@ export function FullscreenReader(props: {
     );
 
     registerGlobalStyle(STYLE_ID, readerCss);
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
     props.actionsRef({
       close: () => readerSession.close(),
     });
@@ -536,8 +534,7 @@ export function FullscreenReader(props: {
       props.onActionsDispose();
       readerSession.dispose();
       document.removeEventListener("keydown", onKeydown, true);
-      document.documentElement.style.overflow = previousDocumentOverflow;
-      document.body.style.overflow = previousBodyOverflow;
+      unlockPageScroll();
     });
   });
 

@@ -3,9 +3,7 @@ import { loadingSpinnerElement } from "../Widgets/Loading";
 import { SwipeIndicator, type SwipeIndicatorState } from "../Widgets/SwipeIndicator";
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import {
-  SCROLL_PAGE_BAR_BOTTOM_CLASS,
   SCROLL_PAGE_BAR_CLASS,
-  SCROLL_PAGE_BAR_TOP_CLASS,
   setScrollPageBarWindowIndex,
 } from "./ScrollPageBar";
 import * as eh from "../../eh";
@@ -19,11 +17,12 @@ const SWIPE_MAX_VERTICAL_RATIO = 0.38;
 
 let galleryThumbEnhancementOnError: ((error: unknown) => void) | null = null;
 let galleryThumbEnhancementClickInstalled = false;
-let swipeElement: HTMLElement | null = null;
 let setSwipeGestureTarget: ((target: HTMLElement | null) => void) | null = null;
 let galleryNavigationLoading = false;
 let replaceGalleryPageBar: ((currentIndex: number, maxIndex: number | null) => void) | null = null;
 let thumbsGridsEnabled = false;
+let galleryPreviewSource: eh.GalleryPreviewResult | null = null;
+let setGalleryPreviewSource: ((source: eh.GalleryPreviewResult) => void) | null = null;
 
 type SwipeState = {
   horizontal: boolean;
@@ -32,6 +31,8 @@ type SwipeState = {
 
 export function EnhanceThumbsGrids(props: {
   enabled: boolean;
+  galleryPreview: eh.GalleryPreviewResult;
+  onGalleryPreviewChange: (source: eh.GalleryPreviewResult) => void;
   onError: (error: unknown) => void;
   replaceGalleryPageBar: (currentIndex: number, maxIndex: number | null) => void;
 }) {
@@ -83,12 +84,15 @@ export function EnhanceThumbsGrids(props: {
 
   onMount(() => {
     thumbsGridsEnabled = props.enabled;
+    galleryPreviewSource = props.galleryPreview;
+    setGalleryPreviewSource = props.onGalleryPreviewChange;
     setSwipeGestureTarget = updateGestureTarget;
     replaceGalleryPageBar = props.replaceGalleryPageBar;
 
     if (props.enabled) {
       galleryThumbEnhancementOnError = props.onError;
-      replaceGalleryPageBar(eh.previewPageIndex(), eh.maxPreviewPageIndex());
+      const preview = galleryPreviewSource.data;
+      replaceGalleryPageBar(preview.currentIndex, preview.maxIndex);
       setThumbsGridSwipeTarget();
 
       if (!galleryThumbEnhancementClickInstalled) {
@@ -107,6 +111,10 @@ export function EnhanceThumbsGrids(props: {
 
       if (thumbsGridsEnabled === props.enabled) {
         thumbsGridsEnabled = false;
+      }
+      if (setGalleryPreviewSource === props.onGalleryPreviewChange) {
+        setGalleryPreviewSource = null;
+        galleryPreviewSource = null;
       }
     });
   });
@@ -147,15 +155,12 @@ export async function navigateGalleryPreview(
     return;
   }
 
-  const previousUrl = window.location.href;
-  const snapshot = eh.snapshotPreview();
+  const previousPreview = galleryPreviewSource;
   const targetPreviewIndex = eh.previewPageIndexFromUrl(url);
-  const maxPreviewIndex = eh.maxPreviewPageIndex();
+  const maxPreviewIndex = galleryPreviewSource?.data.maxIndex ?? null;
 
   galleryNavigationLoading = true;
-  swipeElement?.setAttribute("aria-busy", "true");
-
-  window.history.replaceState(window.history.state, "", url);
+  galleryPreviewSource?.actions.setBusy(true);
 
   if (targetPreviewIndex !== null) {
     setScrollPageBarWindowIndex(targetPreviewIndex);
@@ -166,26 +171,31 @@ export async function navigateGalleryPreview(
     scrollToPageBar(options.scrollToPageBar);
   }
 
-  eh.showPreviewPlaceholder(loadingSpinnerElement(texts.reader.loading, "lg"));
-
   try {
-    const response = await eh.requestPage(url);
-    const nextMaxPreviewIndex = eh.maxPreviewPageIndex(response.document, url);
-
-    eh.replacePreviewContent(response.document);
-    replaceGalleryPageBar?.(eh.previewPageIndexFromUrl(url) ?? eh.previewPageIndex(), nextMaxPreviewIndex);
+    const nextPreview = await previousPreview?.actions.navigate(
+      url,
+      loadingSpinnerElement(texts.reader.loading, "lg"),
+    );
+    if (!nextPreview) {
+      return;
+    }
+    galleryPreviewSource = nextPreview;
+    setGalleryPreviewSource?.(nextPreview);
+    replaceGalleryPageBar?.(nextPreview.data.currentIndex, nextPreview.data.maxIndex);
     setThumbsGridSwipeTarget();
     if (options.scrollToPageBar) {
       scrollToPageBar(options.scrollToPageBar);
     }
   } catch (error) {
-    eh.restorePreview(snapshot);
-    window.history.replaceState(window.history.state, "", previousUrl);
-    replaceGalleryPageBar?.(eh.previewPageIndex(), eh.maxPreviewPageIndex());
+    if (previousPreview) {
+      galleryPreviewSource = previousPreview;
+      setGalleryPreviewSource?.(previousPreview);
+      replaceGalleryPageBar?.(previousPreview.data.currentIndex, previousPreview.data.maxIndex);
+    }
     throw error;
   } finally {
     galleryNavigationLoading = false;
-    swipeElement?.removeAttribute("aria-busy");
+    galleryPreviewSource?.actions.setBusy(false);
   }
 }
 
@@ -194,20 +204,18 @@ function setThumbsGridSwipeTarget(): void {
     return;
   }
 
-  const thumbs = eh.thumbsGrid();
+  const thumbs = galleryPreviewSource?.actions.swipeTarget();
 
   if (!thumbs) {
     return;
   }
 
-  swipeElement = thumbs;
-  eh.prepareThumbsGridSwipeTargets(thumbs);
   setSwipeGestureTarget?.(thumbs);
 }
 
 function swipeUrlForDelta(dx: number): string | null {
   const currentIndex = eh.previewPageIndex();
-  const maxIndex = eh.maxPreviewPageIndex();
+  const maxIndex = galleryPreviewSource?.data.maxIndex ?? null;
   const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
 
   if (nextIndex < 0 || (maxIndex !== null && nextIndex > maxIndex)) {
@@ -262,7 +270,7 @@ function pageBarScrollTarget(item: HTMLElement, targetPreviewIndex: number | nul
   }
 
   const currentIndex = eh.previewPageIndex();
-  const maxIndex = eh.maxPreviewPageIndex();
+  const maxIndex = galleryPreviewSource?.data.maxIndex ?? null;
 
   if (targetPreviewIndex !== null && (targetPreviewIndex === currentIndex - 1 || targetPreviewIndex === maxIndex)) {
     return "bottom";
@@ -272,10 +280,7 @@ function pageBarScrollTarget(item: HTMLElement, targetPreviewIndex: number | nul
 }
 
 function scrollToPageBar(target: "top" | "bottom"): void {
-  const selector = target === "top" ? `.${SCROLL_PAGE_BAR_TOP_CLASS}` : `.${SCROLL_PAGE_BAR_BOTTOM_CLASS}`;
-  const block = target === "top" ? "start" : "end";
-
-  document.querySelector<HTMLElement>(selector)?.scrollIntoView({ block, behavior: "smooth" });
+  galleryPreviewSource?.actions.scrollPageBar(target);
 }
 
 function pageBarUrl(item: HTMLElement): string | null {
@@ -283,7 +288,7 @@ function pageBarUrl(item: HTMLElement): string | null {
     return eh.previewPageIndexFromUrl(item.href) === null ? null : item.href;
   }
 
-  const maxPreviewIndex = eh.maxPreviewPageIndex();
+  const maxPreviewIndex = galleryPreviewSource?.data.maxIndex ?? null;
 
   if (maxPreviewIndex === null) {
     return null;

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, Show, For } from "solid-js";
-import * as eh from "../../eh";
+import type { TopBarResult } from "../../eh/transform";
 import { Icon } from "../Widgets/Icon";
 
 const TOUCH_TOP_BAR_ICON_SIZE = 41;
@@ -7,11 +7,11 @@ const TOUCH_ICON_BUTTON_CLASS =
   "inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]";
 const TOUCH_TOP_BAR_MENU_ITEM_CLASS =
   "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-lg coarse:min-h-88px py-md coarse:py-xl px-lg coarse:px-xl border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline textsize-md leading-[1.2]";
-export const TOUCH_TOP_BAR_TRANSFORM = {
-  menuItemClassName: TOUCH_TOP_BAR_MENU_ITEM_CLASS,
+export const TOUCH_TOP_BAR_TRANSFORMS = {
+  navItems: TOUCH_TOP_BAR_MENU_ITEM_CLASS,
 };
 
-function TouchTopBarMenu(props: { navItems: eh.TouchTopBarInfo["navItems"] }) {
+function TouchTopBarMenu(props: { navItems: TopBarResult["elems"]["navItems"] }) {
   const [open, setOpen] = createSignal(false);
   let root!: HTMLDivElement;
 
@@ -58,27 +58,27 @@ function TouchTopBarMenu(props: { navItems: eh.TouchTopBarInfo["navItems"] }) {
 }
 
 export function TouchTopBar(props: {
-  info: eh.TouchTopBarInfo;
+  source: TopBarResult;
   onSettingsMenuOpen: () => void;
 }) {
   return (
     <nav class="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans">
       <a
         class={`ehpeek-touch-top-bar-project ${TOUCH_ICON_BUTTON_CLASS}`}
-        href={props.info.homeHref}
+        href={props.source.data.homeHref}
       >
         <Icon name="panda-peek" size={58} strokeWidth={1.8} />
       </a>
       <div class="flex items-center gap-sm">
         <a
           class={`ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`}
-          href={props.info.homeHref}
+          href={props.source.data.homeHref}
         >
           <Icon name="home" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
         <a
           class={`ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`}
-          href={props.info.favoritesHref}
+          href={props.source.data.favoritesHref}
         >
           <Icon name="heart" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
@@ -92,7 +92,7 @@ export function TouchTopBar(props: {
         >
           <Icon name="settings" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </button>
-        <TouchTopBarMenu navItems={props.info.navItems} />
+        <TouchTopBarMenu navItems={props.source.elems.navItems} />
       </div>
     </nav>
   );
