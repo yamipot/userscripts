@@ -51,6 +51,7 @@ export function ThumbsGrids(props: {
       return;
     }
 
+    setGotoPreviewIndex(previewIndex);
     void props.previewCache.select(previewIndex).then(
       (next) => {
         if (untrack(() => props.previewCache.current()) === next) {
@@ -58,6 +59,7 @@ export function ThumbsGrids(props: {
         }
       },
       (error: unknown) => {
+        setGotoPreviewIndex((pending) => pending === previewIndex ? undefined : pending);
         onLoadError(error);
       },
     );
