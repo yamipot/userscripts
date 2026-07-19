@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { ReadDirection, ViewMode } from "../../state";
 import texts from "../../texts.json";
 import { clamp, normalizedAspectRatio } from "../../utils";
@@ -224,9 +224,11 @@ export function PagesViewport(props: {
     }
 
     queueMicrotask(() => {
-      if (!disposed && requestToken === moveRequestToken) {
-        performPageMove(pageNum, motion, onComplete);
-      }
+      untrack(() => {
+        if (!disposed && requestToken === moveRequestToken) {
+          performPageMove(pageNum, motion, onComplete);
+        }
+      });
     });
   };
   const resizePages = () => {
@@ -384,7 +386,7 @@ export function PagesViewport(props: {
     },
   };
 
-  props.actionsRef(actions);
+  untrack(() => props.actionsRef(actions));
   createEffect(() => syncWindow(props.window));
   onMount(() => {
     const observer = new ResizeObserver(() => {

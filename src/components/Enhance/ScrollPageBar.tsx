@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For } from "solid-js";
+import { createEffect, createMemo, createSignal, For, untrack } from "solid-js";
 import { clamp } from "../../utils";
 import { createPointerGestureElement } from "../PointerGesture";
 
@@ -40,12 +40,12 @@ export function GalleryPageDescription(props: { text: string }) {
 }
 
 export function ScrollPageBar(options: ScrollPageBarOptions & { element: HTMLDivElement }) {
-  const maxIndex = Math.max(0, options.maxIndex ?? options.currentIndex);
-  const currentIndex = clamp(options.currentIndex, 0, maxIndex);
+  const maxIndex = untrack(() => Math.max(0, options.maxIndex ?? options.currentIndex));
+  const currentIndex = untrack(() => clamp(options.currentIndex, 0, maxIndex));
   const [windowIndex, setWindowIndex] = createSignal(
     clamp(galleryPageBarWindowIndex ?? options.initialWindowIndex ?? currentIndex, 0, maxIndex),
   );
-  let dragStartWindowIndex = windowIndex();
+  let dragStartWindowIndex = untrack(windowIndex);
   const draggable = () => maxIndex + 1 > 7;
   const slots = createMemo(() => pageSlots(windowIndex(), currentIndex, maxIndex));
   const firstSlotIndex = createMemo(() => slots()[0]?.pageIndex ?? currentIndex);

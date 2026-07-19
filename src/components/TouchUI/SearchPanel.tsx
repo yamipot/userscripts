@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onMount, type JSX } from "solid-js";
+import { createEffect, createSignal, onMount, untrack, type JSX } from "solid-js";
 import * as eh from "../../eh";
 import type { TouchSearchPanelInfo } from "../../eh";
 import texts from "../../texts.json";
@@ -110,8 +110,8 @@ export function TouchSearchAction(props: {
   source: TouchSearchPanelInfo;
 }) {
   let originalHost!: HTMLSpanElement;
-  const search = props.action === "search";
-  const original = props.original;
+  const search = untrack(() => props.action === "search");
+  const original = untrack(() => props.original);
 
   onMount(() => {
     original.hidden = true;

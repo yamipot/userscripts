@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show, untrack } from "solid-js";
 import { createStore } from "solid-js/store";
 import texts from "../texts.json";
 
@@ -80,7 +80,9 @@ export function SettingsMenu(props: {
   onApply: (state: SettingsMenuState) => void;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [draft, setDraft] = createStore<SettingsMenuState>({ ...props.initState });
+  const [draft, setDraft] = createStore<SettingsMenuState>(
+    untrack(() => ({ ...props.initState })),
+  );
   const [readerOptionsOpen, setReaderOptionsOpen] = createSignal(false);
   const [enhanceOpen, setEnhanceOpen] = createSignal(false);
   let menu!: HTMLDivElement;

@@ -1,7 +1,7 @@
 import { createPointerGestureElement, type PointerDragEnd } from "../PointerGesture";
 import { LoadingOverlay } from "../Widgets/Loading";
 import { SwipeIndicator, type SwipeIndicatorState } from "../Widgets/SwipeIndicator";
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount, untrack } from "solid-js";
 import * as eh from "../../eh";
 import texts from "../../texts.json";
 
@@ -32,7 +32,7 @@ export function EnhanceSearchGrids(props: { onPageChange?: () => void; resultLis
     progress: 0,
   });
   let swipeState: SwipeState | null = null;
-  const handlePageChange = props.onPageChange ?? null;
+  const handlePageChange = untrack(() => props.onPageChange ?? null);
   const updateLoading = (value: boolean) => setLoading(value);
   const updateGestureTarget = (target: HTMLElement | null) => setGestureTarget(target);
   const hideSwipeIndicator = () => {

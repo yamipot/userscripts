@@ -223,9 +223,11 @@ export class ManagedDomNode<T extends HTMLElement = HTMLElement> {
         ...Array.from(this.#node.childNodes, (node) => node.cloneNode(true)),
       );
       const language = this.#node.getAttribute("lang");
-      language
-        ? target.setAttribute("lang", language)
-        : target.removeAttribute("lang");
+      if (language) {
+        target.setAttribute("lang", language);
+      } else {
+        target.removeAttribute("lang");
+      }
     };
     const observer = new MutationObserver(update);
     update();

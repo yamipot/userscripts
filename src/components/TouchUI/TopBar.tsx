@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, Show, For } from "solid-js";
 import * as eh from "../../eh";
 import { Icon } from "../Widgets/Icon";
 
@@ -47,10 +47,10 @@ function TouchTopBarMenu(props: { navItems: eh.TouchTopBarInfo["navItems"] }) {
       </button>
       <Show when={open()}>
         <div class="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex w-240px coarse:w-[calc(100vw-32px)] max-w-[calc(100vw-24px)] coarse:max-w-360px flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">
-          {props.navItems.map((item) => {
-            const Component = item.clone().Component;
+          <For each={props.navItems}>{(item) => {
+            const Component = item.Component;
             return <Component />;
-          })}
+          }}</For>
         </div>
       </Show>
     </div>

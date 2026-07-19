@@ -1,17 +1,19 @@
+import { createMemo, Show, For } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { ManagedDomNode } from "../../eh/transform";
 
 export function DomNode(props: { node: ManagedDomNode | null }) {
-  const Component = props.node?.Component;
-  return Component ? <Component /> : null;
+  const Component = createMemo(() => props.node?.Component);
+  return <Show when={Component()}>{(Current) => <Dynamic component={Current()} />}</Show>;
 }
 
-export function DomNodes(props: { clone?: boolean; nodes: ManagedDomNode[] }) {
+export function DomNodes(props: { nodes: ManagedDomNode[] }) {
   return (
     <>
-      {props.nodes.map((node) => {
-        const Component = (props.clone ? node.clone() : node).Component;
+      <For each={props.nodes}>{(node) => {
+        const Component = node.Component;
         return <Component />;
-      })}
+      }}</For>
     </>
   );
 }

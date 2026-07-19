@@ -5,6 +5,7 @@ import {
   onCleanup,
   onMount,
   Show,
+  untrack,
 } from "solid-js";
 import * as eh from "../../eh";
 import type {
@@ -54,8 +55,9 @@ export function GalleryInfoPanel(props: {
   onPrimaryActionUnmount: () => void;
   source: GalleryInfoResult;
 }) {
-  const rating = props.source.data.rating;
-  const hasCover = props.source.elems.cover !== null;
+  const source = untrack(() => props.source);
+  const rating = source.data.rating;
+  const hasCover = source.elems.cover !== null;
   const [ratingValue, setRatingValue] = createSignal(rating?.value ?? 0);
   const [ratingPreview, setRatingPreview] = createSignal<number | null>(null);
   const [ratingPickerOpen, setRatingPickerOpen] = createSignal(false);
@@ -67,11 +69,11 @@ export function GalleryInfoPanel(props: {
   const [ratingValueLabel, setRatingValueLabel] = createSignal(
     rating?.label ?? "",
   );
-  const initialTagGroups = props.source.data.tagGroups.map((group) => ({
+  const initialTagGroups = source.data.tagGroups.map((group) => ({
     ...group,
     tags: group.tags.map(({ contentSourceIndex, ...tag }) => ({
       ...tag,
-      contentSource: props.source.elems.tagContents[contentSourceIndex],
+      contentSource: source.elems.tagContents[contentSourceIndex],
     })),
   }));
   const [tagGroups, setTagGroups] =
@@ -79,10 +81,10 @@ export function GalleryInfoPanel(props: {
   const [newTagVisible, setNewTagVisible] = createSignal(false);
   const hasNewTag = () =>
     Boolean(
-      props.source.elems.newTag &&
-        props.source.elems.newTagButton &&
-        props.source.elems.newTagField &&
-        props.source.elems.newTagForm,
+      source.elems.newTag &&
+        source.elems.newTagButton &&
+        source.elems.newTagField &&
+        source.elems.newTagForm,
     );
   const displayedRating = createMemo(() => ratingPreview() ?? ratingValue());
   const ratingLabel = createMemo(() =>
@@ -140,8 +142,8 @@ export function GalleryInfoPanel(props: {
 
     setNewTagVisible(true);
     queueMicrotask(() => {
-      props.source.elems.newTag?.scrollIntoView({ block: "nearest" });
-      props.source.elems.newTagField?.focus();
+      source.elems.newTag?.scrollIntoView({ block: "nearest" });
+      source.elems.newTagField?.focus();
     });
   };
 
@@ -153,24 +155,24 @@ export function GalleryInfoPanel(props: {
         >
           {hasCover && (
             <div class="ehpeek-touch-gallery-cover flex self-center justify-self-stretch w-full max-h-full aspect-[2/3] items-center justify-center overflow-hidden rounded-3px">
-              <DomNode node={props.source.elems.cover} />
+              <DomNode node={source.elems.cover} />
             </div>
           )}
           <div class="ehpeek-touch-gallery-hero-side flex self-stretch min-w-0 flex-col items-start gap-8px pt-2px">
             <div class="ehpeek-touch-gallery-heading flex min-w-0 w-full flex-none flex-col gap-sm items-start pb-xs">
               <div class="ehpeek-touch-gallery-title-main line-clamp-4 flex-none overflow-hidden textsize-lg font-400 leading-[1.16] text-left break-anywhere">
-                {props.source.data.titleMain}
+                {source.data.titleMain}
               </div>
               <div class="ehpeek-touch-gallery-title-sub line-clamp-3 flex-none overflow-hidden opacity-82 textsize-md leading-[1.2] text-left break-anywhere">
-                {props.source.data.titleSub}
+                {source.data.titleSub}
               </div>
             </div>
             <div class="ehpeek-touch-gallery-category-row grid grid-cols-[minmax(0,35fr)_minmax(0,65fr)] w-full flex-none items-center gap-lg mt-auto pt-md">
               <div
                 class="ehpeek-touch-gallery-category box-border w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-xs border border-solid py-6px px-10px text-center textsize-md font-700 leading-[1.1] uppercase"
-                style={props.source.data.categoryAppearance}
+                style={source.data.categoryAppearance}
               >
-                {props.source.data.category}
+                {source.data.category}
               </div>
               {rating && (
                 <button
@@ -208,18 +210,18 @@ export function GalleryInfoPanel(props: {
                       class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[rgba(255,255,255,0.25)]"
                       aria-hidden="true"
                     >
-                      {RATING_STAR_INDEXES.map(() => (
-                        <Icon name="star" />
-                      ))}
+                      <For each={RATING_STAR_INDEXES}>
+                        {() => <Icon name="star" />}
+                      </For>
                     </span>
                     <span
                       class={`ehpeek-touch-gallery-rating-stars-fill absolute top-0 left-0 flex gap-1px overflow-hidden ${ratingSubmitted() ? "text-[var(--color-accent)]" : "ehp-color-site-accent"}`}
                       aria-hidden="true"
                       style={{ width: `${(displayedRating() / 5) * 100}%` }}
                     >
-                      {RATING_STAR_INDEXES.map(() => (
-                        <Icon name="star" filled />
-                      ))}
+                      <For each={RATING_STAR_INDEXES}>
+                        {() => <Icon name="star" filled />}
+                      </For>
                     </span>
                   </div>
                   <div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[rgba(255,255,255,0.78)] textsize-md leading-[1.15] whitespace-nowrap">
@@ -242,7 +244,7 @@ export function GalleryInfoPanel(props: {
         </div>
       </div>
       <div class="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-87px mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-xs bg-[var(--color-site-elevated)] shadow-[0_2px_10px_var(--color-shadow-panel)]">
-        <TouchGalleryFavoriteButton source={props.source.data.favorite} />
+        <TouchGalleryFavoriteButton source={source.data.favorite} />
         <div
           class="ehpeek-touch-gallery-primary-actions flex min-w-0 border-0 border-l-8 border-solid border-l-[var(--color-site-page)]"
           ref={(node) => {
@@ -252,25 +254,25 @@ export function GalleryInfoPanel(props: {
       </div>
       <div class="ehpeek-touch-gallery-content flex flex-col gap-lg pt-xl pr-[max(16px,env(safe-area-inset-right,0px))] pb-lg pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-page ehp-color-site-text">
         <div class="ehpeek-touch-gallery-meta grid grid-cols-[repeat(3,minmax(0,1fr))] gap-y-md gap-x-lg items-center textsize-md leading-[1.2] text-center">
-          {props.source.data.summary.map((item) => (
+          <For each={source.data.summary}>{(item) => (
             <div class="ehpeek-touch-gallery-meta-value line-clamp-2 min-w-0 overflow-hidden whitespace-normal break-normal">
               {item.value}
             </div>
-          ))}
-          <TouchGalleryActionsMenu actions={props.source.elems.actions} />
+          )}</For>
+          <TouchGalleryActionsMenu actions={source.elems.actions} />
         </div>
         {tagGroups().length > 0 && (
           <div class="ehpeek-touch-gallery-tag-groups flex flex-col gap-md pt-2px">
-            {tagGroups().map((group) => (
+            <For each={tagGroups()}>{(group) => (
               <TouchGalleryTagGroup
                 group={group}
                 onNewTagOpen={hasNewTag() ? openNewTag : undefined}
               />
-            ))}
+            )}</For>
           </div>
         )}
         <Show when={newTagVisible() && hasNewTag()}>
-          <TouchGalleryNewTag source={props.source} />
+          <TouchGalleryNewTag source={source} />
         </Show>
       </div>
       <Show when={ratingPickerOpen()}>
@@ -306,18 +308,18 @@ export function GalleryInfoPanel(props: {
                 class="flex gap-1px pointer-events-none text-[rgba(255,255,255,0.25)]"
                 aria-hidden="true"
               >
-                {RATING_STAR_INDEXES.map(() => (
-                  <Icon name="star" size={48} />
-                ))}
+                <For each={RATING_STAR_INDEXES}>
+                  {() => <Icon name="star" size={48} />}
+                </For>
               </span>
               <span
                 class={`absolute top-0 left-0 flex gap-1px overflow-hidden pointer-events-none ${ratingSubmitted() ? "text-[var(--color-accent)]" : "ehp-color-site-accent"}`}
                 aria-hidden="true"
                 style={{ width: `${(displayedRating() / 5) * 100}%` }}
               >
-                {RATING_STAR_INDEXES.map(() => (
-                  <Icon name="star" size={48} filled />
-                ))}
+                <For each={RATING_STAR_INDEXES}>
+                  {() => <Icon name="star" size={48} filled />}
+                </For>
               </span>
             </button>
             <div class="grid grid-cols-2 gap-sm pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]">
@@ -398,7 +400,7 @@ function TouchGalleryActionsMenu(props: {
       </button>
       <Show when={open()}>
         <div class="ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">
-          <DomNodes nodes={props.actions} clone />
+          <DomNodes nodes={props.actions} />
         </div>
       </Show>
     </div>
@@ -415,9 +417,9 @@ function TouchGalleryTagGroup(props: {
         {props.group.namespace}
       </div>
       <div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">
-        {props.group.tags.map((tag) => (
+        <For each={props.group.tags}>{(tag) => (
           <TouchGalleryTag tag={tag} onNewTagOpen={props.onNewTagOpen} />
-        ))}
+        )}</For>
       </div>
     </section>
   );
@@ -702,9 +704,9 @@ function TouchGalleryTag(props: {
                   setSelectedTagSet(event.currentTarget.value)
                 }
               >
-                {tagSets.map((option) => (
+                <For each={tagSets}>{(option) => (
                   <option value={option.value}>{option.label}</option>
-                ))}
+                )}</For>
               </select>
             </label>
             <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
@@ -780,7 +782,9 @@ function TouchGalleryTagContent(props: {
 }
 
 function TouchGalleryFavoriteButton(props: { source: GalleryFavoriteInfo }) {
-  const [favorite, setFavorite] = createSignal({ ...props.source });
+  const [favorite, setFavorite] = createSignal(
+    untrack(() => ({ ...props.source })),
+  );
   const [open, setOpen] = createSignal(false);
   const [loadingState, setLoadingState] = createSignal<
     "idle" | "loading" | "failed"

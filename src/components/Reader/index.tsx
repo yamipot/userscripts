@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount, untrack } from "solid-js";
 import { createStore } from "solid-js/store";
 import texts from "../../texts.json";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
@@ -402,7 +402,9 @@ export function FullscreenReader(props: {
   options: FullscreenReaderOptions;
 }) {
   const [toolbarState, setToolbarState] = createStore<ToolbarState>(initialToolbarState());
-  const [viewportWindow, setViewportWindow] = createSignal(initialViewportWindow(props.options));
+  const [viewportWindow, setViewportWindow] = createSignal(
+    untrack(() => initialViewportWindow(props.options)),
+  );
   const [zoomImage, setZoomImage] = createSignal<ZoomOverlayImage | null>(null);
   const [rootState, setRootState] = createStore<ReaderRootState>({
     readDirection: state.reader.readDirection.value,

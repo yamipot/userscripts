@@ -109,43 +109,43 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={props.callbacks.onRightTapClick}
+            onClick={() => props.callbacks.onRightTapClick()}
           >
             {rightTapButton().text}
           </button>
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={props.callbacks.onReadDirectionClick}
+            onClick={() => props.callbacks.onReadDirectionClick()}
           >
             <Icon name={readDirectionButton().icon} size={READER_ICON_SIZE} />
           </button>
-          <button type="button" class={READER_BUTTON_CLASS} onClick={props.callbacks.onModeClick}>
+          <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onModeClick()}>
             <Icon name={modeButton().icon} size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
             class={READER_BUTTON_CLASS}
             disabled={!props.state.downloadAvailable}
-            onClick={props.callbacks.onDownloadClick}
+            onClick={() => props.callbacks.onDownloadClick()}
           >
             <Icon name="download" size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={props.callbacks.onOpenOriginalPageClick}
+            onClick={() => props.callbacks.onOpenOriginalPageClick()}
           >
             <Icon name="external-link" size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={props.callbacks.onFullscreenClick}
+            onClick={() => props.callbacks.onFullscreenClick()}
           >
             <Icon name={props.state.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
           </button>
-          <button type="button" class={READER_BUTTON_CLASS} onClick={props.callbacks.onCloseClick}>
+          <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onCloseClick()}>
             <Icon name="close" size={READER_ICON_SIZE} />
           </button>
         </div>
@@ -191,7 +191,7 @@ export function Toolbar(props: { callbacks: ToolbarCallbacks; state: ToolbarStat
         onWheel={stopEvent}
       >
         <ProgressBar
-          className="ehpeek-reader-progress textsize-lg"
+          class="ehpeek-reader-progress textsize-lg"
           direction={controls().readDirection === "rtl" ? "rtl" : "ltr"}
           fillPercent={progressFillPercent(progress())}
           keepInputValue={progress().keepInputValue}

@@ -2,12 +2,12 @@ import { Show } from "solid-js";
 import { render } from "solid-js/web";
 
 export function LoadingSpinner(props: { label: string; size?: "md" | "lg" }) {
-  const sizeClass = props.size === "lg" ? "w-sm h-sm border-4" : "w-xs h-xs border-3";
+  const sizeClass = () => props.size === "lg" ? "w-sm h-sm border-4" : "w-xs h-xs border-3";
 
   return (
     <span class="inline-flex items-center justify-center gap-md ehp-color-text" role="status" aria-live="polite">
       <span
-        class={`${sizeClass} inline-block box-border animate-spin rounded-full border-solid ehp-color-spinner`}
+        class={`${sizeClass()} inline-block box-border animate-spin rounded-full border-solid ehp-color-spinner`}
         aria-hidden="true"
       />
       <span>{props.label}</span>

@@ -580,30 +580,6 @@ function nextAnimationFrame(): Promise<void> {
   });
 }
 
-function absolutizeDocumentUrls(doc: Document, baseUrl: string): void {
-  const attributes: Array<[string, string]> = [
-    ["a[href]", "href"],
-    ["area[href]", "href"],
-    ["form[action]", "action"],
-    ["img[src]", "src"],
-    ["input[src]", "src"],
-    ["script[src]", "src"],
-    ["source[src]", "src"],
-  ];
-
-  for (const [selector, attribute] of attributes) {
-    for (const element of Array.from(doc.querySelectorAll<HTMLElement>(selector))) {
-      const value = element.getAttribute(attribute);
-
-      if (!value || value.startsWith("#") || /^(?:data|javascript|mailto):/i.test(value)) {
-        continue;
-      }
-
-      element.setAttribute(attribute, normalizeUrl(value, baseUrl));
-    }
-  }
-}
-
 export function readTouchSearchPanelInfo(root: ParentNode = document): TouchSearchPanelInfo | null {
   const searchInput = root.querySelector<HTMLInputElement>("#f_search, input[name='f_search']");
   const form = searchInput?.form ?? null;
@@ -1188,7 +1164,7 @@ function prepareTouchFavoritesCategorySelect(container: HTMLElement): TouchFavor
     const count = Number(countText.replace(/,/g, ""));
     const indicator = node.querySelector<HTMLElement>(".i");
     const indicatorStyle = indicator ? window.getComputedStyle(indicator) : null;
-    const href = node.getAttribute("onclick")?.match(/document\.location\s*=\s*['\"]([^'\"]+)['\"]/)?.[1] ?? "";
+    const href = node.getAttribute("onclick")?.match(/document\.location\s*=\s*['"]([^'"]+)['"]/)?.[1] ?? "";
 
     return {
       appearance: indicatorStyle ? {

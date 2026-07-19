@@ -16,7 +16,7 @@ const PROGRESS_BAR_CLASS_NAME = [
 registerGlobalStyle(PROGRESS_BAR_CLASS, progressBarCss);
 
 export function ProgressBar(props: {
-  className?: string;
+  class?: string;
   direction?: "ltr" | "rtl";
   fillPercent?: number;
   keepInputValue?: boolean;
@@ -49,7 +49,7 @@ export function ProgressBar(props: {
         element.value = String(props.value ?? props.min);
       }}
       type="range"
-      class={`${PROGRESS_BAR_CLASS_NAME}${props.className ? ` ${props.className}` : ""}`}
+      class={`${PROGRESS_BAR_CLASS_NAME}${props.class ? ` ${props.class}` : ""}`}
       min={String(props.min)}
       max={String(Math.max(1, props.max ?? props.min))}
       step={String(props.step)}

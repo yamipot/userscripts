@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import { clamp } from "../../utils";
 
 const MIN_SCALE = 1;
@@ -113,7 +113,7 @@ export function ZoomOverlay(props: {
     },
   };
 
-  props.actionsRef(actions);
+  untrack(() => props.actionsRef(actions));
 
   return (
     <div

@@ -1,11 +1,13 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { SearchHistorySource } from "../../eh";
 
 const SEARCH_HISTORY_KEY = "ehpeek:search:history";
 
 export function SearchHistory(props: { source: SearchHistorySource }) {
   let dropdown: HTMLElement | undefined;
-  const [searchValue, setSearchValue] = createSignal(props.source.searchInput.value);
+  const [searchValue, setSearchValue] = createSignal(
+    untrack(() => props.source.searchInput.value),
+  );
   const [history, setHistory] = createSignal<string[]>(loadSearchHistory());
   const [open, setOpen] = createSignal(false);
   const [activeIndex, setActiveIndex] = createSignal(-1);
