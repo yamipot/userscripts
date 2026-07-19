@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { LoadingOverlay } from "../components/Widgets/Loading";
 import * as eh from "../eh";
 import type { PageType } from "../eh";
 import texts from "../texts.json";
@@ -208,15 +209,7 @@ export function SinglePage(props: {
     <div class="ehpeek-single-page-app contents">
       <div ref={routeHost} class="ehpeek-single-page-route contents" />
       <div ref={stagingHost} class="hidden" aria-hidden="true" inert />
-      <Show when={loading()}>
-        <div
-          class="fixed top-0 left-0 z-overlay h-4px w-full overflow-hidden bg-[var(--color-site-border-subtle)]"
-          role="progressbar"
-          aria-label={texts.reader.loading}
-        >
-          <div class="h-full w-1/2 animate-pulse bg-[var(--color-site-accent)]" />
-        </div>
-      </Show>
+      <LoadingOverlay label={texts.reader.loading} visible={loading()} />
       <Show when={failedUrl()} keyed>
         {(url) => (
           <aside
