@@ -44,7 +44,7 @@
     "on": "On",
     "off": "Off",
     "singlePageApp": "Single Page App",
-    "singlePageAppHelp": "Loads pages without a full page refresh; only applys to Touch UI",
+    "singlePageAppHelp": "Loads pages without a full page refresh. Only applies to Touch UI and may be incompatible with other userscripts.",
     "readerLabel": "Reader",
     "readerHelp": "Opens gallery images in Ehpeek's reader",
     "readerFullscreenLabel": "Reader in Fullscreen",

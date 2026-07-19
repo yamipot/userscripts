@@ -144,13 +144,6 @@ export function SettingsMenu(props: {
           label={texts.settings.touchUiLabel}
           onChange={(value) => setDraft("touchUiEnabled", value)}
         />
-        <SwitchButton
-          checked={draft.singlePageAppEnabled}
-          description={texts.settings.singlePageAppHelp}
-          disabled={!draft.touchUiEnabled}
-          label={texts.settings.singlePageApp}
-          onChange={(value) => setDraft("singlePageAppEnabled", value)}
-        />
         <div class="border-0 border-b ehp-color-site-border-subtle-b">
           <button
             type="button"
@@ -200,6 +193,13 @@ export function SettingsMenu(props: {
           </button>
           <Show when={enhanceOpen()}>
             <div class="ml-md border-0 border-l border-l-[var(--color-site-border-subtle)]">
+              <SwitchButton
+                checked={draft.singlePageAppEnabled}
+                description={texts.settings.singlePageAppHelp}
+                disabled={!draft.touchUiEnabled}
+                label={texts.settings.singlePageApp}
+                onChange={(value) => setDraft("singlePageAppEnabled", value)}
+              />
               <SwitchButton
                 checked={draft.enhanceSearchGridsEnabled}
                 description={texts.settings.enhanceSearchHelp}
