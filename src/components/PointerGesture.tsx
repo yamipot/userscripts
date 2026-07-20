@@ -53,6 +53,7 @@ class PointerGesture {
   private readonly pinchPointers = new Map<number, { clientX: number; clientY: number }>();
   private drag: GesturePointer | null = null;
   private suppressClick = false;
+  private suppressClickPoint: { clientX: number; clientY: number } | null = null;
   private suppressClickTimer: number | null = null;
   private pinch: {
     startDistance: number;
@@ -66,7 +67,6 @@ class PointerGesture {
     target.addEventListener("pointerdown", this.onPointerDown);
     target.addEventListener("mousedown", this.onMouseDown);
     target.addEventListener("dragstart", this.onDragStart);
-    target.addEventListener("click", this.onClick, true);
     target.addEventListener("contextmenu", this.onContextMenu);
   }
 
@@ -83,13 +83,8 @@ class PointerGesture {
     this.target.removeEventListener("pointerdown", this.onPointerDown);
     this.target.removeEventListener("mousedown", this.onMouseDown);
     this.target.removeEventListener("dragstart", this.onDragStart);
-    this.target.removeEventListener("click", this.onClick, true);
     this.target.removeEventListener("contextmenu", this.onContextMenu);
-
-    if (this.suppressClickTimer !== null) {
-      window.clearTimeout(this.suppressClickTimer);
-      this.suppressClickTimer = null;
-    }
+    this.clearClickSuppression();
   }
 
   isDragging(): boolean {
@@ -116,11 +111,17 @@ class PointerGesture {
   };
 
   private onClick = (event: MouseEvent): void => {
-    if (!this.suppressClick) {
+    const point = this.suppressClickPoint;
+    const targetInside = event.target instanceof Node && this.target.contains(event.target);
+    const nearReleasePoint = point !== null && Math.hypot(
+      event.clientX - point.clientX,
+      event.clientY - point.clientY,
+    ) <= 24;
+    if (!this.suppressClick || (!targetInside && !nearReleasePoint)) {
       return;
     }
 
-    this.suppressClick = false;
+    this.clearClickSuppression();
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -349,7 +350,7 @@ class PointerGesture {
         return;
       }
 
-      this.suppressNextClick();
+      this.suppressNextClick(info.clientX, info.clientY);
       this.callbacks().onEnd?.(info, event);
     }
   }
@@ -565,17 +566,28 @@ class PointerGesture {
     drag.lastMoveTime = event.timeStamp;
   }
 
-  private suppressNextClick(): void {
+  private suppressNextClick(clientX: number, clientY: number): void {
     this.suppressClick = true;
+    this.suppressClickPoint = { clientX, clientY };
+    window.addEventListener("click", this.onClick, true);
 
     if (this.suppressClickTimer !== null) {
       window.clearTimeout(this.suppressClickTimer);
     }
 
     this.suppressClickTimer = window.setTimeout(() => {
-      this.suppressClick = false;
-      this.suppressClickTimer = null;
+      this.clearClickSuppression();
     }, 400);
+  }
+
+  private clearClickSuppression(): void {
+    this.suppressClick = false;
+    this.suppressClickPoint = null;
+    window.removeEventListener("click", this.onClick, true);
+    if (this.suppressClickTimer !== null) {
+      window.clearTimeout(this.suppressClickTimer);
+      this.suppressClickTimer = null;
+    }
   }
 
   private setDragging(dragging: boolean): void {
