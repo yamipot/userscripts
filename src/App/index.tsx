@@ -469,26 +469,27 @@ async function injectPage(page: eh.PageType): Promise<void> {
     ? allowFeatureFailure("Search results", () => eh.manageSearchResults())
     : null;
 
-  let myTagAppearances: Awaited<ReturnType<typeof loadMyTagAppearances>> = null;
-
   if (gState.settings.myTagsEnabled) {
     if (page.type === "myTags") {
-      await allowAsyncFeatureFailure("My Tags refresh", async () => {
+      void allowAsyncFeatureFailure("My Tags refresh", async () => {
         const currentMyTags = eh.extractMyTagsPageData();
         await refreshMyTags(currentMyTags);
       });
     } else if (galleryPage) {
-      myTagAppearances = await allowAsyncFeatureFailure(
-        "My Tags appearance",
-        loadMyTagAppearances,
-      );
+      const myTagAppearances = loadMyTagAppearances();
+      if (myTagAppearances) {
+        allowFeatureFailure("Gallery My Tags appearance", () => {
+          eh.mutateGalleryMyTags(myTagAppearances);
+        });
+      } else {
+        void allowAsyncFeatureFailure("My Tags appearance", async () => {
+          const appearances = await refreshMyTags();
+          if (appearances) {
+            eh.mutateGalleryMyTags(appearances);
+          }
+        });
+      }
     }
-  }
-
-  if (myTagAppearances) {
-    allowFeatureFailure("Gallery My Tags appearance", () => {
-      eh.mutateGalleryMyTags(myTagAppearances);
-    });
   }
 
   if (gState.settings.readHistoryEnabled && page.type === "image") {

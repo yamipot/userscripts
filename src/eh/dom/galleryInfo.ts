@@ -400,9 +400,11 @@ export function manageGalleryInfo(
 
       // E-H only creates the action links when its original tag anchor is activated.
       tag.contentSource.click();
+      elems.newTag?.setHidden(false).removeStyles("display");
       const actions = elems.tagMenuAction.all<HTMLAnchorElement>("a");
       if (actions.length === 0) {
         tag.contentSource.click();
+        elems.newTag?.setHidden(false).removeStyles("display");
         throw new Error("Gallery tag actions could not be opened.");
       }
 
@@ -422,6 +424,7 @@ export function manageGalleryInfo(
     /** Closes E-H's selected tag without replacing its action DOM. */
     closeGalleryTagMenu(): void {
       selectedTagSource?.click();
+      elems.newTag?.setHidden(false).removeStyles("display");
       selectedTagSource = null;
     },
     /** Updates the Gallery favorite state through the original site endpoint. */

@@ -11,10 +11,10 @@ async function loadMyTagsPage(tagSet?: string): Promise<MyTagsPageData> {
   return eh.extractMyTagsPageData(response.document, tagSet);
 }
 
-export async function loadMyTagAppearances(): Promise<MyTagAppearance[] | null> {
+export function loadMyTagAppearances(): MyTagAppearance[] | null {
   return state.gallery.myTagAppearances.stored()
     ? state.gallery.myTagAppearances.reload()
-    : await refreshMyTags();
+    : null;
 }
 
 export async function refreshMyTags(initialPage?: MyTagsPageData): Promise<MyTagAppearance[] | null> {
