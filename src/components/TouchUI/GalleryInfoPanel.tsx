@@ -478,6 +478,10 @@ function TouchGalleryTagMenu(props: {
   });
 
   const updateFavoriteTag = async (tag: GalleryPanelTagGroup["tags"][number]) => {
+    if (updating()) {
+      return;
+    }
+
     setUpdating(true);
     try {
       if (tag.myTag) {
@@ -514,40 +518,50 @@ function TouchGalleryTagMenu(props: {
         <div
           class="ehpeek-touch-gallery-tag-menu-panel box-border flex w-full max-w-420px max-h-[calc(100dvh-32px)] flex-col overflow-x-hidden overflow-y-auto whitespace-nowrap border ehp-color-site-border rounded-md ehp-color-site-elevated shadow-xl"
           role="menu"
-          onClick={() => props.onClose()}
+          onClick={() => {
+            if (!updating()) {
+              props.onClose();
+            }
+          }}
         >
-          <DomNode node={props.source.elems.tagMenuAction} />
-          <Show when={props.tag}>{(tag) => (
-            <Show
-              when={!tag().myTag}
-              fallback={
+          <Show
+            when={!updating()}
+            fallback={<WelcomeIcon embedded label={texts.reader.loading} showIcon={false} />}
+          >
+            <DomNode node={props.source.elems.tagMenuAction} />
+            <Show when={props.tag}>{(tag) => (
+              <Show
+                when={!tag().myTag}
+                fallback={
+                  <button
+                    type="button"
+                    class={TOUCH_GALLERY_TAG_MENU_ITEM_CLASS}
+                    role="menuitem"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void updateFavoriteTag(tag());
+                    }}
+                  >
+                    <Icon name="heart" filled />
+                    <span>{texts.gallery.removeFavoriteTag}</span>
+                  </button>
+                }
+              >
                 <button
                   type="button"
                   class={TOUCH_GALLERY_TAG_MENU_ITEM_CLASS}
                   role="menuitem"
-                  disabled={updating()}
-                  onClick={() => void updateFavoriteTag(tag())}
+                  onClick={() => {
+                    setFavoriteTag(tag());
+                    setFavoriteDialogOpen(true);
+                  }}
                 >
-                  <Icon name="heart" filled />
-                  <span>{texts.gallery.removeFavoriteTag}</span>
+                  <Icon name="heart" />
+                  <span>{texts.gallery.favoriteTag}</span>
                 </button>
-              }
-            >
-              <button
-                type="button"
-                class={TOUCH_GALLERY_TAG_MENU_ITEM_CLASS}
-                role="menuitem"
-                disabled={updating()}
-                onClick={() => {
-                  setFavoriteTag(tag());
-                  setFavoriteDialogOpen(true);
-                }}
-              >
-                <Icon name="heart" />
-                <span>{texts.gallery.favoriteTag}</span>
-              </button>
-            </Show>
-          )}</Show>
+              </Show>
+            )}</Show>
+          </Show>
         </div>
       </div>
       <Show when={favoriteDialogOpen()}>
@@ -566,57 +580,61 @@ function TouchGalleryTagMenu(props: {
             <div class="ehp-color-site-text textsize-lg font-700">
               {texts.gallery.favoriteTag}
             </div>
-            <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
-              <span>{texts.gallery.tagCollection}</span>
-              <select
-                class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
-                value={selectedTagSet()}
-                onChange={(event) =>
-                  setSelectedTagSet(event.currentTarget.value)
-                }
-              >
-                <For each={tagSets}>{(option) => (
-                  <option value={option.value}>{option.label}</option>
-                )}</For>
-              </select>
-            </label>
-            <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
-              <span>{texts.gallery.tagBehavior}</span>
-              <select
-                class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
-                value={tagMode()}
-                onChange={(event) =>
-                  setTagMode(event.currentTarget.value as MyTagMode)
-                }
-              >
-                <option value="marked">{texts.gallery.markTag}</option>
-                <option value="watched">{texts.gallery.watchTag}</option>
-                <option value="hidden">{texts.gallery.hideTag}</option>
-              </select>
-            </label>
-            <div class="grid grid-cols-2 gap-md">
-              <button
-                type="button"
-                class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"
-                onClick={() => setFavoriteDialogOpen(false)}
-              >
-                {texts.button.close}
-              </button>
-              <button
-                type="button"
-                class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"
-                disabled={updating()}
-                onClick={() => {
-                  const tag = favoriteTag();
-                  if (tag) {
-                    void updateFavoriteTag(tag);
+            <Show
+              when={!updating()}
+              fallback={<WelcomeIcon embedded label={texts.reader.loading} showIcon={false} />}
+            >
+              <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+                <span>{texts.gallery.tagCollection}</span>
+                <select
+                  class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
+                  value={selectedTagSet()}
+                  onChange={(event) =>
+                    setSelectedTagSet(event.currentTarget.value)
                   }
-                }}
-              >
-                <Icon name="heart" />
-                <span>{texts.button.confirm}</span>
-              </button>
-            </div>
+                >
+                  <For each={tagSets}>{(option) => (
+                    <option value={option.value}>{option.label}</option>
+                  )}</For>
+                </select>
+              </label>
+              <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+                <span>{texts.gallery.tagBehavior}</span>
+                <select
+                  class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
+                  value={tagMode()}
+                  onChange={(event) =>
+                    setTagMode(event.currentTarget.value as MyTagMode)
+                  }
+                >
+                  <option value="marked">{texts.gallery.markTag}</option>
+                  <option value="watched">{texts.gallery.watchTag}</option>
+                  <option value="hidden">{texts.gallery.hideTag}</option>
+                </select>
+              </label>
+              <div class="grid grid-cols-2 gap-md">
+                <button
+                  type="button"
+                  class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"
+                  onClick={() => setFavoriteDialogOpen(false)}
+                >
+                  {texts.button.close}
+                </button>
+                <button
+                  type="button"
+                  class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"
+                  onClick={() => {
+                    const tag = favoriteTag();
+                    if (tag) {
+                      void updateFavoriteTag(tag);
+                    }
+                  }}
+                >
+                  <Icon name="heart" />
+                  <span>{texts.button.confirm}</span>
+                </button>
+              </div>
+            </Show>
           </div>
         </div>
       </Show>
@@ -700,6 +718,29 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
     }
   };
 
+  const updateFavorite = async (option: GalleryFavoriteOption) => {
+    const actionUrl = favorite().actionUrl;
+    if (!actionUrl || loadingState() === "loading") {
+      return;
+    }
+
+    setLoadingState("loading");
+    try {
+      await props.source.handle.updateGalleryFavorite(actionUrl, option.value);
+      setFavorite({
+        ...favorite(),
+        color: option.color,
+        favorited: option.value !== "favdel",
+        label: option.value === "favdel" ? "Not Favorited" : option.label,
+      });
+      setLoadingState("idle");
+      setOpen(false);
+    } catch (error) {
+      console.error("[ehpeek]", error);
+      setLoadingState("failed");
+    }
+  };
+
   return (
     <div
       ref={root}
@@ -731,7 +772,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
       <Show when={open()}>
         <div class="ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-overlay flex w-[min(86vw,360px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">
           <Show when={loadingState() === "loading"}>
-            <WelcomeIcon embedded label={texts.reader.loading} />
+            <WelcomeIcon embedded label={texts.reader.loading} showIcon={false} />
           </Show>
           <Show when={loadingState() === "failed"}>
             <TouchGalleryFavoriteStatus text="Failed" />
@@ -740,21 +781,8 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
             <For each={options()}>
               {(option) => (
                 <TouchGalleryFavoriteOption
-                  actionUrl={favorite().actionUrl}
                   option={option}
-                  source={props.source}
-                  onApplied={() => {
-                    setFavorite({
-                      ...favorite(),
-                      color: option.color,
-                      favorited: option.value !== "favdel",
-                      label:
-                        option.value === "favdel"
-                          ? "Not Favorited"
-                          : option.label,
-                    });
-                    setOpen(false);
-                  }}
+                  onSelect={() => void updateFavorite(option)}
                 />
               )}
             </For>
@@ -774,10 +802,8 @@ function TouchGalleryFavoriteStatus(props: { text: string }) {
 }
 
 function TouchGalleryFavoriteOption(props: {
-  actionUrl: string;
   option: GalleryFavoriteOption;
-  onApplied: () => void;
-  source: GalleryInfoDom;
+  onSelect: () => void;
 }) {
   return (
     <button
@@ -786,12 +812,7 @@ function TouchGalleryFavoriteOption(props: {
       aria-pressed={props.option.selected}
       onClick={(event: MouseEvent) => {
         event.stopPropagation();
-        void props.source.handle
-          .updateGalleryFavorite(props.actionUrl, props.option.value)
-          .then(props.onApplied)
-          .catch((error) => {
-            console.error("[ehpeek]", error);
-          });
+        props.onSelect();
       }}
     >
       <span
