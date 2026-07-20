@@ -188,7 +188,7 @@ export function GalleryInfoPanel(props: {
                     }}
                   >
                     <span
-                      class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[rgba(255,255,255,0.25)]"
+                      class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[var(--color-muted)] opacity-40"
                       aria-hidden="true"
                     >
                       <For each={RATING_STAR_INDEXES}>
@@ -205,7 +205,7 @@ export function GalleryInfoPanel(props: {
                       </For>
                     </span>
                   </div>
-                  <div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[rgba(255,255,255,0.78)] textsize-md leading-[1.15] whitespace-nowrap">
+                  <div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[var(--color-muted)] textsize-md leading-[1.15] whitespace-nowrap">
                     <span
                       class="ehpeek-touch-gallery-rating-label min-w-0 overflow-hidden text-ellipsis"
                       aria-live="polite"
@@ -213,7 +213,7 @@ export function GalleryInfoPanel(props: {
                       {ratingLabel()}
                     </span>
                     {ratingCount() && (
-                      <span class="ehpeek-touch-gallery-rating-count flex-none pl-6px border-0 border-l border-[rgba(255,255,255,0.2)] text-[rgba(255,255,255,0.58)]">
+                      <span class="ehpeek-touch-gallery-rating-count flex-none pl-6px border-0 border-l border-[var(--color-site-border-subtle)] opacity-75">
                         {ratingCount()}
                       </span>
                     )}
@@ -284,7 +284,7 @@ export function GalleryInfoPanel(props: {
               }}
             >
               <span
-                class="flex gap-1px pointer-events-none text-[rgba(255,255,255,0.25)]"
+                class="flex gap-1px pointer-events-none text-[var(--color-muted)] opacity-40"
                 aria-hidden="true"
               >
                 <For each={RATING_STAR_INDEXES}>

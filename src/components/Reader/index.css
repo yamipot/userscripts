@@ -1,3 +1,16 @@
+#ehpeek-reader {
+  --color-background: #070707;
+  --color-surface: #151515;
+  --color-elevated: #232323;
+  --color-text: #f3f3f3;
+  --color-accent: #4da3ff;
+  --color-border: color-mix(in srgb, var(--color-text) 18%, transparent);
+  --color-muted: color-mix(in srgb, var(--color-text) 72%, transparent);
+  --color-track: color-mix(in srgb, var(--color-text) 34%, var(--color-background));
+  --color-control: color-mix(in srgb, var(--color-elevated) 88%, transparent);
+  --color-badge: color-mix(in srgb, var(--color-background) 34%, transparent);
+}
+
 #ehpeek-reader,
 #ehpeek-reader * {
   box-sizing: border-box;

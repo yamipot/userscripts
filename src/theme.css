@@ -5,11 +5,16 @@
   --font-size-lg: 24px;
   --font-size-xl: 32px;
 
-  --color-background: #070707;
+  /* --color-background: #070707;
   --color-surface: #151515;
   --color-elevated: #232323;
   --color-text: #f3f3f3;
-  --color-accent: #4da3ff;
+  --color-accent: #4da3ff; */
+  --color-background: var(--color-site-page);
+  --color-surface: var(--color-site-surface);
+  --color-elevated: var(--color-site-elevated);
+  --color-text: var(--color-site-text);
+  --color-accent: var(--color-site-accent);
   --color-danger: #ffb2a7;
   --color-state-on: #4ec46a;
   --color-state-off: #8c8f96;
@@ -27,7 +32,8 @@
   --color-site-favorite-9: #fe50c8;
 
   --color-muted: color-mix(in srgb, var(--color-text) 72%, transparent);
-  --color-border: color-mix(in srgb, var(--color-text) 18%, transparent);
+  /* --color-border: color-mix(in srgb, var(--color-text) 18%, transparent); */
+  --color-border: var(--color-site-border);
   --color-track: color-mix(in srgb, var(--color-text) 34%, var(--color-background));
   --color-danger-soft: color-mix(in srgb, var(--color-danger) 12%, transparent);
   --color-danger-border: color-mix(in srgb, var(--color-danger) 64%, transparent);
@@ -41,6 +47,11 @@
   --color-site-accent-hover: color-mix(in srgb, var(--color-site-accent) 12%, transparent);
   --color-site-border-subtle: color-mix(in srgb, var(--color-site-border) 16%, transparent);
   --color-site-item-hover: color-mix(in srgb, var(--color-site-text) 8%, transparent);
+  --color-loading: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--color-site-elevated) 80%, var(--color-site-surface)) 92%,
+    transparent
+  );
   --color-site-swipe-background: color-mix(in srgb, var(--color-site-elevated) 94%, transparent);
   --color-site-swipe-border: color-mix(in srgb, var(--color-site-border) 38%, transparent);
 }
