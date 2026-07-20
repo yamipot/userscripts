@@ -10,6 +10,7 @@ export type GalleryTagData = {
   label: string;
   myTag: { id: string; tagSet: string } | null;
   name: string;
+  url: string;
 };
 
 type GalleryTagAppearance = {

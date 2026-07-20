@@ -72,7 +72,7 @@ export function GalleryInfoPanel(props: {
   const [selectedTag, setSelectedTag] = createSignal<
     GalleryPanelTagGroup["tags"][number] | null
   >(null);
-  const [newTagVisible, setNewTagVisible] = createSignal(false);
+  const [tagging, setTagging] = createSignal(false);
   const hasNewTag = () =>
     Boolean(
       source.elems.newTag &&
@@ -115,24 +115,12 @@ export function GalleryInfoPanel(props: {
     }
   };
 
-  const openNewTag = () => {
-    if (!hasNewTag()) {
-      return;
-    }
-
-    setNewTagVisible(true);
-    queueMicrotask(() => {
-      source.elems.newTag?.scrollIntoView({ block: "nearest" });
-      source.elems.newTagField?.focus();
-    });
-  };
   const openTagMenu = (tag: GalleryPanelTagGroup["tags"][number]) => {
     try {
       source.handle.openGalleryTagMenu(
         tag,
         TOUCH_GALLERY_TAG_MENU_CLASS,
         TOUCH_GALLERY_TAG_MENU_ITEM_CLASS,
-        hasNewTag() ? openNewTag : undefined,
       );
       setSelectedTag(tag);
     } catch (error) {
@@ -261,17 +249,39 @@ export function GalleryInfoPanel(props: {
           <TouchGalleryActionsMenu items={source.elems.actionItems} />
         </div>
         {tagGroups().length > 0 && (
-          <div class="ehpeek-touch-gallery-tag-groups flex flex-col gap-md pt-2px">
+          <div class="ehpeek-touch-gallery-tag-groups flow-root pt-2px">
+            <button
+              type="button"
+              class={`float-right inline-flex min-h-sm items-center justify-center gap-md ml-sm mb-sm rounded-xl border-0 px-lg font-inherit font-700 textsize-sm cursor-pointer transition-[background-color,color] duration-120 ${tagging() ? "bg-[var(--color-site-accent-hover)] ehp-color-site-accent" : "bg-[var(--color-site-surface)] ehp-color-site-text"}`}
+              aria-pressed={tagging()}
+              onClick={() => {
+                const enabled = !tagging();
+                setTagging(enabled);
+                if (enabled && hasNewTag()) {
+                  queueMicrotask(() => {
+                    source.elems.newTag?.scrollIntoView({ block: "nearest" });
+                    source.elems.newTagField?.focus();
+                  });
+                }
+              }}
+            >
+              <span>Tagging</span>
+              <span
+                class={`block flex-none w-10px h-10px coarse:w-18px coarse:h-18px rounded-full ${tagging() ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`}
+                aria-hidden="true"
+              />
+            </button>
             <For each={tagGroups()}>{(group) => (
               <TouchGalleryTagGroup
                 group={group}
+                tagging={tagging()}
                 onTagOpen={openTagMenu}
               />
             )}</For>
           </div>
         )}
         <Show when={hasNewTag()}>
-          <div class={newTagVisible() ? "block" : "hidden"}>
+          <div class={tagging() ? "block" : "hidden"}>
             <TouchGalleryNewTag source={source} />
           </div>
         </Show>
@@ -408,15 +418,42 @@ function TouchGalleryActionsMenu(props: {
 function TouchGalleryTagGroup(props: {
   group: GalleryPanelTagGroup;
   onTagOpen: (tag: GalleryPanelTagGroup["tags"][number]) => void;
+  tagging: boolean;
 }) {
   return (
-    <section class="ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start">
+    <section class="ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start mb-md last:mb-0">
       <div class="ehpeek-touch-gallery-tag-group-name min-h-sm overflow-hidden text-ellipsis whitespace-nowrap rounded-xl bg-[var(--color-site-elevated)] py-sm px-md text-center lowercase ehp-color-site-accent textsize-md font-600">
         {props.group.namespace}
       </div>
-      <div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">
+      <div
+        class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm"
+        onClick={(event: MouseEvent) => {
+          if (
+            !props.tagging ||
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.altKey ||
+            event.ctrlKey ||
+            event.metaKey ||
+            event.shiftKey
+          ) {
+            return;
+          }
+          const link = event.target instanceof Element
+            ? event.target.closest<HTMLAnchorElement>("a.ehpeek-touch-gallery-tag")
+            : null;
+          const href = link?.getAttribute("href");
+          const tag = props.group.tags.find((candidate) => candidate.url === href);
+          if (!tag) {
+            return;
+          }
+
+          event.preventDefault();
+          props.onTagOpen(tag);
+        }}
+      >
         <For each={props.group.tags}>{(tag) => (
-          <TouchGalleryTag tag={tag} onOpen={() => props.onTagOpen(tag)} />
+          <TouchGalleryTag tag={tag} />
         )}</For>
       </div>
     </section>
@@ -425,23 +462,20 @@ function TouchGalleryTagGroup(props: {
 
 function TouchGalleryTag(props: {
   tag: GalleryPanelTagGroup["tags"][number];
-  onOpen: () => void;
 }) {
   return (
-    <button
-      type="button"
-      class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap appearance-none m-0 py-0 rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer select-none transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
+    <a
+      href={props.tag.url}
+      class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap appearance-none m-0 py-0 rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer select-none no-underline transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"
       style={{
         "background-color": props.tag.appearance.backgroundColor,
         "border-color": props.tag.appearance.borderColor,
         color: props.tag.appearance.color,
       }}
       aria-label={props.tag.label}
-      aria-haspopup="menu"
-      onClick={() => props.onOpen()}
     >
       <TouchGalleryTagContent tag={props.tag} />
-    </button>
+    </a>
   );
 }
 

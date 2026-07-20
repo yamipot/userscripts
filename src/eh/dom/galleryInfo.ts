@@ -186,6 +186,7 @@ export function manageGalleryInfo(
         label,
         myTag: myTagId && myTagSet ? { id: myTagId, tagSet: myTagSet } : null,
         name,
+        url: href,
       },
       source: tag,
     };
@@ -399,7 +400,6 @@ export function manageGalleryInfo(
       tag: GalleryInfoTagGroup["tags"][number],
       containerClassName: string,
       itemClassName: string,
-      onNewTagOpen?: () => void,
     ): void {
       if (!elems.tagMenuAction) {
         throw new Error("Gallery tag actions are unavailable.");
@@ -424,12 +424,7 @@ export function manageGalleryInfo(
 
       const addNewTag = actions.find((action) =>
         action.readAttribute("onclick")?.includes("toggle_tagmenu"));
-      if (addNewTag && onNewTagOpen) {
-        addNewTag.removeAttributes("onclick").listen("click", (event) => {
-          event.preventDefault();
-          onNewTagOpen();
-        });
-      }
+      addNewTag?.setHidden(true);
     },
     /** Closes E-H's selected tag without replacing its action DOM. */
     closeGalleryTagMenu(): void {
