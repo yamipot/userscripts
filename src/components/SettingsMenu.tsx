@@ -4,7 +4,7 @@ import texts from "../texts.json";
 
 type SettingsMenuState = {
   openGalleryInNewTab: boolean;
-  singlePageAppEnabled: boolean;
+  welcomeIconEnabled: boolean;
   readerEnabled: boolean;
   readerFullscreenEnabled: boolean;
   enhanceThumbsGridsEnabled: boolean;
@@ -171,6 +171,12 @@ export function SettingsMenu(props: {
                 label={texts.settings.openGalleryInNewTabLabel}
                 onChange={(value) => setDraft("openGalleryInNewTab", value)}
               />
+              <SwitchButton
+                checked={draft.welcomeIconEnabled}
+                description={texts.settings.welcomeIconHelp}
+                label={texts.settings.welcomeIcon}
+                onChange={(value) => setDraft("welcomeIconEnabled", value)}
+              />
             </div>
           </Show>
         </div>
@@ -191,12 +197,6 @@ export function SettingsMenu(props: {
           </button>
           <Show when={enhanceOpen()}>
             <div class="ml-md border-0 border-l border-l-[var(--color-site-border-subtle)]">
-              <SwitchButton
-                checked={draft.singlePageAppEnabled}
-                description={texts.settings.singlePageAppHelp}
-                label={texts.settings.singlePageApp}
-                onChange={(value) => setDraft("singlePageAppEnabled", value)}
-              />
               <SwitchButton
                 checked={draft.enhanceSearchGridsEnabled}
                 description={texts.settings.enhanceSearchHelp}

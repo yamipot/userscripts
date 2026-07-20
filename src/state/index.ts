@@ -27,7 +27,7 @@ const touchUiDefault = window.matchMedia("(pointer: coarse)").matches;
 export const state = {
   app: {
     openGalleryInNewTab: persisted("ehpeek:open-gallery-in-new-tab", false),
-    singlePage: persisted("ehpeek:single-page-app:enabled", false),
+    welcomeIcon: persisted("ehpeek:welcome-icon:enabled", true),
   },
   reader: {
     enabled: persisted("ehpeek:reader:enabled", true),

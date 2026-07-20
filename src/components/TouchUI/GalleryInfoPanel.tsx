@@ -15,6 +15,7 @@ import type {
 import { type GalleryInfoDom, type GalleryInfoTagGroup } from "../../eh";
 import texts from "../../texts.json";
 import { state } from "../../state";
+import { WelcomeIcon } from "../WelcomeIcon";
 import { DomNode, DomNodes } from "../Widgets/ExternalDom";
 import { Icon } from "../Widgets/Icon";
 
@@ -730,7 +731,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
       <Show when={open()}>
         <div class="ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-overlay flex w-[min(86vw,360px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">
           <Show when={loadingState() === "loading"}>
-            <TouchGalleryFavoriteStatus text="Loading..." />
+            <WelcomeIcon embedded label={texts.reader.loading} />
           </Show>
           <Show when={loadingState() === "failed"}>
             <TouchGalleryFavoriteStatus text="Failed" />

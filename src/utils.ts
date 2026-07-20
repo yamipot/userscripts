@@ -34,7 +34,8 @@ export function registerGlobalStyle(id: string, css: string): void {
   const style = document.createElement("style");
   style.id = id;
   style.textContent = css;
-  document.head.append(style);
+  // document-start can run before the parser creates <head>.
+  (document.head ?? document.documentElement).append(style);
 }
 
 export function targetSummary(target: EventTarget | null): string {

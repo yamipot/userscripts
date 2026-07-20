@@ -42,7 +42,7 @@ const metadata = [
   "// @grant        GM_listValues",
   "// @grant        GM_registerMenuCommand",
   "// @grant        GM_download",
-  "// @run-at       document-end",
+  "// @run-at       document-start",
   `// @updateURL    ${installUrl}`,
   `// @downloadURL  ${installUrl}`,
   "// ==/UserScript==",

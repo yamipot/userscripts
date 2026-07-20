@@ -9,6 +9,7 @@ import { loadReadHistory, ReadHistorySession } from "../state/readHistory";
 import { SearchHistory } from "../components/Enhance/SearchHistory";
 import { loadMyTagAppearances, refreshMyTags } from "../components/Enhance/MyTags";
 import { SettingsMenu } from "../components/SettingsMenu";
+import { WelcomeIcon } from "../components/WelcomeIcon";
 import { BackToTop } from "../components/Widgets/BackToTop";
 import {
   touchSearchPanelClasses,
@@ -42,13 +43,15 @@ import {
 import { createAppMount } from "./host";
 import { readerViewport } from "./viewport";
 
+const WELCOME_ICON_TIMEOUT_MS = 3_000;
+
 function settingsMenuState(defaults = false) {
   const read = <T,>(setting: { defaultValue: T; value: T }): T =>
     defaults ? setting.defaultValue : setting.value;
 
   return {
     openGalleryInNewTab: read(state.app.openGalleryInNewTab),
-    singlePageAppEnabled: read(state.app.singlePage),
+    welcomeIconEnabled: read(state.app.welcomeIcon),
     readerEnabled: read(state.reader.enabled),
     readerFullscreenEnabled: read(state.reader.fullscreen),
     enhanceThumbsGridsEnabled: read(state.gallery.enhanceThumbs),
@@ -64,7 +67,7 @@ function applySettingsMenuState(
   next: ReturnType<typeof settingsMenuState>,
 ): void {
   state.app.openGalleryInNewTab.set(next.openGalleryInNewTab);
-  state.app.singlePage.set(next.singlePageAppEnabled);
+  state.app.welcomeIcon.set(next.welcomeIconEnabled);
   state.reader.enabled.set(next.readerEnabled);
   state.reader.fullscreen.set(next.readerFullscreenEnabled);
   state.gallery.enhanceThumbs.set(next.enhanceThumbsGridsEnabled);
@@ -97,9 +100,25 @@ document.documentElement.setAttribute("data-ehpeek-site", eh.ehSiteTheme());
 registerGlobalStyle("ehpeek-uno-style", unoCss);
 registerGlobalStyle("ehpeek-theme-style", themeCss);
 
-const settingsMenuMount = createAppMount(
-  "fixed inset-0 z-[1150] pointer-events-none",
-);
+const welcomeIconMount = gState.settings.welcomeIconEnabled
+  ? createAppMount()
+  : null;
+welcomeIconMount?.mount(() => <WelcomeIcon />);
+let welcomeIconTimeout: number | null = null;
+const removeWelcomeIcon = () => {
+  if (welcomeIconTimeout !== null) {
+    window.clearTimeout(welcomeIconTimeout);
+    welcomeIconTimeout = null;
+  }
+  welcomeIconMount?.remove();
+};
+if (welcomeIconMount) {
+  welcomeIconTimeout = window.setTimeout(
+    removeWelcomeIcon,
+    WELCOME_ICON_TIMEOUT_MS,
+  );
+}
+
 const readerCallbacks: ReaderCallbacks = {
   enhanceThumbsGridsEnabled: gState.settings.enhanceThumbsGridsEnabled,
   readHistoryEnabled: gState.settings.readHistoryEnabled,
@@ -173,23 +192,28 @@ function GalleryReadButton(props: {
   );
 }
 
-if (typeof GM_registerMenuCommand === "function") {
-  GM_registerMenuCommand(texts.settings.openSettings, () => {
-    gState.setSettingsMenuOpen(true);
-  });
-}
+function installSettingsMenu(): void {
+  if (typeof GM_registerMenuCommand === "function") {
+    GM_registerMenuCommand(texts.settings.openSettings, () => {
+      gState.setSettingsMenuOpen(true);
+    });
+  }
 
-settingsMenuMount.mount(() => (
-  <SettingsMenu
-    open={gState.settingsMenuOpen()}
-    defaultState={settingsMenuState(true)}
-    initState={gState.settings}
-    onApply={(next) => {
-      applySettingsMenuState(next);
-    }}
-    onOpenChange={gState.setSettingsMenuOpen}
-  />
-));
+  const mount = createAppMount(
+    "fixed inset-0 z-[1150] pointer-events-none",
+  );
+  mount.mount(() => (
+    <SettingsMenu
+      open={gState.settingsMenuOpen()}
+      defaultState={settingsMenuState(true)}
+      initState={gState.settings}
+      onApply={(next) => {
+        applySettingsMenuState(next);
+      }}
+      onOpenChange={gState.setSettingsMenuOpen}
+    />
+  ));
+}
 
 function injectEnhanceUI(
   page: eh.PageType,
@@ -544,4 +568,15 @@ async function injectPage(): Promise<void> {
   }
 }
 
-void injectPage();
+async function startApp(): Promise<void> {
+  if (document.readyState !== "complete") {
+    await new Promise<void>((resolve) => {
+      window.addEventListener("load", () => resolve(), { once: true });
+    });
+  }
+
+  installSettingsMenu();
+  await injectPage();
+}
+
+void startApp().finally(removeWelcomeIcon);
