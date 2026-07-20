@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260720.1414
+// @version      260720.1429
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -2211,10 +2211,10 @@
       openGalleryTagMenu(tag, containerClassName, itemClassName) {
         if (!elems.tagMenuAction)
           throw new Error("Gallery tag actions are unavailable.");
-        tag.contentSource.click();
+        tag.contentSource.click(), elems.newTag?.setHidden(!1).removeStyles("display");
         let actions = elems.tagMenuAction.all("a");
         if (actions.length === 0)
-          throw tag.contentSource.click(), new Error("Gallery tag actions could not be opened.");
+          throw tag.contentSource.click(), elems.newTag?.setHidden(!1).removeStyles("display"), new Error("Gallery tag actions could not be opened.");
         selectedTagSource = tag.contentSource, elems.tagMenuAction.replaceClasses(containerClassName), elems.tagMenuAction.all("img").forEach((image) => {
           image.setHidden(!0);
         }), actions.forEach((action) => {
@@ -2223,7 +2223,7 @@
       },
       /** Closes E-H's selected tag without replacing its action DOM. */
       closeGalleryTagMenu() {
-        selectedTagSource?.click(), selectedTagSource = null;
+        selectedTagSource?.click(), elems.newTag?.setHidden(!1).removeStyles("display"), selectedTagSource = null;
       },
       /** Updates the Gallery favorite state through the original site endpoint. */
       updateGalleryFavorite
@@ -3643,8 +3643,8 @@
     let response = await requestPage(url.href);
     return extractMyTagsPageData(response.document, tagSet);
   }
-  async function loadMyTagAppearances() {
-    return state.gallery.myTagAppearances.stored() ? state.gallery.myTagAppearances.reload() : await refreshMyTags();
+  function loadMyTagAppearances() {
+    return state.gallery.myTagAppearances.stored() ? state.gallery.myTagAppearances.reload() : null;
   }
   async function refreshMyTags(initialPage) {
     try {
@@ -3994,7 +3994,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260720.1414", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260720.1429", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -7578,13 +7578,24 @@ body #gdt[class],
         totalPages: record?.totalPages ?? galleryPreview.data.totalImages
       });
     });
-    let searchTextInput = resultsPage ? allowFeatureFailure("Search text input", () => manageSearchTextInput()) : null, searchResultsSource = resultsPage ? allowFeatureFailure("Search results", () => manageSearchResults()) : null, myTagAppearances = null;
-    gState.settings.myTagsEnabled && (page.type === "myTags" ? await allowAsyncFeatureFailure("My Tags refresh", async () => {
-      let currentMyTags = extractMyTagsPageData();
-      await refreshMyTags(currentMyTags);
-    }) : galleryPage && (myTagAppearances = await allowAsyncFeatureFailure("My Tags appearance", loadMyTagAppearances))), myTagAppearances && allowFeatureFailure("Gallery My Tags appearance", () => {
-      mutateGalleryMyTags(myTagAppearances);
-    }), gState.settings.readHistoryEnabled && page.type === "image" && allowFeatureFailure("Image Read History", () => {
+    let searchTextInput = resultsPage ? allowFeatureFailure("Search text input", () => manageSearchTextInput()) : null, searchResultsSource = resultsPage ? allowFeatureFailure("Search results", () => manageSearchResults()) : null;
+    if (gState.settings.myTagsEnabled) {
+      if (page.type === "myTags")
+        allowAsyncFeatureFailure("My Tags refresh", async () => {
+          let currentMyTags = extractMyTagsPageData();
+          await refreshMyTags(currentMyTags);
+        });
+      else if (galleryPage) {
+        let myTagAppearances = loadMyTagAppearances();
+        myTagAppearances ? allowFeatureFailure("Gallery My Tags appearance", () => {
+          mutateGalleryMyTags(myTagAppearances);
+        }) : allowAsyncFeatureFailure("My Tags appearance", async () => {
+          let appearances = await refreshMyTags();
+          appearances && mutateGalleryMyTags(appearances);
+        });
+      }
+    }
+    gState.settings.readHistoryEnabled && page.type === "image" && allowFeatureFailure("Image Read History", () => {
       let gallery = extractImageGalleryPage();
       if (gallery?.galleryId === page.galleryId) {
         let previous = loadReadHistory(gallery.galleryId, gallery.token);
