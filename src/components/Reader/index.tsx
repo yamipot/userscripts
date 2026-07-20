@@ -1,4 +1,4 @@
-import { onCleanup, onMount, untrack } from "solid-js";
+import { createEffect, onCleanup, onMount, untrack } from "solid-js";
 import type { GalleryPreviewCache } from "../../App/GalleryPreviewCache";
 import texts from "../../texts.json";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
@@ -68,6 +68,18 @@ export function Reader(props: {
     previewCache,
     callbacks,
   );
+  let previousFullscreenActive = untrack(() => props.fullscreenActive);
+
+  createEffect(() => {
+    const fullscreenActive = props.fullscreenActive;
+    if (fullscreenActive === previousFullscreenActive) {
+      return;
+    }
+    previousFullscreenActive = fullscreenActive;
+    session.requestAnimationFrame(() => {
+      session.requestAnimationFrame(readerCallbacks.realignCurrentPage);
+    });
+  });
 
   onMount(() => {
     readerCallbacks.init();
@@ -339,6 +351,9 @@ function wireReaderCallbacks(
     },
     cleanup: () => {
       document.removeEventListener("keydown", onKeydown, true);
+    },
+    realignCurrentPage: () => {
+      scrollToCurrentPage();
     },
     toolbar,
     viewport,
