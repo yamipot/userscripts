@@ -62,7 +62,6 @@ export function ScrollPageBar(props: {
       >
         <a
           class={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS}`}
-          data-ehpeek-single-page-bypass=""
           href={props.urlForIndex(resolvedPageIndex())}
           draggable={false}
           onClick={(event) => {
@@ -142,7 +141,6 @@ export function ScrollPageBar(props: {
                 >
                   <a
                     class={`${PAGE_BAR_LINK_CLASS} ${PAGE_BAR_LINK_COLOR_CLASS}`}
-                    data-ehpeek-single-page-bypass=""
                       href={props.urlForIndex(pageIndex)}
                     draggable={false}
                     onClick={(event) => {

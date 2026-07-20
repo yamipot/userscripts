@@ -46,14 +46,6 @@ export function ehSiteTheme(url = window.location.href): EhSiteTheme {
     : "e-hentai";
 }
 
-export function isSameOriginUrl(url: string, baseUrl = window.location.href): boolean {
-  try {
-    return new URL(url, baseUrl).origin === new URL(baseUrl).origin;
-  } catch {
-    return false;
-  }
-}
-
 export function galleryIdentityFromUrl(url = window.location.href): { galleryId: number; token: string } | null {
   try {
     const match = new URL(url, window.location.href).pathname.match(/^\/g\/(\d+)\/([^/]+)/i);
@@ -76,30 +68,6 @@ export function isAllowedGalleryApiUrl(apiUrl: URL, pageUrl: URL): boolean {
     !apiUrl.password &&
     !apiUrl.search &&
     !apiUrl.hash;
-}
-
-export function singlePageRoute(url: string): PageType | null {
-  const page = extractPageType(url);
-
-  if (page.type === "search" || page.type === "favorites") {
-    return page;
-  }
-
-  if (page.type !== "gallery") {
-    return null;
-  }
-
-  const parsed = new URL(url, window.location.href);
-  let supportedSearch = true;
-  parsed.searchParams.forEach((_value, key) => {
-    supportedSearch &&= key === "p";
-  });
-  const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
-  let supportedHash = true;
-  hash.forEach((_value, key) => {
-    supportedHash &&= key === "peek_page";
-  });
-  return supportedSearch && supportedHash ? page : null;
 }
 
 function urlPath(url: string): string {

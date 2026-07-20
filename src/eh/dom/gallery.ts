@@ -139,16 +139,16 @@ export function mutateGalleryMyTags(appearances: MyTagAppearance[]) {
     ?? (() => undefined);
 }
 
-/** Captures GalleryInfo API credentials before SinglePage removes original scripts. */
-export function manageGalleryApiSession(root: ParentNode = document, baseUrl = window.location.href): void {
+/** Captures the original GalleryInfo script values used by tag and rating requests. */
+export function manageGalleryApiSession(): void {
   if (galleryApiSession) {
     return;
   }
-  if (!galleryIdentityFromUrl(baseUrl)) {
+  if (!galleryIdentityFromUrl()) {
     return;
   }
 
-  const script = DomNode.from(root).all<HTMLScriptElement>("script")
+  const script = DomNode.from(document).all<HTMLScriptElement>("script")
     .map((item) => item.text())
     .find((text) => text.includes("var api_url") && text.includes("var apikey"));
 
@@ -171,8 +171,8 @@ export function manageGalleryApiSession(root: ParentNode = document, baseUrl = w
     throw new Error("The Gallery API session values could not be read.");
   }
 
-  const apiUrl = new URL(apiUrlValue, baseUrl);
-  const pageUrl = new URL(baseUrl);
+  const apiUrl = new URL(apiUrlValue, window.location.href);
+  const pageUrl = new URL(window.location.href);
   const allowedUrl = isAllowedGalleryApiUrl(apiUrl, pageUrl);
 
   if (

@@ -118,7 +118,7 @@ export function manageGalleryInfo(
     return {
       actionUrl: match
         ? `/gallerypopups.php?gid=${match[1]}&t=${match[2]}&act=addfav`
-        : element?.attribute("data-ehpeek-action-url") ?? "",
+        : "",
       color: slot === undefined ? null : `var(--color-site-favorite-${slot})`,
       favorited,
       label: favorited ? displayed : "Not Favorited",
@@ -136,13 +136,7 @@ export function manageGalleryInfo(
       scripts.find((item) => item.includes("display_rating")) ?? ""
     ).match(/\bdisplay_rating\s*=\s*(-?\d+(?:\.\d+)?)/);
     const scriptValue = Number(match?.[1]);
-    const preservedRating = image?.attribute("data-ehpeek-rating");
-    const preservedValue = preservedRating ? Number(preservedRating) : Number.NaN;
-    const value = match && Number.isFinite(scriptValue)
-      ? scriptValue
-      : Number.isFinite(preservedValue)
-        ? preservedValue
-        : null;
+    const value = match && Number.isFinite(scriptValue) ? scriptValue : null;
     return label && value !== null
       ? {
           count: count?.text() ?? "",

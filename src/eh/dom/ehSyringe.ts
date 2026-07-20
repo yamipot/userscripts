@@ -11,8 +11,6 @@ const TAG_TIP_LIST_CLASS_NAME =
   "!max-h-[60dvh] !py-sm [&_.auto-complete-item]:box-border [&_.auto-complete-item]:min-h-lg [&_.auto-complete-item]:!py-sm [&_.auto-complete-item]:!px-lg [&_.auto-complete-item]:!text-[length:var(--font-size-lg)] [&_.auto-complete-item]:!leading-[1.25] [&_.auto-complete-text]:!text-inherit [&_.auto-complete-text]:!leading-inherit";
 const DETECTED_KEY = "ehpeek:ehsyringe:detected";
 const INJECTION_TIMEOUT_MS = 3_000;
-const ROUTE_TRANSLATION_TIMEOUT_MS = 450;
-const ROUTE_TRANSLATION_QUIET_MS = 48;
 let initialUiReady: Promise<void> | null = null;
 let tagTipInput: ManagedDomNode<HTMLInputElement> | null = null;
 let injectionWatcherStarted = false;
@@ -31,43 +29,6 @@ export async function waitForSearchUi(): Promise<void> {
 
   if (isTranslatingUi()) {
     await waitFor(searchUiReady);
-  }
-}
-
-/** Waits for EhSyringe to translate content inserted by a SinglePage route. */
-export async function waitForRouteTranslation(
-  root: HTMLElement,
-): Promise<void> {
-  await waitForInitialUi();
-
-  if (!isInjected()) {
-    return;
-  }
-
-  const probe = translationProbe();
-  root.append(probe);
-
-  try {
-    const observed = await waitFor(
-      () => probe.hasAttribute("ehs-tag"),
-      ROUTE_TRANSLATION_TIMEOUT_MS,
-      {
-        attributes: true,
-        childList: true,
-        subtree: true,
-      },
-      root,
-    );
-
-    if (observed) {
-      await waitForMutationQuiet(
-        root,
-        ROUTE_TRANSLATION_QUIET_MS,
-        ROUTE_TRANSLATION_TIMEOUT_MS,
-      );
-    }
-  } finally {
-    probe.remove();
   }
 }
 
@@ -140,52 +101,6 @@ function waitFor(
       timer = window.setTimeout(() => finish(false), timeoutMs);
     }
   });
-}
-
-function waitForMutationQuiet(
-  root: Node,
-  quietMs: number,
-  timeoutMs: number,
-): Promise<void> {
-  return new Promise((resolve) => {
-    let finished = false;
-    let quietTimer = window.setTimeout(finish, quietMs);
-    const timeoutTimer = window.setTimeout(finish, timeoutMs);
-    const observer = new MutationObserver(() => {
-      window.clearTimeout(quietTimer);
-      quietTimer = window.setTimeout(finish, quietMs);
-    });
-
-    function finish(): void {
-      if (finished) {
-        return;
-      }
-
-      finished = true;
-      observer.disconnect();
-      window.clearTimeout(quietTimer);
-      window.clearTimeout(timeoutTimer);
-      resolve();
-    }
-
-    observer.observe(root, {
-      attributes: true,
-      characterData: true,
-      childList: true,
-      subtree: true,
-    });
-  });
-}
-
-function translationProbe(): HTMLSpanElement {
-  const probe = document.createElement("span");
-  probe.className = "gt";
-  probe.hidden = true;
-  probe.lang = "en";
-  probe.setAttribute("translate", "yes");
-  probe.title = "ehpeek:translation probe";
-  probe.textContent = "ehpeek:translation probe";
-  return probe;
 }
 
 function watchForSuccessfulInjection(): void {

@@ -11,7 +11,6 @@ const HORIZONTAL_INTENT_RATIO = 2.2;
 const SWIPE_MAX_VERTICAL_RATIO = 0.38;
 
 export function EnhanceSearchGrids(props: {
-  onNavigateRequest?: (url: string) => boolean;
   onPageChange: (source: eh.SearchResultsDom) => void;
   source: eh.SearchResultsDom;
 }) {
@@ -41,7 +40,7 @@ export function EnhanceSearchGrids(props: {
   };
 
   const navigate = async (url: string): Promise<void> => {
-    if (props.onNavigateRequest?.(url) || navigationLoading) {
+    if (navigationLoading) {
       return;
     }
 

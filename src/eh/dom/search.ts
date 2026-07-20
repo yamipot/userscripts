@@ -60,7 +60,7 @@ export function manageSearchResults() {
       document.addEventListener("click", handleClick, true);
       return () => document.removeEventListener("click", handleClick, true);
     },
-    /** Replaces the current result page without activating Single Page App. */
+    /** Replaces the current result page for enhanced swipe navigation. */
     async loadSearchPage(url: string): Promise<void> {
       const response = await requestPage(url);
       if (!replaceSearchPageContent(response.document)) {
@@ -422,7 +422,7 @@ export function mutateSearchGridModeSelect(
   onOriginalSelect: (value: string) => void,
 ) {
   const selects = DomNode.from(document).all<HTMLSelectElement>(
-    "select[onchange*='inline_set=dm_'], select[data-ehpeek-grid-mode-source='true']",
+    "select[onchange*='inline_set=dm_']",
   );
 
   for (const source of selects) {
@@ -697,17 +697,11 @@ function readFavoritesCategories(
 }
 
 /** Applies TouchUI layout ownership to Search-like result pages. */
-function searchResultsPageTouch(hideRangeBar: boolean): void {
+function searchResultsPageTouch(): void {
   documentElement().addClasses(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "));
   documentBody().addClasses(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "));
 
   const page = DomNode.from(document);
-  if (hideRangeBar) {
-    const rangeBar = page.one<HTMLElement>("#rangebar")?.inplace();
-    rangeBar?.setHidden(true);
-    rangeBar?.styles({ display: "none" }, "important");
-  }
-
   const resultSource = page.one<HTMLElement>(".itg");
   if (!resultSource) {
     return;
@@ -735,13 +729,13 @@ function searchResultsPageTouch(hideRangeBar: boolean): void {
 }
 
 /** Owns the TouchUI layout lifecycle for one Search or Favorites results page. */
-export function manageTouchResultsPage(page: PageType, hideRangeBar = false) {
+export function manageTouchResultsPage(page: PageType) {
   const apply = () => {
     if (page.type === "favorites") {
       return favoritesPageTouch();
     }
     if (page.type === "search") {
-      searchResultsPageTouch(hideRangeBar);
+      searchResultsPageTouch();
     }
     return null;
   };
@@ -750,15 +744,6 @@ export function manageTouchResultsPage(page: PageType, hideRangeBar = false) {
     /** Reapplies TouchUI layout after the result list is replaced in place. */
     updateTouchResultsLayout(): void {
       apply();
-    },
-    /** Removes page-wide TouchUI constraints before the active page is released. */
-    removeTouchResultsLayout(): void {
-      const classes = [
-        ...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "),
-        ...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "),
-      ];
-      documentElement().removeClasses(...classes);
-      documentBody().removeClasses(...classes);
     },
   };
   return { data, handle };

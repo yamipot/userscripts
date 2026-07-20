@@ -1,4 +1,3 @@
-import { normalizeUrl } from "../../utils";
 import {
   createAnchor,
   createManagedElement,
@@ -32,10 +31,9 @@ export function manageSearchPanel() {
   const categories = standardSearchBox?.one<HTMLTableElement>("form > table") ?? null;
   const advancedPanel = standardSearchBox?.one<HTMLElement>("#advdiv") ?? null;
   const optionLinks = advancedPanel?.previous() ?? null;
-  const advancedToggle = optionLinks?.one<HTMLAnchorElement>("a[onclick*='toggle_advsearch'], a[data-ehpeek-search-advanced-toggle='true']") ?? null;
-  const fileSearchToggle = optionLinks?.one<HTMLAnchorElement>("a[onclick*='toggle_filesearch'], a[data-ehpeek-search-file-toggle='true']") ?? null;
+  const advancedToggle = optionLinks?.one<HTMLAnchorElement>("a[onclick*='toggle_advsearch']") ?? null;
+  const fileSearchToggle = optionLinks?.one<HTMLAnchorElement>("a[onclick*='toggle_filesearch']") ?? null;
   const fileSearch = page.one<HTMLElement>("#fsdiv");
-  const fileSearchAction = readFileSearchAction(page);
   const searchSubmit = form?.one<HTMLInputElement | HTMLButtonElement>("input[name='f_apply'], button[name='f_apply']")
     ?? searchInput?.parent()?.one<HTMLInputElement | HTMLButtonElement>("input[type='submit'], button[type='submit']")
     ?? null;
@@ -124,13 +122,6 @@ export function manageSearchPanel() {
     hasClear: elems.clearButton !== null && elems.clearActionMount !== null,
     searchLabel: actionLabel(searchSubmit),
   };
-  populateEmptyPanels(
-    elems.advancedPanel,
-    advancedPanel?.childElementCount() === 0,
-    elems.fileSearch,
-    fileSearch?.childElementCount() === 0,
-    fileSearchAction,
-  );
   attachCategoryActions(elems.categoryItems, elems.categoryMask, categoryBits);
 
   const handle = {
@@ -190,38 +181,6 @@ export function manageSearchPanel() {
 
 function actionLabel(element: DomNode<HTMLInputElement | HTMLButtonElement>): string {
   return element.attribute("value") ?? element.text();
-}
-
-function readFileSearchAction(page: DomNode<Document>): string {
-  const preserved = page.one<HTMLElement>("#fsdiv")?.attribute("data-ehpeek-file-search-action");
-  if (preserved) {
-    return preserved;
-  }
-  const script = page.all<HTMLScriptElement>("script").map((item) => item.text()).find((text) => text.includes("ulhost")) ?? "";
-  const uploadBase = script.match(/\bulhost\s*=\s*["']([^"']+)["']/)?.[1];
-  return uploadBase ? new URL("image_lookup.php", normalizeUrl(uploadBase, window.location.href)).href : "";
-}
-
-function populateEmptyPanels(
-  advancedPanel: ManagedDomNode<HTMLElement> | null,
-  advancedPanelEmpty: boolean,
-  fileSearch: ManagedDomNode<HTMLElement> | null,
-  fileSearchEmpty: boolean,
-  fileSearchAction: string,
-): void {
-  if (advancedPanel && advancedPanelEmpty) {
-    const template = document.createElement("template");
-    template.innerHTML = `<input type="hidden" id="advsearch" name="advsearch" value="1"><div class="searchadv"><div><div><label class="lc"><input type="checkbox" name="f_sh"><span></span> Browse Expunged Galleries</label></div><div><label class="lc"><input type="checkbox" name="f_sto"><span></span> Require Gallery Torrent</label></div></div><div><div>Between <input type="text" id="f_spf" name="f_spf" size="4" maxlength="4"> and <input type="text" id="f_spt" name="f_spt" size="4" maxlength="4"> pages</div><div>Minimum Rating: <select id="f_srdd" name="f_srdd"><option value="0">Any Rating</option><option value="2">2 Stars</option><option value="3">3 Stars</option><option value="4">4 Stars</option><option value="5">5 Stars</option></select></div></div><div><div>Disable custom filters for:</div><div><label class="lc"><input type="checkbox" name="f_sfl"><span></span> Language</label></div><div><label class="lc"><input type="checkbox" name="f_sfu"><span></span> Uploader</label></div><div><label class="lc"><input type="checkbox" name="f_sft"><span></span> Tags</label></div></div></div>`;
-    advancedPanel.replaceChildren(template.content);
-  }
-  if (fileSearch && fileSearchEmpty && fileSearchAction) {
-    const form = document.createElement("form");
-    form.action = fileSearchAction;
-    form.method = "post";
-    form.enctype = "multipart/form-data";
-    form.innerHTML = `<div>Select a file to upload, then hit File Search. All public galleries containing this exact file will be displayed.</div><div><input type="file" name="sfile"> <input type="submit" name="f_sfile" value="File Search"></div><div>For color images, the system can also perform a similarity lookup to find resampled images.</div><div class="searchadv"><div><div><label class="lc"><input type="checkbox" name="fs_similar" checked><span></span> Use Similarity Scan</label></div><div><label class="lc"><input type="checkbox" name="fs_covers"><span></span> Only Search Covers</label></div></div></div>`;
-    fileSearch.replaceChildren(form);
-  }
 }
 
 function attachCategoryActions(

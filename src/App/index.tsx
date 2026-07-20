@@ -41,7 +41,6 @@ import {
   createGalleryPreviewCache,
   type GalleryPreviewCache,
 } from "./GalleryPreviewCache";
-import { SinglePage, type SinglePageActions } from "./SinglePage";
 import { createAppMount } from "./host";
 import { readerViewport } from "./viewport";
 
@@ -86,17 +85,11 @@ const gState = (() => {
     totalPages: null as number | null,
   });
   return {
-    page: {
-      cleanups: new Set<() => void>(),
-      generation: 0,
-      managedHosts: new Set<eh.ManagedDomNode>(),
-    },
     readProgress,
     setReadProgress,
     settings: settingsMenuState(),
     settingsMenuOpen,
     setSettingsMenuOpen,
-    singlePageActions: undefined as SinglePageActions | undefined,
     thumbsGridsActions: undefined as ThumbsGridsActions | undefined,
   };
 })();
@@ -139,21 +132,6 @@ async function allowAsyncFeatureFailure<T>(
     console.error(`[ehpeek] ${name} failed`, error);
     return null;
   }
-}
-
-function deactivatePage(): void {
-  gState.page.generation += 1;
-  for (const cleanup of gState.page.cleanups) {
-    cleanup();
-  }
-  gState.page.cleanups.clear();
-  gState.thumbsGridsActions = undefined;
-
-  for (const host of gState.page.managedHosts) {
-    host.remove();
-  }
-
-  gState.page.managedHosts.clear();
 }
 
 function openGalleryPage(
@@ -228,9 +206,9 @@ function injectEnhanceUI(
 
   if (galleryPage && preview && previewCache && gState.settings.readerEnabled) {
     allowFeatureFailure("Reader thumbnail links", () => {
-      gState.page.cleanups.add(preview.handle.interceptPreviewImageOpen((pageUrl) => {
+      preview.handle.interceptPreviewImageOpen((pageUrl) => {
         openGalleryPage(previewCache, pageUrl);
-      }));
+      });
     });
   }
 
@@ -286,7 +264,6 @@ function injectEnhanceUI(
             {texts.settings.menuLabel}
           </a>
         ));
-        gState.page.managedHosts.add(settingsMount);
       }
     });
   }
@@ -300,7 +277,6 @@ function injectEnhanceUI(
   ) {
     allowFeatureFailure("Desktop Read button", () => {
       const galleryReadButtonMount = eh.manageGalleryContinueReadingButtonMount();
-      gState.page.managedHosts.add(galleryReadButtonMount);
       galleryReadButtonMount.mount(() => (
         <GalleryReadButton previewCache={previewCache} variant="gallery" />
       ));
@@ -323,7 +299,6 @@ function injectEnhanceUI(
           previewCache={previewCache}
         />
       ));
-      gState.page.managedHosts.add(previewMount);
     });
   } else if (galleryPage && preview && previewCache) {
     allowFeatureFailure("Original thumbnail grid", () => {
@@ -341,7 +316,6 @@ function injectEnhanceUI(
       host.mount(() => (
         <EnhanceSearchGrids
           source={searchResultsDom}
-          onNavigateRequest={(url) => gState.singlePageActions?.navigate(url) ?? false}
           onPageChange={(source) => {
             allowFeatureFailure("Changed Search page", () => {
               if (gState.settings.openGalleryInNewTab) {
@@ -355,7 +329,6 @@ function injectEnhanceUI(
           }}
         />
       ));
-      gState.page.managedHosts.add(host);
     });
   }
 
@@ -363,7 +336,6 @@ function injectEnhanceUI(
     allowFeatureFailure("Search history", () => {
       const host = createAppMount();
       host.mount(() => <SearchHistory source={searchTextInput} />);
-      gState.page.managedHosts.add(host);
     });
   }
 }
@@ -377,11 +349,8 @@ function injectTouchUI(
   const preview = previewCache?.current() ?? null;
   const resultsDom = resultsPage
     ? allowFeatureFailure("Touch results layout", () =>
-        eh.manageTouchResultsPage(page, singlePageActive))
+        eh.manageTouchResultsPage(page))
     : null;
-  if (resultsDom) {
-    gState.page.cleanups.add(resultsDom.handle.removeTouchResultsLayout);
-  }
 
   allowFeatureFailure("Touch top bar", () => {
     const topBarDom = eh.manageTopBar();
@@ -395,7 +364,6 @@ function injectTouchUI(
           }}
         />
       ));
-      gState.page.managedHosts.add(topBarDom.elems.mount);
     }
   });
 
@@ -403,7 +371,6 @@ function injectTouchUI(
     allowFeatureFailure("Back to top", () => {
       const host = createAppMount("ehpeek-back-to-top-host");
       host.mount(() => <BackToTop />);
-      gState.page.managedHosts.add(host);
     });
   }
 
@@ -432,7 +399,6 @@ function injectTouchUI(
             }
           />
         ));
-        gState.page.managedHosts.add(galleryInfoDom.elems.mount);
       }
     });
 
@@ -460,34 +426,28 @@ function injectTouchUI(
             }
           />
         ));
-        gState.page.managedHosts.add(searchPanelDom.elems.mount);
         if (searchPanelDom.elems.categoryToggleMount) {
           searchPanelDom.elems.categoryToggleMount.mount(() => (
             <TouchSearchCategoryToggle source={searchPanelDom} />
           ));
-          gState.page.managedHosts.add(searchPanelDom.elems.categoryToggleMount);
         }
         if (searchPanelDom.elems.advancedToggleMount) {
           searchPanelDom.elems.advancedToggleMount.mount(() => (
             <TouchSearchAdvancedToggle source={searchPanelDom} />
           ));
-          gState.page.managedHosts.add(searchPanelDom.elems.advancedToggleMount);
         }
         if (searchPanelDom.elems.fileSearchToggleMount) {
           searchPanelDom.elems.fileSearchToggleMount.mount(() => (
             <TouchSearchFileToggle source={searchPanelDom} />
           ));
-          gState.page.managedHosts.add(searchPanelDom.elems.fileSearchToggleMount);
         }
         searchPanelDom.elems.searchActionMount.mount(() => (
           <TouchSearchAction action="search" source={searchPanelDom} />
         ));
-        gState.page.managedHosts.add(searchPanelDom.elems.searchActionMount);
         if (searchPanelDom.elems.clearActionMount) {
           searchPanelDom.elems.clearActionMount.mount(() => (
             <TouchSearchAction action="clear" source={searchPanelDom} />
           ));
-          gState.page.managedHosts.add(searchPanelDom.elems.clearActionMount);
         }
       }
     });
@@ -496,19 +456,15 @@ function injectTouchUI(
   return resultsDom;
 }
 
-async function injectPage(nextPage: eh.PageType): Promise<void> {
-  const galleryPage = nextPage.type === "gallery";
+async function injectPage(): Promise<void> {
+  const page = eh.extractPageType();
+  const galleryPage = page.type === "gallery";
   const resultsPage =
-    nextPage.type === "search" || nextPage.type === "favorites";
-  const generation = ++gState.page.generation;
-
+    page.type === "search" || page.type === "favorites";
   if (gState.settings.touchUiEnabled) {
     await eh.EhSyringe.waitForInitialUi();
-    if (nextPage.type === "search") {
+    if (page.type === "search") {
       await eh.EhSyringe.waitForSearchUi();
-    }
-    if (generation !== gState.page.generation) {
-      return;
     }
   }
 
@@ -524,9 +480,9 @@ async function injectPage(nextPage: eh.PageType): Promise<void> {
     ? allowFeatureFailure("Gallery Preview cache", () =>
         createGalleryPreviewCache(galleryPreview))
     : null;
-  if (nextPage.type === "gallery" && galleryPreview) {
+  if (page.type === "gallery" && galleryPreview) {
     allowFeatureFailure("Gallery Read History", () => {
-      const record = loadReadHistory(nextPage.galleryId, nextPage.token);
+      const record = loadReadHistory(page.galleryId, page.token);
       gState.setReadProgress({
         currentPage: record?.pageNum && record.pageNum > 0 ? record.pageNum : 1,
         totalPages: record?.totalPages ?? galleryPreview.data.totalImages,
@@ -543,7 +499,7 @@ async function injectPage(nextPage: eh.PageType): Promise<void> {
   let myTagAppearances: Awaited<ReturnType<typeof loadMyTagAppearances>> = null;
 
   if (gState.settings.myTagsEnabled) {
-    if (nextPage.type === "myTags") {
+    if (page.type === "myTags") {
       await allowAsyncFeatureFailure("My Tags refresh", async () => {
         const currentMyTags = eh.extractMyTagsPageData();
         await refreshMyTags(currentMyTags);
@@ -556,37 +512,32 @@ async function injectPage(nextPage: eh.PageType): Promise<void> {
     }
   }
 
-  if (generation !== gState.page.generation) {
-    return;
-  }
-
   if (myTagAppearances) {
     allowFeatureFailure("Gallery My Tags appearance", () => {
-      gState.page.cleanups.add(eh.mutateGalleryMyTags(myTagAppearances));
+      eh.mutateGalleryMyTags(myTagAppearances);
     });
   }
 
-  if (gState.settings.readHistoryEnabled && nextPage.type === "image") {
+  if (gState.settings.readHistoryEnabled && page.type === "image") {
     allowFeatureFailure("Image Read History", () => {
       const gallery = eh.extractImageGalleryPage();
-      if (gallery?.galleryId === nextPage.galleryId) {
+      if (gallery?.galleryId === page.galleryId) {
         const previous = loadReadHistory(gallery.galleryId, gallery.token);
         const historySession = new ReadHistorySession({
           galleryId: gallery.galleryId,
           token: gallery.token,
           totalPages: previous?.totalPages,
         });
-        historySession.update(nextPage.pageNum, previous?.totalPages);
-        gState.page.cleanups.add(() => historySession.dispose());
+        historySession.update(page.pageNum, previous?.totalPages);
       }
     });
   }
 
   const touchResultsDom = gState.settings.touchUiEnabled
-    ? injectTouchUI(nextPage, galleryPreviewCache)
+    ? injectTouchUI(page, galleryPreviewCache)
     : null;
   injectEnhanceUI(
-    nextPage,
+    page,
     galleryPreviewCache,
     searchTextInput,
     searchResultsSource,
@@ -594,9 +545,9 @@ async function injectPage(nextPage: eh.PageType): Promise<void> {
   );
 
   if (
-    nextPage.type === "gallery" &&
+    page.type === "gallery" &&
     state.reader.enabled.value &&
-    nextPage.peekPage !== null
+    page.peekPage !== null
   ) {
     if (galleryPreviewCache) {
       void allowAsyncFeatureFailure(
@@ -611,22 +562,4 @@ async function injectPage(nextPage: eh.PageType): Promise<void> {
   }
 }
 
-const singlePageActive =
-  gState.settings.touchUiEnabled &&
-  gState.settings.singlePageAppEnabled &&
-  eh.singlePageRoute(window.location.href) !== null;
-
-if (singlePageActive) {
-  const host = createAppMount("isolate", true);
-  host.mount(() => (
-    <SinglePage
-      actionsRef={(actions) => {
-        gState.singlePageActions = actions;
-      }}
-      onPageActivate={(page) => injectPage(page)}
-      onPageDeactivate={deactivatePage}
-    />
-  ));
-} else {
-  void injectPage(eh.extractPageType());
-}
+void injectPage();
