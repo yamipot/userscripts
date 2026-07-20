@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260720.0715
+// @version      260720.1205
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -1132,17 +1132,10 @@
   }
 
   // src/eh/url.ts
-  var EXHENTAI_HOST = "exhentai.org", EXHENTAI_ONION_HOST = "exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion", GALLERY_API_HOSTS = /* @__PURE__ */ new Set(["api.e-hentai.org", "s.exhentai.org"]);
+  var EXHENTAI_HOST = "exhentai.org", EXHENTAI_ONION_HOST = "exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion";
   function ehSiteTheme(url = window.location.href) {
     let hostname = new URL(url, window.location.href).hostname;
     return hostname === EXHENTAI_HOST || hostname.endsWith(`.${EXHENTAI_HOST}`) || hostname === EXHENTAI_ONION_HOST || hostname.endsWith(`.${EXHENTAI_ONION_HOST}`) ? "exhentai" : "e-hentai";
-  }
-  function isSameOriginUrl(url, baseUrl = window.location.href) {
-    try {
-      return new URL(url, baseUrl).origin === new URL(baseUrl).origin;
-    } catch {
-      return !1;
-    }
   }
   function galleryIdentityFromUrl(url = window.location.href) {
     try {
@@ -1151,24 +1144,6 @@
     } catch {
       return null;
     }
-  }
-  function isAllowedGalleryApiUrl(apiUrl, pageUrl) {
-    return (apiUrl.origin === pageUrl.origin || apiUrl.protocol === "https:" && GALLERY_API_HOSTS.has(apiUrl.hostname)) && /^\/api\.php$/i.test(apiUrl.pathname) && !apiUrl.username && !apiUrl.password && !apiUrl.search && !apiUrl.hash;
-  }
-  function singlePageRoute(url) {
-    let page = extractPageType(url);
-    if (page.type === "search" || page.type === "favorites")
-      return page;
-    if (page.type !== "gallery")
-      return null;
-    let parsed = new URL(url, window.location.href), supportedSearch = !0;
-    parsed.searchParams.forEach((_value, key) => {
-      supportedSearch && (supportedSearch = key === "p");
-    });
-    let hash = new URLSearchParams(parsed.hash.replace(/^#/, "")), supportedHash = !0;
-    return hash.forEach((_value, key) => {
-      supportedHash && (supportedHash = key === "peek_page");
-    }), supportedSearch && supportedHash ? page : null;
   }
   function urlPath(url) {
     try {
@@ -1322,69 +1297,12 @@
       body
     });
   }
-  async function updateGalleryRating(info, value) {
-    let result = await requestGalleryApi(info, {
-      method: "rategallery",
-      rating: Math.round(value * 2)
-    }), average = Number(result.rating_avg), count = Number(result.rating_cnt), rating = Number(result.rating_usr);
-    if (!Number.isFinite(average) || !Number.isFinite(count) || !Number.isFinite(rating))
-      throw new Error("Gallery rating response is invalid.");
-    return { average, count, value: rating };
-  }
-  async function updateGalleryTagVote(info, tag, vote) {
-    let result = await requestGalleryApi(info, {
-      method: "taggallery",
-      tags: tag,
-      vote
-    });
-    if (typeof result.tagpane != "string")
-      throw new Error("Gallery tag response is invalid.");
-    return result.tagpane;
-  }
-  async function requestGalleryApi(info, payload) {
-    let controller = new AbortController(), timeout = window.setTimeout(() => controller.abort(), 3e4), requestLog = {
-      action: typeof payload.method == "string" ? payload.method : "unknown",
-      apiOrigin: new URL(info.apiUrl).origin,
-      galleryId: info.galleryId
-    };
-    console.info("[ehpeek] Gallery API request started", requestLog);
-    try {
-      let response = await fetch(info.apiUrl, {
-        method: "POST",
-        body: JSON.stringify({
-          ...payload,
-          apiuid: info.apiUid,
-          apikey: info.apiKey,
-          gid: info.galleryId,
-          token: info.token
-        }),
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
-        },
-        signal: controller.signal
-      });
-      if (console.info("[ehpeek] Gallery API response received", {
-        ...requestLog,
-        status: response.status
-      }), !response.ok)
-        throw new Error(`HTTP ${response.status}`);
-      let result = await response.json();
-      if (!result || typeof result != "object" || Array.isArray(result))
-        throw new Error("Gallery API response is invalid.");
-      let record = result;
-      if (typeof record.error == "string" && record.error)
-        throw new Error(record.error);
-      return record;
-    } catch (error) {
-      throw console.error("[ehpeek] Gallery API request failed", requestLog, error), error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
 
   // src/eh/dom/core.ts
-  var EHPEEK_ANCHOR_ATTRIBUTE = "data-ehpeek-anchor", mountedNodes = /* @__PURE__ */ new WeakMap(), managedDocumentElement = null, managedBody = null;
+  var EHPEEK_ANCHOR_ATTRIBUTE = "data-ehpeek-anchor", EH_SYRINGE_IGNORE_SELECTOR = ".eh-syringe-ignore", mountedNodes = /* @__PURE__ */ new WeakMap(), managedDocumentElement = null, managedBody = null;
+  function originalPageNode(node) {
+    return node.closest(EH_SYRINGE_IGNORE_SELECTOR) === null;
+  }
   function createAnchor(name) {
     let selector = `[${EHPEEK_ANCHOR_ATTRIBUTE}="${CSS.escape(name)}"]`;
     if (document.querySelector(selector))
@@ -1409,15 +1327,14 @@
     static from(node) {
       return new _DomNode(node);
     }
-    one(selector) {
-      let element = __privateGet(this, _node).querySelector(selector);
-      return element ? _DomNode.from(element) : null;
-    }
-    all(selector) {
+    one(selector, filter = originalPageNode) {
       return Array.from(
         __privateGet(this, _node).querySelectorAll(selector),
         _DomNode.from
-      );
+      ).find(filter) ?? null;
+    }
+    all(selector, filter = originalPageNode) {
+      return Array.from(__privateGet(this, _node).querySelectorAll(selector)).map(_DomNode.from).filter(filter);
     }
     parent() {
       let parent = __privateGet(this, _node).parentElement;
@@ -1627,14 +1544,8 @@
     setSelected(selected) {
       __privateGet(this, _node2).selected = selected;
     }
-    setDisabled(disabled) {
-      __privateGet(this, _node2).disabled = disabled;
-    }
     dispatchInput() {
       __privateGet(this, _node2).dispatchEvent(new Event("input", { bubbles: !0 }));
-    }
-    requestSubmit(submitter) {
-      __privateGet(this, _node2).requestSubmit(__privateGet(submitter, _node2));
     }
     mirrorContentTo(target) {
       let update = () => {
@@ -1661,39 +1572,14 @@
   __export(ehSyringe_exports, {
     reuseTagTipInput: () => reuseTagTipInput,
     waitForInitialUi: () => waitForInitialUi,
-    waitForRouteTranslation: () => waitForRouteTranslation,
     waitForSearchUi: () => waitForSearchUi
   });
-  var ROOT_CLASS = "ehs-injected", TRANSLATED_LANGUAGE = "zh-hans", INITIALIZED_SELECTOR = "#eh-syringe-popup-button", SEARCH_SUBMIT_SELECTOR = "#searchbox button[ehs-input][type='submit']", CLEAR_BUTTON_SELECTOR = "#searchbox button[ehs-input][type='button']", TAG_TIP_INPUT_SELECTOR = "#f_search, #newtagfield, [name='f_search']", TAG_TIP_LIST_SELECTOR = ".eh-syringe-lite-auto-complete-list", TAG_TIP_LIST_CLASS_NAME = "!max-h-[60dvh] !py-sm [&_.auto-complete-item]:box-border [&_.auto-complete-item]:min-h-lg [&_.auto-complete-item]:!py-sm [&_.auto-complete-item]:!px-lg [&_.auto-complete-item]:!text-[length:var(--font-size-lg)] [&_.auto-complete-item]:!leading-[1.25] [&_.auto-complete-text]:!text-inherit [&_.auto-complete-text]:!leading-inherit", DETECTED_KEY = "ehpeek:ehsyringe:detected", INJECTION_TIMEOUT_MS = 3e3, ROUTE_TRANSLATION_TIMEOUT_MS = 450, ROUTE_TRANSLATION_QUIET_MS = 48, initialUiReady = null, tagTipInput = null, injectionWatcherStarted = !1, tagTipWatcherStarted = !1;
+  var ROOT_CLASS = "ehs-injected", TRANSLATED_LANGUAGE = "zh-hans", INITIALIZED_SELECTOR = "#eh-syringe-popup-button", SEARCH_SUBMIT_SELECTOR = "#searchbox button[ehs-input][type='submit']", CLEAR_BUTTON_SELECTOR = "#searchbox button[ehs-input][type='button']", TAG_TIP_INPUT_SELECTOR = "#f_search, #newtagfield, [name='f_search']", TAG_TIP_LIST_SELECTOR = ".eh-syringe-lite-auto-complete-list", TAG_TIP_LIST_CLASS_NAME = "!max-h-[60dvh] !py-sm [&_.auto-complete-item]:box-border [&_.auto-complete-item]:min-h-lg [&_.auto-complete-item]:!py-sm [&_.auto-complete-item]:!px-lg [&_.auto-complete-item]:!text-[length:var(--font-size-lg)] [&_.auto-complete-item]:!leading-[1.25] [&_.auto-complete-text]:!text-inherit [&_.auto-complete-text]:!leading-inherit", DETECTED_KEY = "ehpeek:ehsyringe:detected", INJECTION_TIMEOUT_MS = 3e3, initialUiReady = null, tagTipInput = null, injectionWatcherStarted = !1, tagTipWatcherStarted = !1;
   function waitForInitialUi() {
     return watchForSuccessfulInjection(), initialUiReady ?? (initialUiReady = waitForExpectedInitialUi()), initialUiReady;
   }
   async function waitForSearchUi() {
     await waitForInitialUi(), isTranslatingUi() && await waitFor(searchUiReady);
-  }
-  async function waitForRouteTranslation(root) {
-    if (await waitForInitialUi(), !isInjected())
-      return;
-    let probe = translationProbe();
-    root.append(probe);
-    try {
-      await waitFor(
-        () => probe.hasAttribute("ehs-tag"),
-        ROUTE_TRANSLATION_TIMEOUT_MS,
-        {
-          attributes: !0,
-          childList: !0,
-          subtree: !0
-        },
-        root
-      ) && await waitForMutationQuiet(
-        root,
-        ROUTE_TRANSLATION_QUIET_MS,
-        ROUTE_TRANSLATION_TIMEOUT_MS
-      );
-    } finally {
-      probe.remove();
-    }
   }
   function reuseTagTipInput(target) {
     return watchForTagTipInput(), !tagTipInput || tagTipInput.Component().isConnected || target === tagTipInput ? target : (target.copyAttributesTo(tagTipInput), tagTipInput.setInputValue(target.inputValue()), target.replaceWith(tagTipInput), tagTipInput);
@@ -1717,26 +1603,6 @@
       };
       observer.observe(root, observe), timeoutMs !== void 0 && (timer = window.setTimeout(() => finish(!1), timeoutMs));
     });
-  }
-  function waitForMutationQuiet(root, quietMs, timeoutMs) {
-    return new Promise((resolve) => {
-      let finished = !1, quietTimer = window.setTimeout(finish, quietMs), timeoutTimer = window.setTimeout(finish, timeoutMs), observer = new MutationObserver(() => {
-        window.clearTimeout(quietTimer), quietTimer = window.setTimeout(finish, quietMs);
-      });
-      function finish() {
-        finished || (finished = !0, observer.disconnect(), window.clearTimeout(quietTimer), window.clearTimeout(timeoutTimer), resolve());
-      }
-      observer.observe(root, {
-        attributes: !0,
-        characterData: !0,
-        childList: !0,
-        subtree: !0
-      });
-    });
-  }
-  function translationProbe() {
-    let probe = document.createElement("span");
-    return probe.className = "gt", probe.hidden = !0, probe.lang = "en", probe.setAttribute("translate", "yes"), probe.title = "ehpeek:translation probe", probe.textContent = "ehpeek:translation probe", probe;
   }
   function watchForSuccessfulInjection() {
     if (injectionWatcherStarted)
@@ -1824,13 +1690,7 @@
       tagBehavior: "Behavior",
       markTag: "Mark",
       watchTag: "Watch",
-      hideTag: "Hide",
-      voteUp: "Vote Up",
-      voteDown: "Vote Down",
-      withdrawVote: "Withdraw Vote",
-      showTaggedGalleries: "Show Tagged Galleries",
-      showTagDefinition: "Show Tag Definition",
-      addNewTag: "Add New Tag"
+      hideTag: "Hide"
     },
     settings: {
       openSettings: "Settings",
@@ -1838,7 +1698,7 @@
       on: "On",
       off: "Off",
       singlePageApp: "Single Page App",
-      singlePageAppHelp: "Loads pages without a full page refresh. Only applies to Touch UI and may be incompatible with other userscripts.",
+      singlePageAppHelp: "Reserved for future Single Page App support.",
       readerLabel: "Reader",
       readerHelp: "Opens gallery images in Ehpeek's reader",
       readerFullscreenLabel: "Reader in Fullscreen",
@@ -1864,11 +1724,6 @@
       advancedOptions: "Advanced Options",
       categories: "Categories",
       fileSearch: "File Search"
-    },
-    singlePageApp: {
-      loadFailed: "Could not load this page",
-      openOriginal: "Open original page",
-      dismiss: "Dismiss"
     },
     errors: {
       imageNotFound: "Image not found",
@@ -1908,7 +1763,7 @@
   }
 
   // src/eh/dom/gallery.ts
-  var GALLERY_PAGE_DESCRIPTION_SELECTOR = ".gpc:not(.eh-syringe-ignore)", galleryApiSession = null;
+  var GALLERY_PAGE_DESCRIPTION_SELECTOR = ".gpc";
   function extractMyTagsPageData(root = document, tagSet) {
     let page = DomNode.from(root), tags = page.one("#usertags_outer");
     if (!tags)
@@ -1954,52 +1809,18 @@
         let name = galleryTagNameFromUrl(tag.attribute("href") ?? ""), appearance = name ? byName.get(normalizeTagName(name)) : void 0;
         if (!appearance?.backgroundColor)
           continue;
-        (tag.closest("div.gt, div.gtl, div.gtw") ?? tag).inplace().styles({ "background-color": appearance.backgroundColor }, "important"), tag.inplace().styles({ color: appearance.color }, "important").setAttributes({
+        let container = tag.closest("div.gt, div.gtl, div.gtw");
+        container && (container.inplace().styles({
+          "--ehpeek-my-tag-color": appearance.color,
+          "background-color": appearance.backgroundColor
+        }, "important").addClasses("[&>a]:!text-[var(--ehpeek-my-tag-color)]"), tag.inplace().removeStyles("color").removeClasses("!text-[var(--ehpeek-my-tag-color)]").setAttributes({
           "data-ehpeek-my-tag-id": appearance.id,
           "data-ehpeek-my-tag-set": appearance.tagSet
-        });
+        }));
       }
     };
     return apply(), DomNode.from(document).one("#taglist")?.inplace().observe(apply) ?? (() => {
     });
-  }
-  function manageGalleryApiSession(root = document, baseUrl = window.location.href) {
-    if (galleryApiSession || !galleryIdentityFromUrl(baseUrl))
-      return;
-    let script = DomNode.from(root).all("script").map((item) => item.text()).find((text) => text.includes("var api_url") && text.includes("var apikey"));
-    if (!script)
-      throw new Error("The Gallery API session script could not be found.");
-    let stringValue = (name) => script.match(new RegExp(`\\b${name}\\s*=\\s*(["'])(.*?)\\1`))?.[2] ?? null, numberValue = (name) => {
-      let match = script.match(new RegExp(`\\b${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`)), value = Number(match?.[1]);
-      return match && Number.isFinite(value) ? value : null;
-    }, apiUrlValue = stringValue("api_url"), apiKey = stringValue("apikey"), apiUid = numberValue("apiuid");
-    if (!apiUrlValue || !apiKey || apiUid === null)
-      throw new Error("The Gallery API session values could not be read.");
-    let apiUrl = new URL(apiUrlValue, baseUrl), pageUrl = new URL(baseUrl);
-    if (!isAllowedGalleryApiUrl(apiUrl, pageUrl) || !Number.isSafeInteger(apiUid) || apiUid <= 0 || !/^[A-Za-z0-9_-]{8,128}$/.test(apiKey))
-      throw new Error("The Gallery API session values are invalid.");
-    galleryApiSession = {
-      apiKey,
-      apiUid,
-      apiUrl: apiUrl.href
-    };
-  }
-  function extractGalleryTagApiInfo() {
-    let gallery = galleryIdentityFromUrl();
-    if (!gallery)
-      throw new Error("The current Gallery identity could not be read.");
-    if (!galleryApiSession)
-      throw new Error("The Gallery API session is unavailable.");
-    let { galleryId, token } = gallery;
-    if (!Number.isSafeInteger(galleryId) || galleryId <= 0 || !/^[A-Za-z0-9]+$/.test(token))
-      throw new Error("The current Gallery identity is invalid.");
-    return {
-      apiKey: galleryApiSession.apiKey,
-      apiUid: galleryApiSession.apiUid,
-      apiUrl: galleryApiSession.apiUrl,
-      galleryId,
-      token
-    };
   }
   function manageGalleryContinueReadingButtonMount() {
     let managedHost = createManagedElement("div"), viewerOptions = DomNode.from(document).one("#gd5")?.inplace();
@@ -2125,12 +1946,16 @@
     let page = DomNode.from(document), original = page.one("#gmid"), host = original?.parent() ?? page.one("#gleft")?.parent() ?? null;
     if (!original || !host)
       return null;
-    let readMeta = () => new Map(
-      page.all("#gdd tr").map((row) => {
-        let cells = row.all("td, th"), label = (cells[0]?.text() ?? "").replace(/:$/, "").toLowerCase(), value = cells.slice(1).map((cell) => cell.text()).filter(Boolean).join(" ");
-        return [label, value];
-      }).filter(([label, value]) => label && value)
-    ), readCategory = (node) => {
+    let readMeta = () => {
+      let values = page.all("#gdd tr").map((row) => row.all("td, th").slice(1).map((cell) => cell.text()).filter(Boolean).join(" "));
+      return {
+        favorited: values[6],
+        fileSize: values[4],
+        language: values[3],
+        parent: values[1],
+        posted: values[0]
+      };
+    }, readCategory = (node) => {
       let style2 = node?.computedStyle();
       return {
         "background-color": style2?.backgroundColor ?? "",
@@ -2155,13 +1980,13 @@
         /popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"]+)&act="/
       );
       return {
-        actionUrl: match ? `/gallerypopups.php?gid=${match[1]}&t=${match[2]}&act=addfav` : element?.attribute("data-ehpeek-action-url") ?? "",
+        actionUrl: match ? `/gallerypopups.php?gid=${match[1]}&t=${match[2]}&act=addfav` : "",
         color: slot === void 0 ? null : `var(--color-site-favorite-${slot})`,
         favorited,
         label: favorited ? displayed : "Not Favorited"
       };
     }, readRating = (count, image, labelNode, scripts2) => {
-      let label = labelNode?.text() ?? "", match = (scripts2.find((item) => item.includes("display_rating")) ?? "").match(/\bdisplay_rating\s*=\s*(-?\d+(?:\.\d+)?)/), scriptValue = Number(match?.[1]), preservedRating = image?.attribute("data-ehpeek-rating"), preservedValue = preservedRating ? Number(preservedRating) : Number.NaN, value = match && Number.isFinite(scriptValue) ? scriptValue : Number.isFinite(preservedValue) ? preservedValue : null;
+      let label = labelNode?.text() ?? "", match = (scripts2.find((item) => item.includes("display_rating")) ?? "").match(/\bdisplay_rating\s*=\s*(-?\d+(?:\.\d+)?)/), scriptValue = Number(match?.[1]), value = match && Number.isFinite(scriptValue) ? scriptValue : null;
       return label && value !== null ? {
         count: count?.text() ?? "",
         label,
@@ -2190,12 +2015,9 @@
             borderColor: containerStyle.borderColor,
             color: tagStyle.color
           },
-          definitionHref: `https://ehwiki.org/wiki/${encodeURIComponent(name.replace(/^[a-z]+:\s*/i, ""))}`,
-          href,
           label,
           myTag: myTagId && myTagSet ? { id: myTagId, tagSet: myTagSet } : null,
-          name,
-          vote: tag.hasClass("tup") ? "up" : tag.hasClass("tdn") ? "down" : null
+          name
         },
         source: tag
       };
@@ -2225,7 +2047,7 @@
         ...tag,
         contentSource: source.inplace()
       }))
-    })), meta = readMeta(), category = page.one("#gdc"), categoryStyle = category?.one("[class*='ct']") ?? category, cover = page.one("#gd1"), coverSource = cover?.one("img") ?? null, favorite = page.one("#fav"), newTag = page.one("#tagmenu_new"), newTagButton = newTag?.one("#newtagbutton") ?? null, newTagField = newTag?.one("#newtagfield") ?? null, newTagForm = newTag?.one("form") ?? null, scripts = page.all("script").map((script) => script.text()), actionSources = readActions(), tagContentSources = [], tagGroups = readTagGroups().map((group) => ({
+    })), meta = readMeta(), category = page.one("#gdc"), categoryStyle = category?.one("[class*='ct']") ?? category, cover = page.one("#gd1"), coverSource = cover?.one("img") ?? null, favorite = page.one("#fav"), ratingCount = page.one("#rating_count"), ratingImage = page.one("#rating_image"), ratingLabel = page.one("#rating_label"), ratingActions = page.all('map[name="rating"] area'), tagMenuAction = page.one("#tagmenu_act"), newTag = page.one("#tagmenu_new"), newTagButton = newTag?.one("#newtagbutton") ?? null, newTagField = newTag?.one("#newtagfield") ?? null, newTagForm = newTag?.one("form") ?? null, scripts = page.all("script").map((script) => script.text()), actionSources = readActions(), tagContentSources = [], tagGroups = readTagGroups().map((group) => ({
       namespace: group.namespace,
       tags: group.tags.map(({ data: tag, source }) => {
         let contentSourceIndex = tagContentSources.push(source) - 1;
@@ -2235,24 +2057,19 @@
       category: category?.text() ?? "",
       categoryAppearance: readCategory(categoryStyle),
       favorite: readFavorite(favorite, scripts),
-      rating: readRating(
-        page.one("#rating_count"),
-        page.one("#rating_image"),
-        page.one("#rating_label"),
-        scripts
-      ),
+      rating: readRating(ratingCount, ratingImage, ratingLabel, scripts),
       summary: [
-        meta.get("language"),
+        meta.language,
         preview?.totalImages ? `${preview.totalImages} ${texts_default.reader.pages.toLowerCase()}` : void 0,
-        meta.get("file size") ?? meta.get("size"),
-        meta.get("favorited"),
-        meta.get("posted") ?? meta.get("parent")
+        meta.fileSize,
+        meta.favorited,
+        meta.posted ?? meta.parent
       ].filter((value) => !!value).slice(0, 6).map((value) => ({ value })),
       tagGroups,
       titleMain: page.one("#gn")?.text() ?? "",
       titleSub: page.one("#gj")?.text() ?? ""
     }, coverUrl = readCoverUrl(cover, coverSource), hostChildSources = host.all(":scope > *").filter((child) => !newTag?.sameNode(child)), elems = {
-      actionItems: actionSources.map(({ node }) => node.clone(!1)),
+      actionItems: actionSources.map(({ node }) => node.move()),
       cover: coverUrl ? coverSource?.clone() ?? createManagedElement("img") : null,
       host: host.inplace(),
       hostChildren: hostChildSources.map((child) => child.inplace()),
@@ -2261,9 +2078,11 @@
       newTagButton: newTagButton?.inplace() ?? null,
       newTagField: newTagField?.inplace() ?? null,
       newTagForm: newTagForm?.inplace() ?? null,
+      ratingActions: ratingActions.map((action) => action.inplace()),
       tagContents: tagContentSources.map((source) => source.inplace()),
-      tagList: page.one("#taglist")?.inplace() ?? null
-    };
+      tagList: page.one("#taglist")?.inplace() ?? null,
+      tagMenuAction: tagMenuAction?.inplace() ?? null
+    }, selectedTagSource = null;
     return { data, elems, handle: {
       /** Normalizes the original cover for GalleryInfoPanel's responsive layout. */
       updateCoverVisual(className2) {
@@ -2304,13 +2123,15 @@
       reuseNewTagAutocomplete() {
         elems.newTagField && (elems.newTagField = reuseTagTipInput(elems.newTagField));
       },
-      /** Sends a Gallery rating through the captured original Gallery API session. */
-      async submitGalleryRating(value) {
+      /** Activates E-H's original rating area and lets its page script submit the vote. */
+      submitGalleryRating(value) {
         let rating = Math.round(value * 2);
         if (rating < 1 || rating > 10)
           throw new RangeError("Gallery rating must be between 0.5 and 5 stars.");
-        let api = extractGalleryTagApiInfo();
-        return updateGalleryRating(api, value);
+        let action = elems.ratingActions[rating - 1];
+        if (!action)
+          throw new Error("Gallery rating action is unavailable.");
+        action.click();
       },
       /** Removes the selected tag from its stored My Tags collection. */
       async removeFavoriteTag(tag) {
@@ -2319,13 +2140,27 @@
         let response = await deleteMyTag(tag.myTag.id, tag.myTag.tagSet);
         extractMyTagsPageData(response.document, tag.myTag.tagSet);
       },
-      /** Applies an upvote, downvote, or vote removal and refreshes the tag pane. */
-      async submitGalleryTagAction(tag, action) {
-        let api = extractGalleryTagApiInfo(), vote = action === "voteUp" ? 1 : action === "voteDown" || tag.vote === "up" ? -1 : tag.vote === "down" ? 1 : 0, tagPane = await updateGalleryTagVote(api, tag.name, vote);
-        if (!elems.tagList)
-          throw new Error("Gallery tag list is unavailable.");
-        let template2 = document.createElement("template");
-        template2.innerHTML = tagPane, elems.tagList.replaceChildren(...Array.from(template2.content.childNodes));
+      /** Opens E-H's original tag actions and only adapts their presentation. */
+      openGalleryTagMenu(tag, containerClassName, itemClassName, onNewTagOpen) {
+        if (!elems.tagMenuAction)
+          throw new Error("Gallery tag actions are unavailable.");
+        tag.contentSource.click();
+        let actions = elems.tagMenuAction.all("a");
+        if (actions.length === 0)
+          throw tag.contentSource.click(), new Error("Gallery tag actions could not be opened.");
+        selectedTagSource = tag.contentSource, elems.tagMenuAction.replaceClasses(containerClassName), elems.tagMenuAction.all("img").forEach((image) => {
+          image.setHidden(!0);
+        }), actions.forEach((action) => {
+          action.replaceClasses(itemClassName).removeAllStyles();
+        });
+        let addNewTag = actions.find((action) => action.readAttribute("onclick")?.includes("toggle_tagmenu"));
+        addNewTag && onNewTagOpen && addNewTag.removeAttributes("onclick").listen("click", (event) => {
+          event.preventDefault(), onNewTagOpen();
+        });
+      },
+      /** Closes E-H's selected tag without replacing its action DOM. */
+      closeGalleryTagMenu() {
+        selectedTagSource?.click(), selectedTagSource = null;
       },
       /** Updates the Gallery favorite state through the original site endpoint. */
       updateGalleryFavorite
@@ -2386,7 +2221,7 @@
         };
         return document.addEventListener("click", handleClick, !0), () => document.removeEventListener("click", handleClick, !0);
       },
-      /** Replaces the current result page without activating Single Page App. */
+      /** Replaces the current result page for enhanced swipe navigation. */
       async loadSearchPage(url) {
         let response = await requestPage(url);
         if (!replaceSearchPageContent(response.document))
@@ -2607,13 +2442,13 @@
   }
   function mutateSearchGridModeSelect(selected, onEhPeekSelect, onOriginalSelect) {
     let selects = DomNode.from(document).all(
-      "select[onchange*='inline_set=dm_'], select[data-ehpeek-grid-mode-source='true']"
+      "select[onchange*='inline_set=dm_']"
     );
     for (let source of selects) {
       let select = source.inplace(), option = source.all("option").find((item) => item.inputValue() === "ehpeek")?.inplace() ?? null;
       option || (option = createManagedElement("option").attribute("value", "ehpeek"), option.setTextUnlessInput("EhPeek"), select.append(option)), option.setSelected(selected), source.attribute("data-ehpeek-grid-mode") !== "true" && (select.attribute("data-ehpeek-grid-mode", "true"), select.listen("change", (event) => {
         if (select.inputValue() !== "ehpeek") {
-          event.preventDefault(), event.stopImmediatePropagation(), onOriginalSelect(select.inputValue());
+          onOriginalSelect();
           return;
         }
         event.preventDefault(), event.stopImmediatePropagation(), onEhPeekSelect();
@@ -2671,14 +2506,14 @@
     documentElement().addClasses(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" ")), documentBody().addClasses(...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "));
     let page = DomNode.from(document);
     page.one(".ido")?.inplace().removeStyles("min-width").addClasses(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" "));
-    let categories = page.one(".ido > .nosel"), categorySelect = categories ? readFavoritesCategories(categories) : null;
+    let categories = page.one(".ido > .nosel"), categorySelect = categories ? manageFavoritesCategories(categories) : null;
     page.one("input[name='f_search']")?.form()?.parent()?.inplace().removeStyles("width").addClasses("box-border", "!w-full", "!min-w-0", "!max-w-full");
     for (let navigation of page.all(".searchnav"))
       navigation.inplace().addClasses(...TOUCH_FAVORITES_NAV_CLASS_NAME.split(" "));
     let resultSource = page.one(".itg");
     if (!resultSource)
       return categorySelect;
-    let existingWrapperSource = resultSource.parent(), existingWrapper = existingWrapperSource?.hasClass("ehpeek-touch-favorites-results") ? existingWrapperSource : null, contentSource = existingWrapper?.parent() ?? resultSource.parent(), allSelected = categorySelect?.categories[0]?.selected === !0;
+    let existingWrapperSource = resultSource.parent(), existingWrapper = existingWrapperSource?.hasClass("ehpeek-touch-favorites-results") ? existingWrapperSource : null, contentSource = existingWrapper?.parent() ?? resultSource.parent(), allSelected = categorySelect?.info.categories[0]?.selected === !0;
     contentSource?.inplace().addClasses(...TOUCH_FAVORITES_CONTENT_CLASS_NAME.split(" "));
     let resultList = resultSource.inplace();
     if (resultList.addClasses(...TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME.split(" ")), existingWrapper)
@@ -2709,12 +2544,12 @@
     for (let selection of source.all("tbody > tr > .glfe"))
       selection.inplace().styles({ width: "1%", "white-space": "nowrap" }, "important");
   }
-  function readFavoritesCategories(container) {
+  function manageFavoritesCategories(container) {
     let nodes = container.all(":scope > .fp, :scope > .fps");
     if (nodes.length === 0)
       return null;
     let parsed = nodes.map((node) => {
-      let children = node.children(), countText = children[0]?.text() ?? "0", label = children[children.length - 1]?.text() || node.text(), count = Number(countText.replace(/,/g, "")), indicatorStyle = node.one(".i")?.computedStyle() ?? null, href = node.attribute("onclick")?.match(/document\.location\s*=\s*['"]([^'"]+)['"]/)?.[1] ?? "";
+      let children = node.children(), countText = children[0]?.text() ?? "0", label = children[children.length - 1]?.text() || node.text(), count = Number(countText.replace(/,/g, "")), indicatorStyle = node.one(".i")?.computedStyle() ?? null;
       return {
         appearance: indicatorStyle ? {
           backgroundImage: indicatorStyle.backgroundImage,
@@ -2722,33 +2557,31 @@
           backgroundSize: indicatorStyle.backgroundSize
         } : null,
         count: Number.isFinite(count) ? count : 0,
-        href: normalizeUrl(href, window.location.href),
         label,
         selected: node.hasClass("fps"),
         source: node
       };
     }), all = parsed.find((category) => category.source.childElementCount() === 0), favorites = parsed.filter((category) => category !== all), total = favorites.reduce((sum, category) => sum + category.count, 0);
-    return container.inplace().setHidden(!0), {
-      categories: [
-        ...all ? [{ ...all, count: total, label: texts_default.favorites.all }] : [],
-        ...favorites
-      ].map(({ appearance, count, href, label, selected }) => ({
-        appearance,
-        count,
-        href,
-        label,
-        selected
-      }))
+    container.inplace().setHidden(!0);
+    let categories = [
+      ...all ? [{ ...all, count: total, label: texts_default.favorites.all }] : [],
+      ...favorites
+    ];
+    return {
+      info: {
+        categories: categories.map(({ appearance, count, label, selected }) => ({
+          appearance,
+          count,
+          label,
+          selected
+        }))
+      },
+      items: categories.map(({ source }) => source.inplace())
     };
   }
-  function searchResultsPageTouch(hideRangeBar) {
+  function searchResultsPageTouch() {
     documentElement().addClasses(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" ")), documentBody().addClasses(...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" "));
-    let page = DomNode.from(document);
-    if (hideRangeBar) {
-      let rangeBar = page.one("#rangebar")?.inplace();
-      rangeBar?.setHidden(!0), rangeBar?.styles({ display: "none" }, "important");
-    }
-    let resultSource = page.one(".itg");
+    let resultSource = DomNode.from(document).one(".itg");
     if (!resultSource)
       return;
     let existingWrapperSource = resultSource.parent(), existingWrapper = existingWrapperSource?.hasClass("ehpeek-touch-search-results") ? existingWrapperSource : null, contentSource = existingWrapper?.parent() ?? resultSource.parent();
@@ -2759,47 +2592,45 @@
     let wrapper = createManagedElement("div").replaceClasses(TOUCH_SEARCH_RESULTS_WRAPPER_CLASS_NAME);
     resultList.replaceWith(wrapper), wrapper.append(resultList);
   }
-  function manageTouchResultsPage(page, hideRangeBar = !1) {
-    let apply = () => page.type === "favorites" ? favoritesPageTouch() : (page.type === "search" && searchResultsPageTouch(hideRangeBar), null);
-    return { data: { favoritesCategory: apply() }, handle: {
+  function manageTouchResultsPage(page) {
+    let apply = () => page.type === "favorites" ? favoritesPageTouch() : (page.type === "search" && searchResultsPageTouch(), null), favoritesCategory = apply(), data = { favoritesCategory: favoritesCategory?.info ?? null }, elems = {
+      favoriteCategoryItems: favoritesCategory?.items ?? []
+    };
+    return { data, elems, handle: {
+      /** Activates E-H's original Favorites collection control. */
+      activateFavoriteCategory(index) {
+        elems.favoriteCategoryItems[index]?.click();
+      },
       /** Reapplies TouchUI layout after the result list is replaced in place. */
       updateTouchResultsLayout() {
-        apply();
-      },
-      /** Removes page-wide TouchUI constraints before the active page is released. */
-      removeTouchResultsLayout() {
-        let classes = [
-          ...TOUCH_FAVORITES_PAGE_CLASS_NAME.split(" "),
-          ...TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME.split(" ")
-        ];
-        documentElement().removeClasses(...classes), documentBody().removeClasses(...classes);
+        let updated = apply();
+        updated && elems.favoriteCategoryItems.splice(
+          0,
+          elems.favoriteCategoryItems.length,
+          ...updated.items
+        );
       }
     } };
   }
 
   // src/eh/dom/searchPanel.ts
   function manageSearchPanel() {
-    let page = DomNode.from(document), searchInput = page.one("#f_search, input[name='f_search']"), form = searchInput?.form() ?? null, standardSearchBox = page.one("#searchbox"), categories = standardSearchBox?.one("form > table") ?? null, advancedPanel = standardSearchBox?.one("#advdiv") ?? null, optionLinks = advancedPanel?.previous() ?? null, advancedToggle = optionLinks?.one("a[onclick*='toggle_advsearch'], a[data-ehpeek-search-advanced-toggle='true']") ?? null, fileSearchToggle = optionLinks?.one("a[onclick*='toggle_filesearch'], a[data-ehpeek-search-file-toggle='true']") ?? null, fileSearch = page.one("#fsdiv"), fileSearchAction = readFileSearchAction(page), searchSubmit = form?.one("input[name='f_apply'], button[name='f_apply']") ?? searchInput?.parent()?.one("input[type='submit'], button[type='submit']") ?? null, clearButton = form?.one("input[name='f_clear'], button[name='f_clear']") ?? searchInput?.parent()?.one("input[type='button'], button[type='button']") ?? null;
+    let page = DomNode.from(document), searchInput = page.one("#f_search, input[name='f_search']"), form = searchInput?.form() ?? null, standardSearchBox = page.one("#searchbox"), categories = standardSearchBox?.one("form > table") ?? null, advancedPanel = standardSearchBox?.one("#advdiv") ?? null, optionLinks = advancedPanel?.previous() ?? null, fileSearch = page.one("#fsdiv"), searchSubmit = form?.one("input[name='f_apply'], button[name='f_apply']") ?? searchInput?.parent()?.one("input[type='submit'], button[type='submit']") ?? null, clearButton = form?.one("input[name='f_clear'], button[name='f_clear']") ?? searchInput?.parent()?.one("input[type='button'], button[type='button']") ?? null;
     if (!searchInput || !form || !searchSubmit)
       return null;
-    let mount = createAnchor("search-panel"), categoryToggleMount = categories && optionLinks ? createAnchor("search-category-toggle") : null, advancedToggleMount = advancedToggle ? createAnchor("search-advanced-toggle") : null, fileSearchToggleMount = fileSearchToggle ? createAnchor("search-file-toggle") : null, searchActionMount = createAnchor("search-action"), clearActionMount = clearButton ? createAnchor("search-clear-action") : null;
+    let mount = createAnchor("search-panel"), categoryToggleMount = categories && optionLinks ? createAnchor("search-category-toggle") : null, searchActionMount = createAnchor("search-action"), clearActionMount = clearButton ? createAnchor("search-clear-action") : null;
     if (!mount || !searchActionMount || clearButton && !clearActionMount)
       return null;
-    let categoryRows = categories?.all("tr") ?? [], categoryCells = categories?.all("td") ?? [], categoryItems = categories?.all("[id^='cat_']") ?? [], categoryMask = form.one("input[name='f_cats']"), categoryBits = categoryItems.map((item) => Number(item.attribute("id")?.match(/^cat_(\d+)$/)?.[1])), optionLinkItems = optionLinks?.all("a") ?? [], searchControls = createManagedElement("div"), elems = {
+    let categoryRows = categories?.all("tr") ?? [], categoryCells = categories?.all("td") ?? [], categoryItems = categories?.all("[id^='cat_']") ?? [], optionLinkItems = optionLinks?.all("a") ?? [], searchControls = createManagedElement("div"), elems = {
       advancedPanel: advancedPanel?.inplace() ?? null,
-      advancedToggle: advancedToggle?.inplace() ?? null,
-      advancedToggleMount,
       categories: categories?.inplace() ?? null,
       categoryCells: categoryCells.map((cell) => cell.inplace()),
       categoryItems: categoryItems.map((item) => item.inplace()),
-      categoryMask: categoryMask?.inplace() ?? null,
       categoryRows: categoryRows.map((row) => row.inplace()),
       categoryToggleMount,
       clearActionMount,
       clearButton: clearButton?.inplace() ?? null,
       fileSearch: fileSearch?.inplace() ?? null,
-      fileSearchToggle: fileSearchToggle?.inplace() ?? null,
-      fileSearchToggleMount,
       form: form.inplace(),
       mount,
       optionLinks: optionLinks?.inplace() ?? null,
@@ -2810,180 +2641,35 @@
       searchInput: searchInput.inplace(),
       searchSubmit: searchSubmit.inplace()
     };
-    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.advancedToggle && elems.advancedToggleMount && elems.advancedToggle.replaceWith(elems.advancedToggleMount), elems.fileSearchToggle && elems.fileSearchToggleMount && elems.fileSearchToggle.replaceWith(elems.fileSearchToggleMount), elems.fileSearch?.remove();
+    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.fileSearch?.remove();
     let formInsideSearchBox = standardSearchBox?.one("form")?.sameNode(form) ?? !1, formId = form.attribute("id") || "ehpeek-search-form", categoryColors = categoryItems.map(
       (item) => ["ct1", "ct2", "ct3", "ct4", "ct5", "ct6", "ct7", "ct8", "ct9", "cta"].find((name) => item.hasClass(name)) ?? null
-    ), data = {
+    );
+    return { data: {
       clearLabel: clearButton ? actionLabel(clearButton) : null,
       hasClear: elems.clearButton !== null && elems.clearActionMount !== null,
       searchLabel: actionLabel(searchSubmit)
-    };
-    return populateEmptyPanels(
-      elems.advancedPanel,
-      advancedPanel?.childElementCount() === 0,
-      elems.fileSearch,
-      fileSearch?.childElementCount() === 0,
-      fileSearchAction
-    ), attachCategoryActions(elems.categoryItems, elems.categoryMask, categoryBits), { data, elems, handle: {
+    }, elems, handle: {
       /** Reflows original Search controls into EhPeek's shared SearchPanel structure. */
       updateSearchPanelVisual(classes) {
-        elems.searchActionMount.replaceClasses(classes.actionMount), elems.clearActionMount?.replaceClasses(classes.actionMount), elems.searchBox.replaceClasses(standardSearchBox ? classes.searchBox : classes.controls), formInsideSearchBox ? elems.form.removeAttributes("style").replaceClasses(classes.form) : (elems.form.setAttributes({ id: formId }), elems.searchInput.setAttributes({ form: formId }), elems.searchSubmit.setAttributes({ form: formId }), elems.clearButton?.setAttributes({ form: formId })), elems.searchControls.replaceClasses(classes.controls), elems.searchInput.removeAttributes("style").replaceClasses(classes.input), elems.categories?.replaceClasses(classes.categoryTable).setHidden(!0), elems.categoryRows.forEach((row) => row.replaceClasses(classes.categoryRow)), elems.categoryCells.forEach((cell) => cell.replaceClasses(classes.categoryCell)), elems.categoryItems.forEach((item, index) => item.removeAttributes("onclick").replaceClasses(`${categoryColors[index] ? `${categoryColors[index]} ` : ""}${classes.category}`)), elems.optionLinks?.replaceClasses(classes.optionLinks), elems.optionLinkItems.forEach((link) => link.replaceClasses(classes.optionLink)), elems.advancedPanel?.replaceClasses(classes.advancedPanel).removeStyles("display"), elems.fileSearch?.replaceClasses(classes.fileSearch).removeStyles("display", "margin-top"), elems.searchSubmit.setHidden(!0), elems.clearButton?.setHidden(!0);
+        elems.searchActionMount.replaceClasses(classes.actionMount), elems.clearActionMount?.replaceClasses(classes.actionMount), elems.searchBox.replaceClasses(standardSearchBox ? classes.searchBox : classes.controls), formInsideSearchBox ? elems.form.removeAttributes("style").replaceClasses(classes.form) : (elems.form.setAttributes({ id: formId }), elems.searchInput.setAttributes({ form: formId }), elems.searchSubmit.setAttributes({ form: formId }), elems.clearButton?.setAttributes({ form: formId })), elems.searchControls.replaceClasses(classes.controls), elems.searchInput.removeAttributes("style").replaceClasses(classes.input), elems.categories?.replaceClasses(classes.categoryTable).setHidden(!0), elems.categoryRows.forEach((row) => row.replaceClasses(classes.categoryRow)), elems.categoryCells.forEach((cell) => cell.replaceClasses(classes.categoryCell)), elems.categoryItems.forEach((item, index) => item.replaceClasses(`${categoryColors[index] ? `${categoryColors[index]} ` : ""}${classes.category}`)), elems.optionLinks?.replaceClasses(classes.optionLinks), elems.optionLinkItems.forEach((link) => link.replaceClasses(classes.optionLink)), elems.advancedPanel?.replaceClasses(classes.advancedPanel), elems.fileSearch?.replaceClasses(classes.fileSearch).removeStyles("margin-top"), elems.searchSubmit.setHidden(!0), elems.clearButton?.setHidden(!0);
       },
       /** Controls the original category table from EhPeek's category toggle. */
       updateCategoryVisibility(open) {
         elems.categories?.setHidden(!open), elems.categories?.setAttributes({ "aria-hidden": String(!open) });
       },
-      /** Controls the original advanced-search fields from EhPeek's toggle. */
-      updateAdvancedOptionsVisibility(open) {
-        elems.advancedPanel?.setHidden(!open);
+      /** Activates E-H's original Search submit control. */
+      activateSearch() {
+        elems.searchSubmit.click();
       },
-      /** Controls the original file-search fields from EhPeek's toggle. */
-      updateFileSearchVisibility(open) {
-        elems.fileSearch?.setHidden(!open);
-      },
-      /** Submits through the original Search form and its preserved parameters. */
-      submitSearchForm() {
-        elems.form.requestSubmit(elems.searchSubmit);
-      },
-      /** Clears the original input and emits the event consumed by Search history. */
-      clearSearchInput() {
-        elems.searchInput.setInputValue(""), elems.searchInput.dispatchInput(), elems.searchInput.focus();
+      /** Activates E-H's original Search clear control. */
+      activateClear() {
+        elems.clearButton?.click();
       }
     } };
   }
   function actionLabel(element) {
     return element.attribute("value") ?? element.text();
-  }
-  function readFileSearchAction(page) {
-    let preserved = page.one("#fsdiv")?.attribute("data-ehpeek-file-search-action");
-    if (preserved)
-      return preserved;
-    let uploadBase = (page.all("script").map((item) => item.text()).find((text) => text.includes("ulhost")) ?? "").match(/\bulhost\s*=\s*["']([^"']+)["']/)?.[1];
-    return uploadBase ? new URL("image_lookup.php", normalizeUrl(uploadBase, window.location.href)).href : "";
-  }
-  function populateEmptyPanels(advancedPanel, advancedPanelEmpty, fileSearch, fileSearchEmpty, fileSearchAction) {
-    if (advancedPanel && advancedPanelEmpty) {
-      let template2 = document.createElement("template");
-      template2.innerHTML = '<input type="hidden" id="advsearch" name="advsearch" value="1"><div class="searchadv"><div><div><label class="lc"><input type="checkbox" name="f_sh"><span></span> Browse Expunged Galleries</label></div><div><label class="lc"><input type="checkbox" name="f_sto"><span></span> Require Gallery Torrent</label></div></div><div><div>Between <input type="text" id="f_spf" name="f_spf" size="4" maxlength="4"> and <input type="text" id="f_spt" name="f_spt" size="4" maxlength="4"> pages</div><div>Minimum Rating: <select id="f_srdd" name="f_srdd"><option value="0">Any Rating</option><option value="2">2 Stars</option><option value="3">3 Stars</option><option value="4">4 Stars</option><option value="5">5 Stars</option></select></div></div><div><div>Disable custom filters for:</div><div><label class="lc"><input type="checkbox" name="f_sfl"><span></span> Language</label></div><div><label class="lc"><input type="checkbox" name="f_sfu"><span></span> Uploader</label></div><div><label class="lc"><input type="checkbox" name="f_sft"><span></span> Tags</label></div></div></div>', advancedPanel.replaceChildren(template2.content);
-    }
-    if (fileSearch && fileSearchEmpty && fileSearchAction) {
-      let form = document.createElement("form");
-      form.action = fileSearchAction, form.method = "post", form.enctype = "multipart/form-data", form.innerHTML = '<div>Select a file to upload, then hit File Search. All public galleries containing this exact file will be displayed.</div><div><input type="file" name="sfile"> <input type="submit" name="f_sfile" value="File Search"></div><div>For color images, the system can also perform a similarity lookup to find resampled images.</div><div class="searchadv"><div><div><label class="lc"><input type="checkbox" name="fs_similar" checked><span></span> Use Similarity Scan</label></div><div><label class="lc"><input type="checkbox" name="fs_covers"><span></span> Only Search Covers</label></div></div></div>', fileSearch.replaceChildren(form);
-    }
-  }
-  function attachCategoryActions(categories, mask, bits) {
-    categories.forEach((category, index) => {
-      let categoryBit = bits[index];
-      if (!mask || categoryBit === void 0 || !Number.isInteger(categoryBit) || categoryBit <= 0)
-        return;
-      let update = () => {
-        (Number(mask.inputValue()) & categoryBit) !== 0 ? category.setAttributes({ "data-disabled": "" }) : category.removeAttributes("data-disabled");
-      };
-      update(), category.listen("click", () => {
-        mask.setDisabled(!1), mask.setInputValue(String(Number(mask.inputValue()) ^ categoryBit)), update();
-      });
-    });
-  }
-
-  // src/eh/dom/singlePage.ts
-  var PERSISTENT_SELECTOR = "[data-ehpeek-persistent], #eh-syringe-popup-button, #eh-syringe-popup-back, .eh-syringe-lite-auto-complete-list";
-  function managePageContent(root = document, baseUrl = window.location.href) {
-    let documentSource = DomNode.from(root), container = root instanceof Document ? DomNode.from(root.body) : DomNode.from(root), persistent = (node) => node.matches(PERSISTENT_SELECTOR) || node.closest(PERSISTENT_SELECTOR) !== null, scriptSources = container.all("script").filter((script) => !persistent(script)), scriptTexts = scriptSources.map((script) => script.text()), sources = container.all("*").filter((node) => !persistent(node)), contentSources = container.children().filter((node) => !persistent(node));
-    manageGalleryApiSession(root, baseUrl);
-    let absoluteAttributes = [
-      ["a[href]", "href"],
-      ["area[href]", "href"],
-      ["form[action]", "action"],
-      ["img[src]", "src"],
-      ["input[src]", "src"],
-      ["source[src]", "src"]
-    ];
-    for (let [selector, attribute] of absoluteAttributes)
-      for (let source of container.all(selector).filter((node) => !persistent(node))) {
-        let value = source.attribute(attribute);
-        !value || value.startsWith("#") || /^(?:data|javascript|mailto):/i.test(value) || source.inplace().attribute(attribute, normalizeUrl(value, baseUrl));
-      }
-    let fileSearch = container.one("#fsdiv"), uploadBase = (scriptTexts.find((text) => text.includes("ulhost")) ?? "").match(/\bulhost\s*=\s*["']([^"']+)["']/)?.[1];
-    fileSearch && uploadBase && fileSearch.inplace().attribute(
-      "data-ehpeek-file-search-action",
-      new URL("image_lookup.php", normalizeUrl(uploadBase, baseUrl)).href
-    );
-    for (let source of container.all("#gd5 a[onclick]")) {
-      let popupUrl = (source.attribute("onclick") ?? "").match(/\bpopUp\(['"]([^'"]+)['"]/)?.[1];
-      popupUrl && source.inplace().setAttributes({
-        href: new URL(popupUrl, baseUrl).href,
-        rel: "noopener noreferrer",
-        target: "_blank"
-      });
-    }
-    let ratingScript = scriptTexts.find((text) => text.includes("display_rating")), rating = ratingScript ? scriptNumberValue(ratingScript, "display_rating") : null, ratingImage = container.one("#rating_image");
-    ratingImage && rating !== null && ratingImage.inplace().attribute("data-ehpeek-rating", String(rating));
-    let gallery = galleryIdentityFromUrl(baseUrl), favoriteMatch = scriptTexts.find((text) => text.includes("popbase") && text.includes("addfav"))?.match(
-      /popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"&]+)&act="/
-    ), favorite = container.one("#fav");
-    favorite && gallery && Number(favoriteMatch?.[1]) === gallery.galleryId && favoriteMatch?.[2] === gallery.token && favorite.inplace().attribute(
-      "data-ehpeek-action-url",
-      `/gallerypopups.php?gid=${favoriteMatch[1]}&t=${favoriteMatch[2]}&act=addfav`
-    );
-    for (let source of sources) {
-      let handlers = source.attributeNames().filter((name) => /^on/i.test(name)).map((name) => source.attribute(name) ?? ""), attributes = {};
-      handlers.some((handler) => handler.includes("toggle_advsearch")) && (attributes["data-ehpeek-search-advanced-toggle"] = "true"), handlers.some((handler) => handler.includes("toggle_filesearch")) && (attributes["data-ehpeek-search-file-toggle"] = "true"), handlers.some((handler) => handler.includes("inline_set=dm_")) && (attributes["data-ehpeek-grid-mode-source"] = "true"), source.inplace().setAttributes(attributes);
-    }
-    scriptSources.forEach((script) => script.inplace().remove());
-    let elems = {
-      content: contentSources.map((source) => {
-        let content = source.inplace();
-        return content.remove(), content;
-      })
-    }, data = {
-      title: documentSource.one("title")?.text() ?? ""
-    }, navigationRequest = (event) => {
-      if (event instanceof MouseEvent) {
-        let link = event.target instanceof Element ? DomNode.from(event.target).closest("a[href]") : null;
-        return !link || link.hasAttribute("data-ehpeek-single-page-bypass") || link.attribute("target") && link.attribute("target") !== "_self" || link.hasAttribute("download") ? null : {
-          method: "GET",
-          url: new URL(link.attribute("href") ?? "", window.location.href).href
-        };
-      }
-      let form = event.target instanceof HTMLFormElement ? DomNode.from(event.target) : null;
-      if (!form || !form.matches("#searchbox form, #fsdiv form") && !form.one("[name='f_search']"))
-        return null;
-      let method = (form.attribute("method") ?? "GET").toUpperCase();
-      if (method !== "GET" && method !== "POST")
-        return null;
-      let formElement = form.inplace().Component(), formData = new FormData(formElement, event.submitter), url = new URL(form.attribute("action") || window.location.href, window.location.href);
-      return method === "GET" ? (url.search = "", url.hash = "", formData.forEach((value, key) => {
-        typeof value == "string" && url.searchParams.append(key, value);
-      }), { method, url: url.href }) : { body: formData, method, url: url.href };
-    };
-    return { data, elems, handle: {
-      /** Intercepts only same-origin routes supported by EhPeek Single Page App. */
-      interceptSinglePageNavigation(host, onNavigate) {
-        let onClick = (event) => {
-          if (event.defaultPrevented || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
-            return;
-          let request = navigationRequest(event);
-          !request || !isSameOriginUrl(request.url) || !singlePageRoute(request.url) || (event.preventDefault(), event.stopImmediatePropagation(), onNavigate(request));
-        }, onSubmit = (event) => {
-          let request = navigationRequest(event);
-          !request || !isSameOriginUrl(request.url) || !singlePageRoute(request.url) || (event.preventDefault(), onNavigate(request));
-        };
-        return host.addEventListener("click", onClick, !0), host.addEventListener("submit", onSubmit, !0), () => {
-          host.removeEventListener("click", onClick, !0), host.removeEventListener("submit", onSubmit, !0);
-        };
-      },
-      /** Installs the detached response content into Single Page App's active host. */
-      mountPageContent(host) {
-        host.replaceChildren(...elems.content.map((node) => node.Component()));
-      }
-    } };
-  }
-  function scriptNumberValue(script, name) {
-    let match = script.match(new RegExp(`\\b(?:var\\s+)?${name}\\s*=\\s*(-?\\d+(?:\\.\\d+)?)`));
-    if (!match)
-      return null;
-    let value = Number(match[1]);
-    return Number.isFinite(value) ? value : null;
   }
 
   // src/eh/dom/topBar.ts
@@ -3012,13 +2698,13 @@
       homeHref: links[0]?.attribute("href") ?? "/"
     }, elems = {
       mount,
-      navItems: links.map((link) => link.clone())
+      navItems: links.map((link) => link.move())
     };
     return original.inplace().replaceWith(elems.mount), {
       data,
       elems,
       handle: {
-        /** Normalizes cloned original links for EhPeek's icon-based TopBar. */
+        /** Normalizes original links moved into EhPeek's icon-based TopBar. */
         updateNavItemVisual(className2) {
           elems.navItems.forEach(
             (item) => item.removeAttributes("id").replaceClasses(className2).removeAllStyles()
@@ -3450,7 +3136,7 @@
         progress: Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE)))
       });
     }, navigate = async (url) => {
-      if (!(props.onNavigateRequest?.(url) || navigationLoading)) {
+      if (!navigationLoading) {
         navigationLoading = !0, setLoading(!0), source.handle.updateSearchLoading(!0);
         try {
           await source.handle.loadSearchPage(url);
@@ -3501,7 +3187,7 @@
   }
 
   // src/components/Enhance/ScrollPageBar.tsx
-  var _tmpl$5 = /* @__PURE__ */ template('<div class="w-full mb-xs text-center textsize-sm">'), _tmpl$23 = /* @__PURE__ */ template('<a class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-transparent !text-[var(--color-site-text)] visited:!text-[var(--color-site-text)] hover:!bg-[var(--color-site-item-hover)] hover:!text-[var(--color-site-text)] active:!text-[var(--color-site-text)]"data-ehpeek-single-page-bypass>'), _tmpl$33 = /* @__PURE__ */ template('<td class="!w-sm !h-sm coarse:!w-md coarse:!h-md !p-0 rounded-sm coarse:rounded-md cursor-pointer text-center align-middle select-none">'), _tmpl$42 = /* @__PURE__ */ template("<span>"), _tmpl$52 = /* @__PURE__ */ template('<td class="!w-sm !h-sm coarse:!w-md coarse:!h-md !p-0 rounded-sm coarse:rounded-md cursor-pointer text-center align-middle select-none cursor-default"><span class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-transparent !text-[var(--color-site-text)] visited:!text-[var(--color-site-text)] hover:!bg-[var(--color-site-item-hover)] hover:!text-[var(--color-site-text)] active:!text-[var(--color-site-text)] invisible">'), _tmpl$6 = /* @__PURE__ */ template('<div><table class="border-separate border-spacing-4px coarse:border-spacing-6px"><tbody><tr>'), _tmpl$7 = /* @__PURE__ */ template('<span class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)]"aria-current=page>'), DRAG_PIXEL_STEP = 18;
+  var _tmpl$5 = /* @__PURE__ */ template('<div class="w-full mb-xs text-center textsize-sm">'), _tmpl$23 = /* @__PURE__ */ template('<a class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-transparent !text-[var(--color-site-text)] visited:!text-[var(--color-site-text)] hover:!bg-[var(--color-site-item-hover)] hover:!text-[var(--color-site-text)] active:!text-[var(--color-site-text)]">'), _tmpl$33 = /* @__PURE__ */ template('<td class="!w-sm !h-sm coarse:!w-md coarse:!h-md !p-0 rounded-sm coarse:rounded-md cursor-pointer text-center align-middle select-none">'), _tmpl$42 = /* @__PURE__ */ template("<span>"), _tmpl$52 = /* @__PURE__ */ template('<td class="!w-sm !h-sm coarse:!w-md coarse:!h-md !p-0 rounded-sm coarse:rounded-md cursor-pointer text-center align-middle select-none cursor-default"><span class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-transparent !text-[var(--color-site-text)] visited:!text-[var(--color-site-text)] hover:!bg-[var(--color-site-item-hover)] hover:!text-[var(--color-site-text)] active:!text-[var(--color-site-text)] invisible">'), _tmpl$6 = /* @__PURE__ */ template('<div><table class="border-separate border-spacing-4px coarse:border-spacing-6px"><tbody><tr>'), _tmpl$7 = /* @__PURE__ */ template('<span class="flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline !border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)]"aria-current=page>'), DRAG_PIXEL_STEP = 18;
   var PAGE_BAR_LINK_CLASS = "flex !w-sm !h-sm coarse:!w-md coarse:!h-md items-center justify-center box-border !p-0 rounded-sm coarse:rounded-md !border textsize-sm font-inherit no-underline hover:no-underline active:no-underline";
   var PAGE_BAR_CURRENT_COLOR_CLASS = "!border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)]", PAGE_BAR_DISABLED_COLOR_CLASS = "!border-transparent !bg-[color-mix(in_srgb,var(--color-site-page)_82%,black)] !text-[var(--color-site-text)] opacity-40 cursor-default";
   function GalleryPageDescription(props) {
@@ -3728,7 +3414,7 @@
       return _el$.$$click = (event) => {
         event.preventDefault(), event.stopPropagation(), props.onClick();
       }, insert(_el$, (() => {
-        var _c$ = memo(() => props.currentPage > 1);
+        var _c$ = memo(() => !!props.hasHistory);
         return () => _c$() ? texts_default.reader.continueReading : texts_default.reader.startReading;
       })(), _el$2), insert(_el$2, (() => {
         var _c$2 = memo(() => !!props.totalPages);
@@ -4178,7 +3864,7 @@
   }
 
   // src/components/SettingsMenu.tsx
-  var _tmpl$10 = /* @__PURE__ */ template('<p class="box-border w-full m-0 px-md pb-md text-left whitespace-normal [overflow-wrap:anywhere] [contain:inline-size] textsize-sm leading-[1.35] opacity-75">'), _tmpl$25 = /* @__PURE__ */ template('<div class="border-0 border-b ehp-color-site-border-subtle-b"><div class="flex items-stretch"><button type=button><span></span><span class="flex flex-none items-center gap-sm"><span class="textsize-sm opacity-70"></span><span></span></span></button><button type=button class="flex flex-none w-32px coarse:w-48px min-h-md coarse:min-h-88px items-center justify-center p-0 rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span class="flex w-20px h-20px items-center justify-center rounded-full border border-[var(--color-site-border-subtle)] leading-none">?'), _tmpl$34 = /* @__PURE__ */ template('<div class="ml-md border-0 border-l border-l-[var(--color-site-border-subtle)]">'), _tmpl$43 = /* @__PURE__ */ template('<div class="ehpeek-settings-menu pointer-events-auto fixed top-24px right-24px coarse:top-8px coarse:right-8px z-overlay box-border w-320px coarse:w-[calc(100vw-16px)] max-w-[calc(100vw-48px)] coarse:max-w-480px max-h-[calc(100vh-48px)] coarse:max-h-[calc(100dvh-16px)] overflow-x-hidden overflow-y-auto p-sm coarse:p-md border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-md leading-[1.2]"><div class="border-0 border-b ehp-color-site-border-subtle-b"><button type=button class="flex w-full min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg px-md rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit text-left textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span></span><span class="flex w-20px h-20px items-center justify-center leading-none"aria-hidden=true></span></button></div><div class="border-0 border-b ehp-color-site-border-subtle-b"><button type=button class="flex w-full min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg px-md rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit text-left textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span></span><span class="flex w-20px h-20px items-center justify-center leading-none"aria-hidden=true></span></button></div><a class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md font-700 hover:bg-[var(--color-site-item-hover)]"href=https://github.com/yamipot/ehpeek target=_blank rel="noopener noreferrer">v</a><div class="ehpeek-settings-actions grid grid-cols-3 gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]"><button type=button class="ehpeek-settings-apply block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108"></button><button type=button class="ehpeek-settings-default block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]"></button><button type=button class="ehpeek-settings-close block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]">');
+  var _tmpl$10 = /* @__PURE__ */ template('<p class="box-border w-full m-0 px-md pb-md text-left whitespace-normal [overflow-wrap:anywhere] [contain:inline-size] textsize-sm leading-[1.35] opacity-75">'), _tmpl$25 = /* @__PURE__ */ template('<div class="border-0 border-b ehp-color-site-border-subtle-b"><div class="flex items-stretch"><button type=button class="flex min-w-0 flex-1 min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text font-inherit text-left textsize-md cursor-pointer [-webkit-tap-highlight-color:transparent]"><span></span><span class="flex flex-none items-center gap-sm"><span class="textsize-sm opacity-70"></span><span></span></span></button><button type=button class="flex flex-none w-32px coarse:w-48px min-h-md coarse:min-h-88px items-center justify-center p-0 rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span class="flex w-20px h-20px items-center justify-center rounded-full border border-[var(--color-site-border-subtle)] leading-none">?'), _tmpl$34 = /* @__PURE__ */ template('<div class="ml-md border-0 border-l border-l-[var(--color-site-border-subtle)]">'), _tmpl$43 = /* @__PURE__ */ template('<div class="ehpeek-settings-menu pointer-events-auto fixed top-24px right-24px coarse:top-8px coarse:right-8px z-overlay box-border w-320px coarse:w-[calc(100vw-16px)] max-w-[calc(100vw-48px)] coarse:max-w-480px max-h-[calc(100vh-48px)] coarse:max-h-[calc(100dvh-16px)] overflow-x-hidden overflow-y-auto p-sm coarse:p-md border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-md leading-[1.2]"><div class="border-0 border-b ehp-color-site-border-subtle-b"><button type=button class="flex w-full min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg px-md rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit text-left textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span></span><span class="flex w-20px h-20px items-center justify-center leading-none"aria-hidden=true></span></button></div><div class="border-0 border-b ehp-color-site-border-subtle-b"><button type=button class="flex w-full min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg px-md rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit text-left textsize-md font-700 [-webkit-tap-highlight-color:transparent]"><span></span><span class="flex w-20px h-20px items-center justify-center leading-none"aria-hidden=true></span></button></div><a class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md font-700 hover:bg-[var(--color-site-item-hover)]"href=https://github.com/yamipot/ehpeek target=_blank rel="noopener noreferrer">v</a><div class="ehpeek-settings-actions grid grid-cols-3 gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]"><button type=button class="ehpeek-settings-apply block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108"></button><button type=button class="ehpeek-settings-default block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]"></button><button type=button class="ehpeek-settings-close block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]">');
   var SETTINGS_DOT_CLASS = "block flex-none w-10px h-10px coarse:w-18px coarse:h-18px rounded-full";
   function SwitchButton(props) {
     let [helpOpen, setHelpOpen] = createSignal(!1);
@@ -4199,14 +3885,7 @@
           var _el$9 = _tmpl$10();
           return insert(_el$9, () => props.description), _el$9;
         }
-      }), null), createRenderEffect((_p$) => {
-        var _v$ = `flex min-w-0 flex-1 min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text font-inherit text-left textsize-md [-webkit-tap-highlight-color:transparent] ${props.disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer"}`, _v$2 = props.disabled, _v$3 = `${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`;
-        return _v$ !== _p$.e && className(_el$3, _p$.e = _v$), _v$2 !== _p$.t && (_el$3.disabled = _p$.t = _v$2), _v$3 !== _p$.a && className(_el$7, _p$.a = _v$3), _p$;
-      }, {
-        e: void 0,
-        t: void 0,
-        a: void 0
-      }), _el$;
+      }), null), createRenderEffect(() => className(_el$7, `${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`)), _el$;
     })();
   }
   function SettingsMenu(props) {
@@ -4303,9 +3982,6 @@
               get description() {
                 return texts_default.settings.singlePageAppHelp;
               },
-              get disabled() {
-                return !draft.touchUiEnabled;
-              },
               get label() {
                 return texts_default.settings.singlePageApp;
               },
@@ -4367,7 +4043,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260720.0715", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260720.1205", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -4378,8 +4054,8 @@
         }, insert(_el$23, () => texts_default.button.default), _el$24.$$click = (event) => {
           event.stopPropagation(), close();
         }, insert(_el$24, () => texts_default.button.close), createRenderEffect((_p$) => {
-          var _v$4 = readerOptionsOpen(), _v$5 = enhanceOpen();
-          return _v$4 !== _p$.e && setAttribute(_el$10, "aria-expanded", _p$.e = _v$4), _v$5 !== _p$.t && setAttribute(_el$15, "aria-expanded", _p$.t = _v$5), _p$;
+          var _v$ = readerOptionsOpen(), _v$2 = enhanceOpen();
+          return _v$ !== _p$.e && setAttribute(_el$10, "aria-expanded", _p$.e = _v$), _v$2 !== _p$.t && setAttribute(_el$15, "aria-expanded", _p$.t = _v$2), _p$;
         }, {
           e: void 0,
           t: void 0
@@ -4489,7 +4165,7 @@
   }
 
   // src/components/TouchUI/GalleryInfoPanel.tsx
-  var _tmpl$12 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-rating-dialog fixed inset-0 z-overlay flex items-center justify-center p-md bg-black/65"role=dialog aria-modal=true aria-label="Rate gallery"><div class="box-border flex w-[min(92vw,420px)] flex-col gap-lg rounded-lg border ehp-color-site-border p-lg ehp-color-site-elevated ehp-color-site-text shadow-xl"><div class="textsize-md font-700">Rate gallery</div><button type=button class="relative inline-flex self-center max-w-full overflow-hidden p-0 border-0 bg-transparent cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"><span class="flex gap-1px pointer-events-none text-[var(--color-muted)] opacity-40"aria-hidden=true></span><span aria-hidden=true></span></button><div class="grid grid-cols-2 gap-sm pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]"><button type=button class="block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108">Submit</button><button type=button class="block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]">'), _tmpl$26 = /* @__PURE__ */ template('<section class="ehpeek-touch-gallery flex box-border w-full flex-col mb-md ehp-color-site-text font-sans"><div class="ehpeek-touch-gallery-hero relative grid min-h-[clamp(260px,42vh,340px)] pt-lg pr-[max(16px,env(safe-area-inset-right,0px))] pb-48px pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-surface ehp-color-site-text"><div><div class="ehpeek-touch-gallery-hero-side flex self-stretch min-w-0 flex-col items-start gap-8px pt-2px"><div class="ehpeek-touch-gallery-heading flex min-w-0 w-full flex-none flex-col gap-sm items-start pb-xs"><div class="ehpeek-touch-gallery-title-main line-clamp-4 flex-none overflow-hidden textsize-lg font-400 leading-[1.16] text-left break-anywhere"></div><div class="ehpeek-touch-gallery-title-sub line-clamp-3 flex-none overflow-hidden opacity-82 textsize-md leading-[1.2] text-left break-anywhere"></div></div><div class="ehpeek-touch-gallery-category-row grid grid-cols-[minmax(0,35fr)_minmax(0,65fr)] w-full flex-none items-center gap-lg mt-auto pt-md"><div class="ehpeek-touch-gallery-category box-border w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-xs border border-solid py-6px px-10px text-center textsize-md font-700 leading-[1.1] uppercase"></div></div></div></div></div><div class="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-87px mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-xs bg-[var(--color-site-elevated)] shadow-[0_2px_10px_var(--color-shadow-panel)]"><div class="ehpeek-touch-gallery-primary-actions flex min-w-0 border-0 border-l-8 border-solid border-l-[var(--color-site-page)]"></div></div><div class="ehpeek-touch-gallery-content flex flex-col gap-lg pt-xl pr-[max(16px,env(safe-area-inset-right,0px))] pb-lg pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-page ehp-color-site-text"><div class="ehpeek-touch-gallery-meta grid grid-cols-[repeat(3,minmax(0,1fr))] gap-y-md gap-x-lg items-center textsize-md leading-[1.2] text-center">'), _tmpl$35 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-cover flex self-center justify-self-stretch w-full max-h-full aspect-[2/3] items-center justify-center overflow-hidden rounded-3px">'), _tmpl$44 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-rating flex w-full min-w-0 flex-col items-center gap-4px p-0 border-0 bg-transparent ehp-color-site-text font-inherit text-center cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"aria-label="Rate gallery"><div class="ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden"><span class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[var(--color-muted)] opacity-40"aria-hidden=true></span><span aria-hidden=true></span></div><div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[var(--color-muted)] textsize-md leading-[1.15] whitespace-nowrap"><span class="ehpeek-touch-gallery-rating-label min-w-0 overflow-hidden text-ellipsis"aria-live=polite>'), _tmpl$53 = /* @__PURE__ */ template('<span class="ehpeek-touch-gallery-rating-count flex-none pl-6px border-0 border-l border-[var(--color-site-border-subtle)] opacity-75">'), _tmpl$62 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-meta-value line-clamp-2 min-w-0 overflow-hidden whitespace-normal break-normal">'), _tmpl$72 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-tag-groups flex flex-col gap-md pt-2px">'), _tmpl$82 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$92 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-actions-menu relative flex min-w-0 items-center justify-center"><button type=button class="ehpeek-touch-gallery-actions-menu-button inline-flex w-md h-md items-center justify-center border-0 bg-transparent ehp-color-site-text"aria-haspopup=menu>'), _tmpl$0 = /* @__PURE__ */ template('<section class="ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start"><div class="ehpeek-touch-gallery-tag-group-name min-h-sm overflow-hidden text-ellipsis whitespace-nowrap rounded-xl bg-[var(--color-site-elevated)] py-sm px-md text-center lowercase ehp-color-site-accent textsize-md font-600"></div><div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">'), _tmpl$1 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"role=menuitem><span class="w-24px text-center ehp-color-site-accent"aria-hidden=true>↺</span><span>'), _tmpl$102 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-t ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"role=menuitem><span>'), _tmpl$112 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-tag-menu-dialog fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"role=dialog aria-modal=true><div class="ehpeek-touch-gallery-tag-menu-panel box-border flex w-full max-w-420px max-h-[calc(100dvh-32px)] flex-col overflow-x-hidden overflow-y-auto whitespace-nowrap border ehp-color-site-border rounded-md ehp-color-site-elevated shadow-xl"role=menu><a class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text no-underline font-inherit textsize-md text-left"role=menuitem><span></span></a><a class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-t ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text no-underline font-inherit textsize-md text-left cursor-pointer"target=_blank rel="noopener noreferrer"role=menuitem><span></span></a><button type=button class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"role=menuitem><span class="w-24px text-center ehp-color-site-accent textsize-lg leading-none"aria-hidden=true>+</span><span>'), _tmpl$122 = /* @__PURE__ */ template('<div class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"role=dialog aria-modal=true><div class="box-border flex w-full max-w-420px flex-col gap-lg rounded-md border ehp-color-site-border ehp-color-site-elevated p-lg shadow-xl"><div class="ehp-color-site-text textsize-lg font-700"></div><label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600"><span></span><select class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"></select></label><label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600"><span></span><select class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"><option value=marked></option><option value=watched></option><option value=hidden></option></select></label><div class="grid grid-cols-2 gap-md"><button type=button class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"></button><button type=button class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"><span>'), _tmpl$13 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-tag-menu relative inline-flex max-w-full"><button type=button class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap appearance-none m-0 py-0 rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer select-none transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"aria-haspopup=menu>'), _tmpl$14 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"role=menuitem><span class="w-24px text-center ehp-color-site-accent"aria-hidden=true>↑</span><span>'), _tmpl$15 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag-menu-item flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md text-left cursor-pointer"role=menuitem><span class="w-24px text-center ehp-color-site-accent"aria-hidden=true>↓</span><span>'), _tmpl$16 = /* @__PURE__ */ template("<option>"), _tmpl$17 = /* @__PURE__ */ template('<span class="contents [&amp;_*]:!bg-transparent [&amp;_*]:!text-inherit"translate=no>'), _tmpl$18 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-overlay flex w-[min(86vw,360px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$19 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-menu relative z-2 min-w-0"><button type=button aria-haspopup=menu><span class="block leading-[1.15]"></span><span class="ehpeek-touch-gallery-favorite-icon block mt-2px opacity-78 normal-case"aria-hidden=true>'), _tmpl$20 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-loading flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left">'), _tmpl$21 = /* @__PURE__ */ template('<button type=button><span class="ehpeek-touch-gallery-favorite-option-icon flex-none ehp-color-site-text"aria-hidden=true></span><span></span><span aria-hidden=true>'), TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item block box-border w-full min-h-lg py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline textsize-md leading-[1.2]", TOUCH_GALLERY_INFO_CLASSES = {
+  var _tmpl$12 = /* @__PURE__ */ template("<div>"), _tmpl$26 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-rating-dialog fixed inset-0 z-overlay flex items-center justify-center p-md bg-black/65"role=dialog aria-modal=true aria-label="Rate gallery"><div class="box-border flex w-[min(92vw,420px)] flex-col gap-lg rounded-lg border ehp-color-site-border p-lg ehp-color-site-elevated ehp-color-site-text shadow-xl"><div class="textsize-md font-700">Rate gallery</div><button type=button class="relative inline-flex self-center max-w-full overflow-hidden p-0 border-0 bg-transparent cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"><span class="flex gap-1px pointer-events-none text-[var(--color-muted)] opacity-40"aria-hidden=true></span><span aria-hidden=true></span></button><div class="grid grid-cols-2 gap-sm pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]"><button type=button class="block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108">Submit</button><button type=button class="block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]">'), _tmpl$35 = /* @__PURE__ */ template('<section class="ehpeek-touch-gallery flex box-border w-full flex-col mb-md ehp-color-site-text font-sans"><div class="ehpeek-touch-gallery-hero relative grid min-h-[clamp(260px,42vh,340px)] pt-lg pr-[max(16px,env(safe-area-inset-right,0px))] pb-48px pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-surface ehp-color-site-text"><div><div class="ehpeek-touch-gallery-hero-side flex self-stretch min-w-0 flex-col items-start gap-8px pt-2px"><div class="ehpeek-touch-gallery-heading flex min-w-0 w-full flex-none flex-col gap-sm items-start pb-xs"><div class="ehpeek-touch-gallery-title-main line-clamp-4 flex-none overflow-hidden textsize-lg font-400 leading-[1.16] text-left break-anywhere"></div><div class="ehpeek-touch-gallery-title-sub line-clamp-3 flex-none overflow-hidden opacity-82 textsize-md leading-[1.2] text-left break-anywhere"></div></div><div class="ehpeek-touch-gallery-category-row grid grid-cols-[minmax(0,35fr)_minmax(0,65fr)] w-full flex-none items-center gap-lg mt-auto pt-md"><div class="ehpeek-touch-gallery-category box-border w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-xs border border-solid py-6px px-10px text-center textsize-md font-700 leading-[1.1] uppercase"></div></div></div></div></div><div class="ehpeek-touch-gallery-primary relative z-1 grid grid-cols-[1fr_1fr] min-h-87px mt--18px mr-[max(14px,env(safe-area-inset-right,0px))] ml-[max(14px,env(safe-area-inset-left,0px))] overflow-visible rounded-xs bg-[var(--color-site-elevated)] shadow-[0_2px_10px_var(--color-shadow-panel)]"><div class="ehpeek-touch-gallery-primary-actions flex min-w-0 border-0 border-l-8 border-solid border-l-[var(--color-site-page)]"></div></div><div class="ehpeek-touch-gallery-content flex flex-col gap-lg pt-xl pr-[max(16px,env(safe-area-inset-right,0px))] pb-lg pl-[max(16px,env(safe-area-inset-left,0px))] ehp-color-site-page ehp-color-site-text"><div class="ehpeek-touch-gallery-meta grid grid-cols-[repeat(3,minmax(0,1fr))] gap-y-md gap-x-lg items-center textsize-md leading-[1.2] text-center">'), _tmpl$44 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-cover flex self-center justify-self-stretch w-full max-h-full aspect-[2/3] items-center justify-center overflow-hidden rounded-3px">'), _tmpl$53 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-rating flex w-full min-w-0 flex-col items-center gap-4px p-0 border-0 bg-transparent ehp-color-site-text font-inherit text-center cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"aria-label="Rate gallery"><div class="ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden"><span class="ehpeek-touch-gallery-rating-stars-empty flex gap-1px text-[var(--color-muted)] opacity-40"aria-hidden=true></span><span aria-hidden=true></span></div><div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[var(--color-muted)] textsize-md leading-[1.15] whitespace-nowrap"><span class="ehpeek-touch-gallery-rating-label min-w-0 overflow-hidden text-ellipsis"aria-live=polite>'), _tmpl$62 = /* @__PURE__ */ template('<span class="ehpeek-touch-gallery-rating-count flex-none pl-6px border-0 border-l border-[var(--color-site-border-subtle)] opacity-75">'), _tmpl$72 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-meta-value line-clamp-2 min-w-0 overflow-hidden whitespace-normal break-normal">'), _tmpl$82 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-tag-groups flex flex-col gap-md pt-2px">'), _tmpl$92 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-actions-menu-panel absolute top-48px right-0 z-overlay flex min-w-285px max-w-[min(78vw,320px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$0 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-actions-menu relative flex min-w-0 items-center justify-center"><button type=button class="ehpeek-touch-gallery-actions-menu-button inline-flex w-md h-md items-center justify-center border-0 bg-transparent ehp-color-site-text"aria-haspopup=menu>'), _tmpl$1 = /* @__PURE__ */ template('<section class="ehpeek-touch-gallery-tag-group grid grid-cols-[minmax(76px,20%)_minmax(0,1fr)] gap-sm items-start"><div class="ehpeek-touch-gallery-tag-group-name min-h-sm overflow-hidden text-ellipsis whitespace-nowrap rounded-xl bg-[var(--color-site-elevated)] py-sm px-md text-center lowercase ehp-color-site-accent textsize-md font-600"></div><div class="ehpeek-touch-gallery-tags flex flex-wrap gap-sm">'), _tmpl$102 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag inline-flex max-w-full min-h-lg items-center overflow-hidden text-ellipsis whitespace-nowrap appearance-none m-0 py-0 rounded-xl border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] px-lg ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer select-none transition-[border-color,background-color,color] duration-120 hover:border-[var(--color-site-border)] hover:bg-[var(--color-site-accent-hover)] hover:ehp-color-site-accent"aria-haspopup=menu>'), _tmpl$112 = /* @__PURE__ */ template('<div role=dialog aria-modal=true><div class="ehpeek-touch-gallery-tag-menu-panel box-border flex w-full max-w-420px max-h-[calc(100dvh-32px)] flex-col overflow-x-hidden overflow-y-auto whitespace-nowrap border ehp-color-site-border rounded-md ehp-color-site-elevated shadow-xl"role=menu>'), _tmpl$122 = /* @__PURE__ */ template('<div class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"role=dialog aria-modal=true><div class="box-border flex w-full max-w-420px flex-col gap-lg rounded-md border ehp-color-site-border ehp-color-site-elevated p-lg shadow-xl"><div class="ehp-color-site-text textsize-lg font-700"></div><label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600"><span></span><select class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"></select></label><label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600"><span></span><select class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"><option value=marked></option><option value=watched></option><option value=hidden></option></select></label><div class="grid grid-cols-2 gap-md"><button type=button class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"></button><button type=button class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"><span>'), _tmpl$13 = /* @__PURE__ */ template('<button type=button class="ehpeek-touch-gallery-tag-menu-item flex box-border w-full min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text no-underline font-inherit textsize-md text-left cursor-pointer"role=menuitem><span>'), _tmpl$14 = /* @__PURE__ */ template("<option>"), _tmpl$15 = /* @__PURE__ */ template('<span class="contents [&amp;_*]:!bg-transparent [&amp;_*]:!text-inherit"translate=no>'), _tmpl$16 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-panel absolute top-[calc(100%+8px)] left-0 z-overlay flex w-[min(86vw,360px)] flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$17 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-menu relative z-2 min-w-0"><button type=button aria-haspopup=menu><span class="block leading-[1.15]"></span><span class="ehpeek-touch-gallery-favorite-icon block mt-2px opacity-78 normal-case"aria-hidden=true>'), _tmpl$18 = /* @__PURE__ */ template('<div class="ehpeek-touch-gallery-favorite-loading flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left">'), _tmpl$19 = /* @__PURE__ */ template('<button type=button><span class="ehpeek-touch-gallery-favorite-option-icon flex-none ehp-color-site-text"aria-hidden=true></span><span></span><span aria-hidden=true>'), TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS = "ehpeek-touch-gallery-actions-menu-item block box-border w-full min-h-lg py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline textsize-md leading-[1.2]", TOUCH_GALLERY_TAG_MENU_ITEM_CLASS = "ehpeek-touch-gallery-tag-menu-item flex box-border w-full min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text no-underline font-inherit textsize-md text-left cursor-pointer", TOUCH_GALLERY_TAG_MENU_CLASS = "!box-border flex !h-auto !w-full !float-none !m-0 !p-0 flex-col !textsize-md", TOUCH_GALLERY_INFO_CLASSES = {
     actionItems: TOUCH_GALLERY_ACTION_MENU_ITEM_CLASS,
     cover: "block w-full max-w-full h-full max-h-full mx-auto object-contain object-center",
     host: "ehpeek-touch-gallery-host",
@@ -4501,7 +4177,7 @@
     }
   }, RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
   function GalleryInfoPanel(props) {
-    let source = untrack(() => props.source), rating = source.data.rating, hasCover = source.elems.cover !== null, [ratingValue, setRatingValue] = createSignal(rating?.value ?? 0), [ratingPreview, setRatingPreview] = createSignal(null), [ratingPickerOpen, setRatingPickerOpen] = createSignal(!1), [ratingSubmitted, setRatingSubmitted] = createSignal(rating?.rated ?? !1), [ratingUpdating, setRatingUpdating] = createSignal(!1), [ratingCount, setRatingCount] = createSignal(rating?.count ?? ""), [ratingValueLabel, setRatingValueLabel] = createSignal(rating?.label ?? ""), initialTagGroups = source.data.tagGroups.map((group) => ({
+    let source = untrack(() => props.source), rating = source.data.rating, hasCover = source.elems.cover !== null, [ratingValue, setRatingValue] = createSignal(rating?.value ?? 0), [ratingPreview, setRatingPreview] = createSignal(null), [ratingPickerOpen, setRatingPickerOpen] = createSignal(!1), [ratingSubmitted, setRatingSubmitted] = createSignal(rating?.rated ?? !1), [ratingCount] = createSignal(rating?.count ?? ""), [ratingValueLabel] = createSignal(rating?.label ?? ""), initialTagGroups = source.data.tagGroups.map((group) => ({
       ...group,
       tags: group.tags.flatMap(({
         contentSourceIndex,
@@ -4513,7 +4189,7 @@
           contentSource
         }] : [];
       })
-    })), [tagGroups, setTagGroups] = createSignal(initialTagGroups), [newTagVisible, setNewTagVisible] = createSignal(!1), hasNewTag = () => !!(source.elems.newTag && source.elems.newTagButton && source.elems.newTagField && source.elems.newTagForm), displayedRating = createMemo(() => ratingPreview() ?? ratingValue()), ratingLabel = createMemo(() => {
+    })), [tagGroups, setTagGroups] = createSignal(initialTagGroups), [selectedTag, setSelectedTag] = createSignal(null), [newTagVisible, setNewTagVisible] = createSignal(!1), hasNewTag = () => !!(source.elems.newTag && source.elems.newTagButton && source.elems.newTagField && source.elems.newTagForm), displayedRating = createMemo(() => ratingPreview() ?? ratingValue()), ratingLabel = createMemo(() => {
       let preview = ratingPreview();
       return preview !== null ? `Rate as ${preview.toFixed(1)} stars` : ratingValueLabel();
     });
@@ -4521,17 +4197,13 @@
       let stopObservingTags = source.handle.observeGalleryTagGroups(setTagGroups);
       onCleanup(stopObservingTags);
     });
-    let submitRating = async (value) => {
-      if (!rating || ratingUpdating())
+    let submitRating = (value) => {
+      if (!rating)
         return !1;
-      setRatingUpdating(!0);
       try {
-        let result = await source.handle.submitGalleryRating(value);
-        return setRatingValue(result.value), setRatingCount(String(result.count)), setRatingValueLabel(formatRatingLabel(rating.label, result.average)), setRatingPreview(null), setRatingSubmitted(!0), !0;
+        return source.handle.submitGalleryRating(value), setRatingValue(value), setRatingPreview(null), setRatingSubmitted(!0), !0;
       } catch (error) {
         return setRatingPreview(null), console.error("[ehpeek]", error), window.alert(error instanceof Error ? error.message : texts_default.errors.loadFailed), !1;
-      } finally {
-        setRatingUpdating(!1);
       }
     }, openNewTag = () => {
       hasNewTag() && (setNewTagVisible(!0), queueMicrotask(() => {
@@ -4539,51 +4211,58 @@
           block: "nearest"
         }), source.elems.newTagField?.focus();
       }));
+    }, openTagMenu = (tag) => {
+      try {
+        source.handle.openGalleryTagMenu(tag, TOUCH_GALLERY_TAG_MENU_CLASS, TOUCH_GALLERY_TAG_MENU_ITEM_CLASS, hasNewTag() ? openNewTag : void 0), setSelectedTag(tag);
+      } catch (error) {
+        console.error("[ehpeek] Gallery tag actions failed", error), window.alert(error instanceof Error ? error.message : texts_default.errors.loadFailed);
+      }
+    }, closeTagMenu = () => {
+      selectedTag() && (source.handle.closeGalleryTagMenu(), setSelectedTag(null));
     };
     return (() => {
-      var _el$ = _tmpl$26(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.firstChild, _el$6 = _el$5.firstChild, _el$7 = _el$6.nextSibling, _el$8 = _el$5.nextSibling, _el$9 = _el$8.firstChild, _el$0 = _el$2.nextSibling, _el$1 = _el$0.firstChild, _el$10 = _el$0.nextSibling, _el$11 = _el$10.firstChild;
+      var _el$ = _tmpl$35(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.firstChild, _el$6 = _el$5.firstChild, _el$7 = _el$6.nextSibling, _el$8 = _el$5.nextSibling, _el$9 = _el$8.firstChild, _el$0 = _el$2.nextSibling, _el$1 = _el$0.firstChild, _el$10 = _el$0.nextSibling, _el$11 = _el$10.firstChild;
       return className(_el$3, `ehpeek-touch-gallery-summary grid gap-18px items-stretch ${hasCover ? "grid-cols-[minmax(120px,38%)_minmax(0,1fr)]" : "grid-cols-1"}`), insert(_el$3, hasCover && (() => {
-        var _el$21 = _tmpl$35();
-        return insert(_el$21, createComponent(DomNode2, {
+        var _el$22 = _tmpl$44();
+        return insert(_el$22, createComponent(DomNode2, {
           get node() {
             return source.elems.cover;
           }
-        })), _el$21;
+        })), _el$22;
       })(), _el$4), insert(_el$6, () => source.data.titleMain), insert(_el$7, () => source.data.titleSub), insert(_el$9, () => source.data.category), insert(_el$8, rating && (() => {
-        var _el$22 = _tmpl$44(), _el$23 = _el$22.firstChild, _el$24 = _el$23.firstChild, _el$25 = _el$24.nextSibling, _el$26 = _el$23.nextSibling, _el$27 = _el$26.firstChild;
-        return _el$22.addEventListener("blur", () => {
+        var _el$23 = _tmpl$53(), _el$24 = _el$23.firstChild, _el$25 = _el$24.firstChild, _el$26 = _el$25.nextSibling, _el$27 = _el$24.nextSibling, _el$28 = _el$27.firstChild;
+        return _el$23.addEventListener("blur", () => {
           setRatingPreview(null);
-        }), _el$22.addEventListener("pointerleave", () => {
+        }), _el$23.addEventListener("pointerleave", () => {
           setRatingPreview(null);
-        }), _el$22.$$click = () => {
+        }), _el$23.$$click = () => {
           setRatingPreview(null), setRatingPickerOpen(!0);
-        }, _el$23.$$pointermove = (event) => {
+        }, _el$24.$$pointermove = (event) => {
           event.pointerType === "mouse" && setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget));
-        }, insert(_el$24, createComponent(For, {
+        }, insert(_el$25, createComponent(For, {
           each: RATING_STAR_INDEXES,
           children: () => createComponent(Icon, {
             name: "star"
           })
-        })), insert(_el$25, createComponent(For, {
+        })), insert(_el$26, createComponent(For, {
           each: RATING_STAR_INDEXES,
           children: () => createComponent(Icon, {
             name: "star",
             filled: !0
           })
-        })), insert(_el$27, ratingLabel), insert(_el$26, (() => {
+        })), insert(_el$28, ratingLabel), insert(_el$27, (() => {
           var _c$2 = memo(() => !!ratingCount());
           return () => _c$2() && (() => {
-            var _el$28 = _tmpl$53();
-            return insert(_el$28, ratingCount), _el$28;
+            var _el$29 = _tmpl$62();
+            return insert(_el$29, ratingCount), _el$29;
           })();
         })(), null), createRenderEffect((_p$) => {
-          var _v$6 = ratingUpdating(), _v$7 = `ehpeek-touch-gallery-rating-stars-fill absolute top-0 left-0 flex gap-1px overflow-hidden ${ratingSubmitted() ? "text-[var(--color-accent)]" : "ehp-color-site-accent"}`, _v$8 = `${displayedRating() / 5 * 100}%`;
-          return _v$6 !== _p$.e && (_el$22.disabled = _p$.e = _v$6), _v$7 !== _p$.t && className(_el$25, _p$.t = _v$7), _v$8 !== _p$.a && setStyleProperty(_el$25, "width", _p$.a = _v$8), _p$;
+          var _v$4 = `ehpeek-touch-gallery-rating-stars-fill absolute top-0 left-0 flex gap-1px overflow-hidden ${ratingSubmitted() ? "text-[var(--color-rating-submitted)]" : "ehp-color-site-accent"}`, _v$5 = `${displayedRating() / 5 * 100}%`;
+          return _v$4 !== _p$.e && className(_el$26, _p$.e = _v$4), _v$5 !== _p$.t && setStyleProperty(_el$26, "width", _p$.t = _v$5), _p$;
         }, {
           e: void 0,
-          t: void 0,
-          a: void 0
-        }), _el$22;
+          t: void 0
+        }), _el$23;
       })(), null), insert(_el$0, createComponent(TouchGalleryFavoriteButton, {
         source
       }), _el$1), insert(_el$1, () => props.primaryAction), insert(_el$11, createComponent(For, {
@@ -4591,8 +4270,8 @@
           return source.data.summary;
         },
         children: (item) => (() => {
-          var _el$29 = _tmpl$62();
-          return insert(_el$29, () => item.value), _el$29;
+          var _el$30 = _tmpl$72();
+          return insert(_el$30, () => item.value), _el$30;
         })()
       }), null), insert(_el$11, createComponent(TouchGalleryActionsMenu, {
         get items() {
@@ -4601,68 +4280,68 @@
       }), null), insert(_el$10, (() => {
         var _c$ = memo(() => tagGroups().length > 0);
         return () => _c$() && (() => {
-          var _el$30 = _tmpl$72();
-          return insert(_el$30, createComponent(For, {
+          var _el$31 = _tmpl$82();
+          return insert(_el$31, createComponent(For, {
             get each() {
               return tagGroups();
             },
             children: (group) => createComponent(TouchGalleryTagGroup, {
               group,
-              source,
-              get onNewTagOpen() {
-                return hasNewTag() ? openNewTag : void 0;
-              }
+              onTagOpen: openTagMenu
             })
-          })), _el$30;
+          })), _el$31;
         })();
       })(), null), insert(_el$10, createComponent(Show, {
         get when() {
-          return memo(() => !!newTagVisible())() && hasNewTag();
+          return hasNewTag();
         },
         get children() {
-          return createComponent(TouchGalleryNewTag, {
+          var _el$12 = _tmpl$12();
+          return insert(_el$12, createComponent(TouchGalleryNewTag, {
             source
-          });
+          })), createRenderEffect(() => className(_el$12, newTagVisible() ? "block" : "hidden")), _el$12;
         }
+      }), null), insert(_el$, createComponent(TouchGalleryTagMenu, {
+        source,
+        get tag() {
+          return selectedTag();
+        },
+        onClose: closeTagMenu
       }), null), insert(_el$, createComponent(Show, {
         get when() {
           return ratingPickerOpen();
         },
         get children() {
-          var _el$12 = _tmpl$12(), _el$13 = _el$12.firstChild, _el$14 = _el$13.firstChild, _el$15 = _el$14.nextSibling, _el$16 = _el$15.firstChild, _el$17 = _el$16.nextSibling, _el$18 = _el$15.nextSibling, _el$19 = _el$18.firstChild, _el$20 = _el$19.nextSibling;
-          return _el$12.$$click = (event) => {
+          var _el$13 = _tmpl$26(), _el$14 = _el$13.firstChild, _el$15 = _el$14.firstChild, _el$16 = _el$15.nextSibling, _el$17 = _el$16.firstChild, _el$18 = _el$17.nextSibling, _el$19 = _el$16.nextSibling, _el$20 = _el$19.firstChild, _el$21 = _el$20.nextSibling;
+          return _el$13.$$click = (event) => {
             event.target === event.currentTarget && (setRatingPreview(null), setRatingPickerOpen(!1));
-          }, _el$15.$$click = (event) => {
+          }, _el$16.$$click = (event) => {
             setRatingPreview(ratingFromPointer(event.clientX, event.currentTarget));
-          }, insert(_el$16, createComponent(For, {
+          }, insert(_el$17, createComponent(For, {
             each: RATING_STAR_INDEXES,
             children: () => createComponent(Icon, {
               name: "star",
               size: 48
             })
-          })), insert(_el$17, createComponent(For, {
+          })), insert(_el$18, createComponent(For, {
             each: RATING_STAR_INDEXES,
             children: () => createComponent(Icon, {
               name: "star",
               size: 48,
               filled: !0
             })
-          })), _el$19.$$click = () => {
-            submitRating(displayedRating()).then((submitted) => {
-              submitted && setRatingPickerOpen(!1);
-            });
-          }, _el$20.$$click = () => {
+          })), _el$20.$$click = () => {
+            submitRating(displayedRating()) && setRatingPickerOpen(!1);
+          }, _el$21.$$click = () => {
             setRatingPreview(null), setRatingPickerOpen(!1);
-          }, insert(_el$20, () => texts_default.button.close), createRenderEffect((_p$) => {
-            var _v$ = ratingUpdating(), _v$2 = `Rate gallery: ${displayedRating().toFixed(1)} stars`, _v$3 = `absolute top-0 left-0 flex gap-1px overflow-hidden pointer-events-none ${ratingSubmitted() ? "text-[var(--color-accent)]" : "ehp-color-site-accent"}`, _v$4 = `${displayedRating() / 5 * 100}%`, _v$5 = ratingUpdating();
-            return _v$ !== _p$.e && (_el$15.disabled = _p$.e = _v$), _v$2 !== _p$.t && setAttribute(_el$15, "aria-label", _p$.t = _v$2), _v$3 !== _p$.a && className(_el$17, _p$.a = _v$3), _v$4 !== _p$.o && setStyleProperty(_el$17, "width", _p$.o = _v$4), _v$5 !== _p$.i && (_el$19.disabled = _p$.i = _v$5), _p$;
+          }, insert(_el$21, () => texts_default.button.close), createRenderEffect((_p$) => {
+            var _v$ = `Rate gallery: ${displayedRating().toFixed(1)} stars`, _v$2 = `absolute top-0 left-0 flex gap-1px overflow-hidden pointer-events-none ${ratingSubmitted() ? "text-[var(--color-rating-submitted)]" : "ehp-color-site-accent"}`, _v$3 = `${displayedRating() / 5 * 100}%`;
+            return _v$ !== _p$.e && setAttribute(_el$16, "aria-label", _p$.e = _v$), _v$2 !== _p$.t && className(_el$18, _p$.t = _v$2), _v$3 !== _p$.a && setStyleProperty(_el$18, "width", _p$.a = _v$3), _p$;
           }, {
             e: void 0,
             t: void 0,
-            a: void 0,
-            o: void 0,
-            i: void 0
-          }), _el$12;
+            a: void 0
+          }), _el$13;
         }
       }), null), createRenderEffect((_$p) => style(_el$9, source.data.categoryAppearance, _$p)), _el$;
     })();
@@ -4677,191 +4356,150 @@
         document.removeEventListener("click", onClick);
       });
     }), (() => {
-      var _el$31 = _tmpl$92(), _el$32 = _el$31.firstChild, _ref$ = root;
-      return typeof _ref$ == "function" ? use(_ref$, _el$31) : root = _el$31, _el$32.$$click = (event) => {
+      var _el$32 = _tmpl$0(), _el$33 = _el$32.firstChild, _ref$ = root;
+      return typeof _ref$ == "function" ? use(_ref$, _el$32) : root = _el$32, _el$33.$$click = (event) => {
         event.stopPropagation(), setOpen((value) => !value);
-      }, insert(_el$32, createComponent(Icon, {
+      }, insert(_el$33, createComponent(Icon, {
         name: "menu"
-      })), insert(_el$31, createComponent(Show, {
+      })), insert(_el$32, createComponent(Show, {
         get when() {
           return open();
         },
         get children() {
-          var _el$33 = _tmpl$82();
-          return insert(_el$33, createComponent(DomNodes, {
+          var _el$34 = _tmpl$92();
+          return insert(_el$34, createComponent(DomNodes, {
             get nodes() {
               return props.items;
             }
-          })), _el$33;
+          })), _el$34;
         }
-      }), null), createRenderEffect(() => setAttribute(_el$32, "aria-expanded", open())), _el$31;
+      }), null), createRenderEffect(() => setAttribute(_el$33, "aria-expanded", open())), _el$32;
     })();
   }
   function TouchGalleryTagGroup(props) {
     return (() => {
-      var _el$34 = _tmpl$0(), _el$35 = _el$34.firstChild, _el$36 = _el$35.nextSibling;
-      return insert(_el$35, () => props.group.namespace), insert(_el$36, createComponent(For, {
+      var _el$35 = _tmpl$1(), _el$36 = _el$35.firstChild, _el$37 = _el$36.nextSibling;
+      return insert(_el$36, () => props.group.namespace), insert(_el$37, createComponent(For, {
         get each() {
           return props.group.tags;
         },
         children: (tag) => createComponent(TouchGalleryTag, {
-          get source() {
-            return props.source;
-          },
           tag,
-          get onNewTagOpen() {
-            return props.onNewTagOpen;
-          }
+          onOpen: () => props.onTagOpen(tag)
         })
-      })), _el$34;
+      })), _el$35;
     })();
   }
   function TouchGalleryTag(props) {
-    let [open, setOpen] = createSignal(!1), [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(!1), tagSets = state.gallery.myTagSets.reload(), [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1"), [tagMode, setTagMode] = createSignal("marked"), [updating, setUpdating] = createSignal(!1), root, closeMenu = () => setOpen(!1);
+    return (() => {
+      var _el$38 = _tmpl$102();
+      return _el$38.$$click = () => props.onOpen(), insert(_el$38, createComponent(TouchGalleryTagContent, {
+        get tag() {
+          return props.tag;
+        }
+      })), createRenderEffect((_p$) => {
+        var _v$6 = props.tag.appearance.backgroundColor, _v$7 = props.tag.appearance.borderColor, _v$8 = props.tag.appearance.color, _v$9 = props.tag.label;
+        return _v$6 !== _p$.e && setStyleProperty(_el$38, "background-color", _p$.e = _v$6), _v$7 !== _p$.t && setStyleProperty(_el$38, "border-color", _p$.t = _v$7), _v$8 !== _p$.a && setStyleProperty(_el$38, "color", _p$.a = _v$8), _v$9 !== _p$.o && setAttribute(_el$38, "aria-label", _p$.o = _v$9), _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0
+      }), _el$38;
+    })();
+  }
+  function TouchGalleryTagMenu(props) {
+    let [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(!1), tagSets = state.gallery.myTagSets.reload(), [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1"), [tagMode, setTagMode] = createSignal("marked"), [updating, setUpdating] = createSignal(!1), [favoriteTag, setFavoriteTag] = createSignal(null);
     onMount(() => {
-      let onClick = (event) => {
-        (!(event.target instanceof Element) || !root.contains(event.target)) && closeMenu();
-      }, onKeyDown = (event) => {
-        event.key === "Escape" && closeMenu();
+      let onKeyDown = (event) => {
+        event.key === "Escape" && props.tag && props.onClose();
       };
-      document.addEventListener("click", onClick), document.addEventListener("keydown", onKeyDown), onCleanup(() => {
-        document.removeEventListener("click", onClick), document.removeEventListener("keydown", onKeyDown);
+      document.addEventListener("keydown", onKeyDown), onCleanup(() => {
+        document.removeEventListener("keydown", onKeyDown);
       });
     });
-    let runTagAction = async (action) => {
-      closeMenu(), setUpdating(!0);
+    let updateFavoriteTag = async (tag) => {
+      setUpdating(!0);
       try {
-        await props.source.handle.submitGalleryTagAction(props.tag, action);
-      } catch (error) {
-        console.error("[ehpeek] Gallery tag vote failed", {
-          action
-        }, error), window.alert(error instanceof Error ? error.message : texts_default.errors.loadFailed);
-      } finally {
-        setUpdating(!1);
-      }
-    }, updateFavoriteTag = async () => {
-      closeMenu(), setUpdating(!0);
-      try {
-        props.tag.myTag ? await props.source.handle.removeFavoriteTag(props.tag) : await props.source.handle.submitFavoriteTag(props.tag, selectedTagSet(), tagMode()), state.gallery.myTagAppearances.clear(), window.location.reload();
+        tag.myTag ? await props.source.handle.removeFavoriteTag(tag) : await props.source.handle.submitFavoriteTag(tag, selectedTagSet(), tagMode()), state.gallery.myTagAppearances.clear(), window.location.reload();
       } catch (error) {
         console.error("[ehpeek]", error), window.alert(error instanceof Error ? error.message : texts_default.errors.loadFailed);
       } finally {
         setUpdating(!1);
       }
     };
-    return (() => {
-      var _el$37 = _tmpl$13(), _el$38 = _el$37.firstChild, _ref$2 = root;
-      return typeof _ref$2 == "function" ? use(_ref$2, _el$37) : root = _el$37, _el$38.$$click = () => setOpen((open2) => !open2), insert(_el$38, createComponent(TouchGalleryTagContent, {
-        get tag() {
+    return [(() => {
+      var _el$39 = _tmpl$112(), _el$40 = _el$39.firstChild;
+      return _el$39.$$click = (event) => {
+        event.target === event.currentTarget && props.onClose();
+      }, _el$40.$$click = () => props.onClose(), insert(_el$40, createComponent(DomNode2, {
+        get node() {
+          return props.source.elems.tagMenuAction;
+        }
+      }), null), insert(_el$40, createComponent(Show, {
+        get when() {
           return props.tag;
-        }
-      })), insert(_el$37, createComponent(Show, {
-        get when() {
-          return open();
         },
-        get children() {
-          var _el$39 = _tmpl$112(), _el$40 = _el$39.firstChild, _el$44 = _el$40.firstChild, _el$45 = _el$44.firstChild, _el$46 = _el$44.nextSibling, _el$47 = _el$46.firstChild, _el$50 = _el$46.nextSibling, _el$51 = _el$50.firstChild, _el$52 = _el$51.nextSibling;
-          return _el$39.$$click = (event) => {
-            event.target === event.currentTarget && closeMenu();
-          }, _el$40.$$click = closeMenu, insert(_el$40, createComponent(Show, {
-            get when() {
-              return props.tag.vote !== null;
-            },
-            get fallback() {
-              return [(() => {
-                var _el$69 = _tmpl$14(), _el$70 = _el$69.firstChild, _el$71 = _el$70.nextSibling;
-                return _el$69.$$click = () => {
-                  runTagAction("voteUp");
-                }, insert(_el$71, () => texts_default.gallery.voteUp), createRenderEffect(() => _el$69.disabled = updating()), _el$69;
-              })(), (() => {
-                var _el$72 = _tmpl$15(), _el$73 = _el$72.firstChild, _el$74 = _el$73.nextSibling;
-                return _el$72.$$click = () => {
-                  runTagAction("voteDown");
-                }, insert(_el$74, () => texts_default.gallery.voteDown), createRenderEffect(() => _el$72.disabled = updating()), _el$72;
-              })()];
-            },
-            get children() {
-              var _el$41 = _tmpl$1(), _el$42 = _el$41.firstChild, _el$43 = _el$42.nextSibling;
-              return _el$41.$$click = () => {
-                runTagAction("withdrawVote");
-              }, insert(_el$43, () => texts_default.gallery.withdrawVote), createRenderEffect(() => _el$41.disabled = updating()), _el$41;
-            }
-          }), _el$44), _el$44.$$click = closeMenu, insert(_el$44, createComponent(Icon, {
-            name: "search"
-          }), _el$45), insert(_el$45, () => texts_default.gallery.showTaggedGalleries), _el$46.$$click = closeMenu, insert(_el$46, createComponent(Icon, {
-            name: "external-link"
-          }), _el$47), insert(_el$47, () => texts_default.gallery.showTagDefinition), insert(_el$40, createComponent(Show, {
-            get when() {
-              return !props.tag.myTag;
-            },
-            get fallback() {
-              return (() => {
-                var _el$75 = _tmpl$102(), _el$76 = _el$75.firstChild;
-                return _el$75.$$click = () => {
-                  updateFavoriteTag();
-                }, insert(_el$75, createComponent(Icon, {
-                  name: "heart",
-                  filled: !0
-                }), _el$76), insert(_el$76, () => texts_default.gallery.removeFavoriteTag), createRenderEffect(() => _el$75.disabled = updating()), _el$75;
-              })();
-            },
-            get children() {
-              var _el$48 = _tmpl$102(), _el$49 = _el$48.firstChild;
-              return _el$48.$$click = () => {
-                closeMenu(), setFavoriteDialogOpen(!0);
-              }, insert(_el$48, createComponent(Icon, {
-                name: "heart"
-              }), _el$49), insert(_el$49, () => texts_default.gallery.favoriteTag), createRenderEffect(() => _el$48.disabled = updating()), _el$48;
-            }
-          }), _el$50), _el$50.$$click = () => {
-            closeMenu(), props.onNewTagOpen?.();
-          }, insert(_el$52, () => texts_default.gallery.addNewTag), createRenderEffect((_p$) => {
-            var _v$9 = props.tag.label, _v$0 = props.tag.href, _v$1 = props.tag.definitionHref, _v$10 = !props.onNewTagOpen;
-            return _v$9 !== _p$.e && setAttribute(_el$39, "aria-label", _p$.e = _v$9), _v$0 !== _p$.t && setAttribute(_el$44, "href", _p$.t = _v$0), _v$1 !== _p$.a && setAttribute(_el$46, "href", _p$.a = _v$1), _v$10 !== _p$.o && (_el$50.disabled = _p$.o = _v$10), _p$;
-          }, {
-            e: void 0,
-            t: void 0,
-            a: void 0,
-            o: void 0
-          }), _el$39;
-        }
-      }), null), insert(_el$37, createComponent(Show, {
-        get when() {
-          return favoriteDialogOpen();
-        },
-        get children() {
-          var _el$53 = _tmpl$122(), _el$54 = _el$53.firstChild, _el$55 = _el$54.firstChild, _el$56 = _el$55.nextSibling, _el$57 = _el$56.firstChild, _el$58 = _el$57.nextSibling, _el$59 = _el$56.nextSibling, _el$60 = _el$59.firstChild, _el$61 = _el$60.nextSibling, _el$62 = _el$61.firstChild, _el$63 = _el$62.nextSibling, _el$64 = _el$63.nextSibling, _el$65 = _el$59.nextSibling, _el$66 = _el$65.firstChild, _el$67 = _el$66.nextSibling, _el$68 = _el$67.firstChild;
-          return _el$53.$$click = (event) => {
-            event.target === event.currentTarget && setFavoriteDialogOpen(!1);
-          }, insert(_el$55, () => texts_default.gallery.favoriteTag), insert(_el$57, () => texts_default.gallery.tagCollection), _el$58.addEventListener("change", (event) => setSelectedTagSet(event.currentTarget.value)), insert(_el$58, createComponent(For, {
-            each: tagSets,
-            children: (option) => (() => {
-              var _el$77 = _tmpl$16();
-              return insert(_el$77, () => option.label), createRenderEffect(() => _el$77.value = option.value), _el$77;
-            })()
-          })), insert(_el$60, () => texts_default.gallery.tagBehavior), _el$61.addEventListener("change", (event) => setTagMode(event.currentTarget.value)), insert(_el$62, () => texts_default.gallery.markTag), insert(_el$63, () => texts_default.gallery.watchTag), insert(_el$64, () => texts_default.gallery.hideTag), _el$66.$$click = () => setFavoriteDialogOpen(!1), insert(_el$66, () => texts_default.button.close), _el$67.$$click = () => {
-            updateFavoriteTag();
-          }, insert(_el$67, createComponent(Icon, {
-            name: "heart"
-          }), _el$68), insert(_el$68, () => texts_default.button.confirm), createRenderEffect((_p$) => {
-            var _v$11 = texts_default.gallery.favoriteTag, _v$12 = updating();
-            return _v$11 !== _p$.e && setAttribute(_el$53, "aria-label", _p$.e = _v$11), _v$12 !== _p$.t && (_el$67.disabled = _p$.t = _v$12), _p$;
-          }, {
-            e: void 0,
-            t: void 0
-          }), createRenderEffect(() => _el$58.value = selectedTagSet()), createRenderEffect(() => _el$61.value = tagMode()), _el$53;
-        }
+        children: (tag) => createComponent(Show, {
+          get when() {
+            return !tag().myTag;
+          },
+          get fallback() {
+            return (() => {
+              var _el$59 = _tmpl$13(), _el$60 = _el$59.firstChild;
+              return _el$59.$$click = () => {
+                updateFavoriteTag(tag());
+              }, insert(_el$59, createComponent(Icon, {
+                name: "heart",
+                filled: !0
+              }), _el$60), insert(_el$60, () => texts_default.gallery.removeFavoriteTag), createRenderEffect(() => _el$59.disabled = updating()), _el$59;
+            })();
+          },
+          get children() {
+            var _el$57 = _tmpl$13(), _el$58 = _el$57.firstChild;
+            return _el$57.$$click = () => {
+              setFavoriteTag(tag()), setFavoriteDialogOpen(!0);
+            }, insert(_el$57, createComponent(Icon, {
+              name: "heart"
+            }), _el$58), insert(_el$58, () => texts_default.gallery.favoriteTag), createRenderEffect(() => _el$57.disabled = updating()), _el$57;
+          }
+        })
       }), null), createRenderEffect((_p$) => {
-        var _v$13 = props.tag.appearance.backgroundColor, _v$14 = props.tag.appearance.borderColor, _v$15 = props.tag.appearance.color, _v$16 = props.tag.label, _v$17 = open();
-        return _v$13 !== _p$.e && setStyleProperty(_el$38, "background-color", _p$.e = _v$13), _v$14 !== _p$.t && setStyleProperty(_el$38, "border-color", _p$.t = _v$14), _v$15 !== _p$.a && setStyleProperty(_el$38, "color", _p$.a = _v$15), _v$16 !== _p$.o && setAttribute(_el$38, "aria-label", _p$.o = _v$16), _v$17 !== _p$.i && setAttribute(_el$38, "aria-expanded", _p$.i = _v$17), _p$;
+        var _v$0 = `ehpeek-touch-gallery-tag-menu-dialog fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 transition-opacity duration-120 ${props.tag ? "visible opacity-100" : "invisible opacity-0 pointer-events-none"}`, _v$1 = !props.tag, _v$10 = props.tag?.label ?? "";
+        return _v$0 !== _p$.e && className(_el$39, _p$.e = _v$0), _v$1 !== _p$.t && setAttribute(_el$39, "aria-hidden", _p$.t = _v$1), _v$10 !== _p$.a && setAttribute(_el$39, "aria-label", _p$.a = _v$10), _p$;
       }, {
         e: void 0,
         t: void 0,
-        a: void 0,
-        o: void 0,
-        i: void 0
-      }), _el$37;
-    })();
+        a: void 0
+      }), _el$39;
+    })(), createComponent(Show, {
+      get when() {
+        return favoriteDialogOpen();
+      },
+      get children() {
+        var _el$41 = _tmpl$122(), _el$42 = _el$41.firstChild, _el$43 = _el$42.firstChild, _el$44 = _el$43.nextSibling, _el$45 = _el$44.firstChild, _el$46 = _el$45.nextSibling, _el$47 = _el$44.nextSibling, _el$48 = _el$47.firstChild, _el$49 = _el$48.nextSibling, _el$50 = _el$49.firstChild, _el$51 = _el$50.nextSibling, _el$52 = _el$51.nextSibling, _el$53 = _el$47.nextSibling, _el$54 = _el$53.firstChild, _el$55 = _el$54.nextSibling, _el$56 = _el$55.firstChild;
+        return _el$41.$$click = (event) => {
+          event.target === event.currentTarget && setFavoriteDialogOpen(!1);
+        }, insert(_el$43, () => texts_default.gallery.favoriteTag), insert(_el$45, () => texts_default.gallery.tagCollection), _el$46.addEventListener("change", (event) => setSelectedTagSet(event.currentTarget.value)), insert(_el$46, createComponent(For, {
+          each: tagSets,
+          children: (option) => (() => {
+            var _el$61 = _tmpl$14();
+            return insert(_el$61, () => option.label), createRenderEffect(() => _el$61.value = option.value), _el$61;
+          })()
+        })), insert(_el$48, () => texts_default.gallery.tagBehavior), _el$49.addEventListener("change", (event) => setTagMode(event.currentTarget.value)), insert(_el$50, () => texts_default.gallery.markTag), insert(_el$51, () => texts_default.gallery.watchTag), insert(_el$52, () => texts_default.gallery.hideTag), _el$54.$$click = () => setFavoriteDialogOpen(!1), insert(_el$54, () => texts_default.button.close), _el$55.$$click = () => {
+          let tag = favoriteTag();
+          tag && updateFavoriteTag(tag);
+        }, insert(_el$55, createComponent(Icon, {
+          name: "heart"
+        }), _el$56), insert(_el$56, () => texts_default.button.confirm), createRenderEffect((_p$) => {
+          var _v$11 = texts_default.gallery.favoriteTag, _v$12 = updating();
+          return _v$11 !== _p$.e && setAttribute(_el$41, "aria-label", _p$.e = _v$11), _v$12 !== _p$.t && (_el$55.disabled = _p$.t = _v$12), _p$;
+        }, {
+          e: void 0,
+          t: void 0
+        }), createRenderEffect(() => _el$46.value = selectedTagSet()), createRenderEffect(() => _el$49.value = tagMode()), _el$41;
+      }
+    })];
   }
   function TouchGalleryNewTag(props) {
     return onMount(() => {
@@ -4877,8 +4515,8 @@
     return onMount(() => {
       onCleanup(props.tag.contentSource.mirrorContentTo(host));
     }), (() => {
-      var _el$78 = _tmpl$17(), _ref$3 = host;
-      return typeof _ref$3 == "function" ? use(_ref$3, _el$78) : host = _el$78, _el$78;
+      var _el$62 = _tmpl$15(), _ref$2 = host;
+      return typeof _ref$2 == "function" ? use(_ref$2, _el$62) : host = _el$62, _el$62;
     })();
   }
   function TouchGalleryFavoriteButton(props) {
@@ -4905,21 +4543,21 @@
       }
     };
     return (() => {
-      var _el$79 = _tmpl$19(), _el$80 = _el$79.firstChild, _el$81 = _el$80.firstChild, _el$82 = _el$81.nextSibling, _ref$4 = root;
-      return typeof _ref$4 == "function" ? use(_ref$4, _el$79) : root = _el$79, _el$80.$$click = (event) => {
+      var _el$63 = _tmpl$17(), _el$64 = _el$63.firstChild, _el$65 = _el$64.firstChild, _el$66 = _el$65.nextSibling, _ref$3 = root;
+      return typeof _ref$3 == "function" ? use(_ref$3, _el$63) : root = _el$63, _el$64.$$click = (event) => {
         event.stopPropagation(), open() ? setOpen(!1) : openMenu();
-      }, insert(_el$81, () => favorite().label), insert(_el$82, createComponent(Icon, {
+      }, insert(_el$65, () => favorite().label), insert(_el$66, createComponent(Icon, {
         name: "heart",
         get filled() {
           return favorited();
         }
-      })), insert(_el$79, createComponent(Show, {
+      })), insert(_el$63, createComponent(Show, {
         get when() {
           return open();
         },
         get children() {
-          var _el$83 = _tmpl$18();
-          return insert(_el$83, createComponent(Show, {
+          var _el$67 = _tmpl$16();
+          return insert(_el$67, createComponent(Show, {
             get when() {
               return loadingState() === "loading";
             },
@@ -4928,7 +4566,7 @@
                 text: "Loading..."
               });
             }
-          }), null), insert(_el$83, createComponent(Show, {
+          }), null), insert(_el$67, createComponent(Show, {
             get when() {
               return loadingState() === "failed";
             },
@@ -4937,7 +4575,7 @@
                 text: "Failed"
               });
             }
-          }), null), insert(_el$83, createComponent(Show, {
+          }), null), insert(_el$67, createComponent(Show, {
             get when() {
               return loadingState() === "idle";
             },
@@ -4965,53 +4603,49 @@
                 })
               });
             }
-          }), null), _el$83;
+          }), null), _el$67;
         }
       }), null), createRenderEffect((_p$) => {
-        var _v$18 = `ehpeek-touch-gallery-primary-button ehpeek-touch-gallery-favorite-button flex min-w-0 w-full h-full min-h-xl flex-col items-center justify-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text text-center uppercase [touch-action:manipulation] textsize-md font-700 normal-case ${favorited() ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`, _v$19 = favorite().color ?? void 0, _v$20 = open();
-        return _v$18 !== _p$.e && className(_el$80, _p$.e = _v$18), _v$19 !== _p$.t && setStyleProperty(_el$80, "color", _p$.t = _v$19), _v$20 !== _p$.a && setAttribute(_el$80, "aria-expanded", _p$.a = _v$20), _p$;
+        var _v$13 = `ehpeek-touch-gallery-primary-button ehpeek-touch-gallery-favorite-button flex min-w-0 w-full h-full min-h-xl flex-col items-center justify-center gap-md py-md px-lg border-0 bg-transparent ehp-color-site-text text-center uppercase [touch-action:manipulation] textsize-md font-700 normal-case ${favorited() ? "ehpeek-touch-gallery-favorite-on" : "ehpeek-touch-gallery-favorite-off"}`, _v$14 = favorite().color ?? void 0, _v$15 = open();
+        return _v$13 !== _p$.e && className(_el$64, _p$.e = _v$13), _v$14 !== _p$.t && setStyleProperty(_el$64, "color", _p$.t = _v$14), _v$15 !== _p$.a && setAttribute(_el$64, "aria-expanded", _p$.a = _v$15), _p$;
       }, {
         e: void 0,
         t: void 0,
         a: void 0
-      }), _el$79;
+      }), _el$63;
     })();
   }
   function TouchGalleryFavoriteStatus(props) {
     return (() => {
-      var _el$84 = _tmpl$20();
-      return insert(_el$84, () => props.text), _el$84;
+      var _el$68 = _tmpl$18();
+      return insert(_el$68, () => props.text), _el$68;
     })();
   }
   function TouchGalleryFavoriteOption(props) {
     return (() => {
-      var _el$85 = _tmpl$21(), _el$86 = _el$85.firstChild, _el$87 = _el$86.nextSibling, _el$88 = _el$87.nextSibling;
-      return _el$85.$$click = (event) => {
+      var _el$69 = _tmpl$19(), _el$70 = _el$69.firstChild, _el$71 = _el$70.nextSibling, _el$72 = _el$71.nextSibling;
+      return _el$69.$$click = (event) => {
         event.stopPropagation(), props.source.handle.updateGalleryFavorite(props.actionUrl, props.option.value).then(props.onApplied).catch((error) => {
           console.error("[ehpeek]", error);
         });
-      }, insert(_el$86, createComponent(Icon, {
+      }, insert(_el$70, createComponent(Icon, {
         name: "heart",
         get filled() {
           return props.option.value !== "favdel";
         }
-      })), insert(_el$87, () => props.option.label), insert(_el$88, createComponent(Icon, {
+      })), insert(_el$71, () => props.option.label), insert(_el$72, createComponent(Icon, {
         name: "check"
       })), createRenderEffect((_p$) => {
-        var _v$21 = `ehpeek-touch-gallery-favorite-option flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`, _v$22 = props.option.selected, _v$23 = props.option.color ?? void 0, _v$24 = `ml-auto flex-none ehp-color-site-text ${props.option.selected ? "visible" : "invisible"}`, _v$25 = props.option.color ?? void 0;
-        return _v$21 !== _p$.e && className(_el$85, _p$.e = _v$21), _v$22 !== _p$.t && setAttribute(_el$85, "aria-pressed", _p$.t = _v$22), _v$23 !== _p$.a && setStyleProperty(_el$86, "color", _p$.a = _v$23), _v$24 !== _p$.o && className(_el$88, _p$.o = _v$24), _v$25 !== _p$.i && setStyleProperty(_el$88, "color", _p$.i = _v$25), _p$;
+        var _v$16 = `ehpeek-touch-gallery-favorite-option flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`, _v$17 = props.option.selected, _v$18 = props.option.color ?? void 0, _v$19 = `ml-auto flex-none ehp-color-site-text ${props.option.selected ? "visible" : "invisible"}`, _v$20 = props.option.color ?? void 0;
+        return _v$16 !== _p$.e && className(_el$69, _p$.e = _v$16), _v$17 !== _p$.t && setAttribute(_el$69, "aria-pressed", _p$.t = _v$17), _v$18 !== _p$.a && setStyleProperty(_el$70, "color", _p$.a = _v$18), _v$19 !== _p$.o && className(_el$72, _p$.o = _v$19), _v$20 !== _p$.i && setStyleProperty(_el$72, "color", _p$.i = _v$20), _p$;
       }, {
         e: void 0,
         t: void 0,
         a: void 0,
         o: void 0,
         i: void 0
-      }), _el$85;
+      }), _el$69;
     })();
-  }
-  function formatRatingLabel(label, value) {
-    let formatted = value.toFixed(2);
-    return /\d+(?:\.\d+)?/.test(label) ? label.replace(/\d+(?:\.\d+)?/, formatted) : `${label} ${formatted}`.trim();
   }
   function ratingFromPointer(clientX, element) {
     let rect = element.getBoundingClientRect(), progress = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
@@ -5020,35 +4654,29 @@
   delegateEvents(["click", "pointermove"]);
 
   // src/components/TouchUI/FavoritesPanel.tsx
-  var _tmpl$27 = /* @__PURE__ */ template('<div class="border-0 border-t border-t-[var(--color-site-border-subtle)]">'), _tmpl$28 = /* @__PURE__ */ template('<div class="box-border w-full min-w-0 overflow-hidden rounded-md border ehp-color-site-border bg-[var(--color-site-elevated)]"><button type=button class="flex box-border w-full min-h-md items-center justify-between gap-md px-md py-sm rounded-xs border-0 !bg-transparent ehp-color-site-text text-left textsize-md font-700 font-inherit cursor-pointer hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)]"><span class="flex min-w-0 items-center gap-sm overflow-hidden"><span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"> [<!>]</span></span><span class="flex h-20px w-20px flex-none items-center justify-center leading-none"aria-hidden=true>'), _tmpl$36 = /* @__PURE__ */ template('<a><span class="flex min-w-0 items-center gap-sm"><span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"> [<!>]'), _tmpl$45 = /* @__PURE__ */ template('<span class="block h-15px w-15px flex-none bg-no-repeat"aria-hidden=true>');
+  var _tmpl$20 = /* @__PURE__ */ template('<div class="border-0 border-t border-t-[var(--color-site-border-subtle)]">'), _tmpl$27 = /* @__PURE__ */ template('<div class="box-border w-full min-w-0 overflow-hidden rounded-md border ehp-color-site-border bg-[var(--color-site-elevated)]"><button type=button class="flex box-border w-full min-h-md items-center justify-between gap-md px-md py-sm rounded-xs border-0 !bg-transparent ehp-color-site-text text-left textsize-md font-700 font-inherit cursor-pointer hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)]"><span class="flex min-w-0 items-center gap-sm overflow-hidden"><span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"> [<!>]</span></span><span class="flex h-20px w-20px flex-none items-center justify-center leading-none"aria-hidden=true>'), _tmpl$36 = /* @__PURE__ */ template('<button type=button><span class="flex min-w-0 items-center gap-sm"><span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"> [<!>]'), _tmpl$45 = /* @__PURE__ */ template('<span class="block h-15px w-15px flex-none bg-no-repeat"aria-hidden=true>');
   function FavoritesCategorySelect(props) {
-    let container, [open, setOpen] = createSignal(!1), selected = () => props.info.categories.find((category) => category.selected) ?? props.info.categories[0] ?? null;
+    let container, [open, setOpen] = createSignal(!1), selected = () => props.source.data.favoritesCategory?.categories.find((category) => category.selected) ?? props.source.data.favoritesCategory?.categories[0] ?? null;
     return onMount(() => {
       let closeOnOutsidePointer = (event) => {
         event.target instanceof Node && !container.contains(event.target) && setOpen(!1);
       };
       document.addEventListener("pointerdown", closeOnOutsidePointer, !0), onCleanup(() => document.removeEventListener("pointerdown", closeOnOutsidePointer, !0));
     }), (() => {
-      var _el$ = _tmpl$28(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.firstChild, _el$7 = _el$5.nextSibling, _el$6 = _el$7.nextSibling, _el$8 = _el$3.nextSibling, _ref$ = container;
+      var _el$ = _tmpl$27(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.firstChild, _el$7 = _el$5.nextSibling, _el$6 = _el$7.nextSibling, _el$8 = _el$3.nextSibling, _ref$ = container;
       return typeof _ref$ == "function" ? use(_ref$, _el$) : container = _el$, _el$2.$$click = () => setOpen((value) => !value), insert(_el$3, () => categoryIndicator(selected()?.appearance), _el$4), insert(_el$4, () => selected()?.label, _el$5), insert(_el$4, () => selected()?.count, _el$7), insert(_el$8, () => open() ? "−" : "+"), insert(_el$, createComponent(Show, {
         get when() {
           return open();
         },
         get children() {
-          var _el$9 = _tmpl$27();
+          var _el$9 = _tmpl$20();
           return insert(_el$9, createComponent(For, {
             get each() {
-              return props.info.categories;
+              return props.source.data.favoritesCategory?.categories;
             },
-            children: (category) => (() => {
+            children: (category, index) => (() => {
               var _el$0 = _tmpl$36(), _el$1 = _el$0.firstChild, _el$10 = _el$1.firstChild, _el$11 = _el$10.firstChild, _el$13 = _el$11.nextSibling, _el$12 = _el$13.nextSibling;
-              return insert(_el$1, () => categoryIndicator(category.appearance), _el$10), insert(_el$10, () => category.label, _el$11), insert(_el$10, () => category.count, _el$13), createRenderEffect((_p$) => {
-                var _v$ = category.href, _v$2 = `flex box-border w-full min-h-md items-center px-md py-sm border-0 border-b ehp-color-site-border-subtle-b last:border-b-0 text-left textsize-md font-inherit no-underline cursor-pointer ${category.selected ? "bg-[var(--color-site-accent-hover)] ehp-color-site-accent font-700" : "!bg-transparent ehp-color-site-text hover:!bg-[var(--color-site-item-hover)]"}`;
-                return _v$ !== _p$.e && setAttribute(_el$0, "href", _p$.e = _v$), _v$2 !== _p$.t && className(_el$0, _p$.t = _v$2), _p$;
-              }, {
-                e: void 0,
-                t: void 0
-              }), _el$0;
+              return _el$0.$$click = () => props.source.handle.activateFavoriteCategory(index()), insert(_el$1, () => categoryIndicator(category.appearance), _el$10), insert(_el$10, () => category.label, _el$11), insert(_el$10, () => category.count, _el$13), createRenderEffect(() => className(_el$0, `flex box-border w-full min-h-md items-center px-md py-sm border-0 border-b ehp-color-site-border-subtle-b last:border-b-0 text-left textsize-md font-inherit no-underline cursor-pointer ${category.selected ? "bg-[var(--color-site-accent-hover)] ehp-color-site-accent font-700" : "!bg-transparent ehp-color-site-text hover:!bg-[var(--color-site-item-hover)]"}`)), _el$0;
             })()
           })), _el$9;
         }
@@ -5068,7 +4696,7 @@
   delegateEvents(["click"]);
 
   // src/components/TouchUI/SearchPanel.tsx
-  var _tmpl$29 = /* @__PURE__ */ template('<section class="ehpeek-touch-search-panel box-border flex w-[calc(100%_-_32px)] max-w-960px flex-col gap-md mx-auto mb-lg p-lg border ehp-color-site-border rounded-lg ehp-color-site-surface ehp-color-site-text shadow-[0_8px_24px_var(--color-shadow-panel)] font-sans">'), _tmpl$210 = /* @__PURE__ */ template('<button type=button class="appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]">'), _tmpl$37 = /* @__PURE__ */ template("<button>"), _tmpl$46 = /* @__PURE__ */ template('<span class="contents [&amp;>*:not([hidden])]:col-span-full">'), TOUCH_SEARCH_OPTION_CLASS = "appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]", TOUCH_SEARCH_ACTION_CLASS = "appearance-none inline-flex box-border w-60px h-60px items-center justify-center p-0 rounded-md border-0 bg-transparent cursor-pointer transition-[background-color,transform] duration-120 [touch-action:manipulation] active:scale-96 active:bg-[var(--color-site-item-hover)]";
+  var _tmpl$21 = /* @__PURE__ */ template('<section class="ehpeek-touch-search-panel box-border flex w-[calc(100%_-_32px)] max-w-960px flex-col gap-md mx-auto mb-lg p-lg border ehp-color-site-border rounded-lg ehp-color-site-surface ehp-color-site-text shadow-[0_8px_24px_var(--color-shadow-panel)] font-sans">'), _tmpl$28 = /* @__PURE__ */ template('<button type=button class="appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]">'), _tmpl$37 = /* @__PURE__ */ template("<button>"), _tmpl$46 = /* @__PURE__ */ template('<span class="contents [&amp;>*:not([hidden])]:col-span-full">'), TOUCH_SEARCH_OPTION_CLASS = "appearance-none inline-flex min-h-md items-center px-md border-0 rounded-md bg-transparent ehp-color-site-accent text-left textsize-md font-700 font-inherit leading-[1.2] no-underline cursor-pointer [touch-action:manipulation] active:bg-[var(--color-site-accent-hover)]", TOUCH_SEARCH_ACTION_CLASS = "appearance-none inline-flex box-border w-60px h-60px items-center justify-center p-0 rounded-md border-0 bg-transparent cursor-pointer transition-[background-color,transform] duration-120 [touch-action:manipulation] active:scale-96 active:bg-[var(--color-site-item-hover)]";
   function touchSearchPanelClasses(hasClear) {
     return {
       actionMount: "contents",
@@ -5088,7 +4716,7 @@
   }
   function TouchSearchPanel(props) {
     return (() => {
-      var _el$ = _tmpl$29();
+      var _el$ = _tmpl$21();
       return insert(_el$, createComponent(DomNode2, {
         get node() {
           return props.source.elems.searchBox;
@@ -5112,33 +4740,9 @@
       onClick: () => setOpen((value) => !value)
     });
   }
-  function TouchSearchFileToggle(props) {
-    let [open, setOpen] = createSignal(!1);
-    return createEffect(() => props.source.handle.updateFileSearchVisibility(open())), createComponent(ToggleButton, {
-      get expanded() {
-        return open();
-      },
-      get label() {
-        return texts_default.search.fileSearch;
-      },
-      onClick: () => setOpen((value) => !value)
-    });
-  }
-  function TouchSearchAdvancedToggle(props) {
-    let [open, setOpen] = createSignal(!1);
-    return createEffect(() => props.source.handle.updateAdvancedOptionsVisibility(open())), createComponent(ToggleButton, {
-      get expanded() {
-        return open();
-      },
-      get label() {
-        return texts_default.search.advancedOptions;
-      },
-      onClick: () => setOpen((value) => !value)
-    });
-  }
   function ToggleButton(props) {
     return (() => {
-      var _el$2 = _tmpl$210();
+      var _el$2 = _tmpl$28();
       return _el$2.$$click = () => props.onClick(), insert(_el$2, () => props.label), createRenderEffect(() => setAttribute(_el$2, "aria-expanded", props.expanded)), _el$2;
     })();
   }
@@ -5147,7 +4751,7 @@
     return [(() => {
       var _el$3 = _tmpl$37();
       return _el$3.$$click = (event) => {
-        event.preventDefault(), search ? source.handle.submitSearchForm() : source.handle.clearSearchInput();
+        event.preventDefault(), search ? source.handle.activateSearch() : source.handle.activateClear();
       }, setAttribute(_el$3, "type", search ? "submit" : "button"), setAttribute(_el$3, "aria-label", label), setAttribute(_el$3, "title", label), insert(_el$3, createComponent(Icon, {
         name: search ? "search" : "close",
         size: 32
@@ -5162,7 +4766,7 @@
   delegateEvents(["click"]);
 
   // src/components/TouchUI/TopBar.tsx
-  var _tmpl$30 = /* @__PURE__ */ template('<div class="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex w-240px coarse:w-[calc(100vw-32px)] max-w-[calc(100vw-24px)] coarse:max-w-360px flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$211 = /* @__PURE__ */ template('<div class="ehpeek-touch-top-bar-menu relative"><button type=button class="ehpeek-touch-top-bar-menu-button inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"aria-haspopup=menu>'), _tmpl$38 = /* @__PURE__ */ template('<nav class="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans"><a class="ehpeek-touch-top-bar-project inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><div class="flex items-center gap-sm"><a class="ehpeek-touch-top-bar-home inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><a class="ehpeek-touch-top-bar-favorites inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><button type=button class="ehpeek-touch-top-bar-settings inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]">'), TOUCH_TOP_BAR_ICON_SIZE = 41;
+  var _tmpl$29 = /* @__PURE__ */ template('<div class="ehpeek-touch-top-bar-menu-panel absolute top-[calc(100%+8px)] right-0 z-overlay flex w-240px coarse:w-[calc(100vw-32px)] max-w-[calc(100vw-24px)] coarse:max-w-360px flex-col overflow-hidden border ehp-color-site-border rounded-sm ehp-color-site-elevated">'), _tmpl$210 = /* @__PURE__ */ template('<div class="ehpeek-touch-top-bar-menu relative"><button type=button class="ehpeek-touch-top-bar-menu-button inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"aria-haspopup=menu>'), _tmpl$38 = /* @__PURE__ */ template('<nav class="ehpeek-touch-top-bar relative z-ui flex box-border w-full min-h-xl items-center justify-between py-lg pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))] ehp-color-site-surface ehp-color-site-text font-sans"><a class="ehpeek-touch-top-bar-project inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><div class="flex items-center gap-sm"><a class="ehpeek-touch-top-bar-home inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><a class="ehpeek-touch-top-bar-favorites inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]"></a><button type=button class="ehpeek-touch-top-bar-settings inline-flex w-68px h-68px items-center justify-center rounded-md border-0 bg-transparent ehp-color-site-text no-underline [touch-action:manipulation] active:bg-[var(--color-site-item-hover)]">'), TOUCH_TOP_BAR_ICON_SIZE = 41;
   var TOUCH_TOP_BAR_MENU_ITEM_CLASS = "ehpeek-touch-top-bar-menu-item block box-border w-full min-h-lg coarse:min-h-88px py-md coarse:py-xl px-lg coarse:px-xl border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text text-left no-underline textsize-md leading-[1.2]", TOUCH_TOP_BAR_NAV_ITEM_CLASS = TOUCH_TOP_BAR_MENU_ITEM_CLASS;
   function TouchTopBarMenu(props) {
     let [open, setOpen] = createSignal(!1), root;
@@ -5174,7 +4778,7 @@
         document.removeEventListener("click", onClick);
       });
     }), (() => {
-      var _el$ = _tmpl$211(), _el$2 = _el$.firstChild, _ref$ = root;
+      var _el$ = _tmpl$210(), _el$2 = _el$.firstChild, _ref$ = root;
       return typeof _ref$ == "function" ? use(_ref$, _el$) : root = _el$, _el$2.$$click = (event) => {
         event.stopPropagation(), setOpen((value) => !value);
       }, insert(_el$2, createComponent(Icon, {
@@ -5185,7 +4789,7 @@
           return open();
         },
         get children() {
-          var _el$3 = _tmpl$30();
+          var _el$3 = _tmpl$29();
           return insert(_el$3, createComponent(For, {
             get each() {
               return props.navItems;
@@ -5574,7 +5178,6 @@ body #gdt[class],
 .line-clamp-2{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;}
 .line-clamp-3{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;}
 .line-clamp-4{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;line-clamp:4;}
-.isolate{isolation:isolate;}
 .z-\\[1150\\]{z-index:1150;}
 .z-1{z-index:1;}
 .z-2{z-index:2;}
@@ -5598,6 +5201,7 @@ body #gdt[class],
 .grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr));}
 .grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr));}
 .grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+.\\!float-none{float:none !important;}
 .\\!m-0{margin:0 !important;}
 .m-0{margin:0;}
 .m12{margin:3rem;}
@@ -5633,6 +5237,7 @@ body #gdt[class],
 .hidden{display:none;}
 .aspect-\\[2\\/3\\]{aspect-ratio:2/3;}
 .\\!h-60px{height:60px !important;}
+.\\!h-auto{height:auto !important;}
 .\\!max-h-\\[60dvh\\]{max-height:60dvh !important;}
 .\\!max-w-full{max-width:100% !important;}
 .\\!min-w-0{min-width:0 !important;}
@@ -5659,7 +5264,6 @@ body #gdt[class],
 .max-h-screen{max-height:100vh;}
 .max-w-\\[calc\\(100vw-24px\\)\\]{max-width:calc(100vw - 24px);}
 .max-w-\\[calc\\(100vw-48px\\)\\]{max-width:calc(100vw - 48px);}
-.max-w-\\[min\\(420px\\,calc\\(100vw-24px\\)\\)\\]{max-width:min(420px,calc(100vw - 24px));}
 .max-w-\\[min\\(78vw\\,320px\\)\\]{max-width:min(78vw,320px);}
 .max-w-\\[min\\(86vw\\,760px\\)\\]{max-width:min(86vw,760px);}
 .max-w-420px{max-width:420px;}
@@ -5683,7 +5287,6 @@ body #gdt[class],
 .w-15px{width:15px;}
 .w-20px{width:20px;}
 .w-240px{width:240px;}
-.w-24px{width:24px;}
 .w-320px{width:320px;}
 .w-32px{width:32px;}
 .w-42px{width:42px;}
@@ -5723,7 +5326,6 @@ body #gdt[class],
 .cursor-default{cursor:default;}
 .disabled\\:cursor-default:disabled{cursor:default;}
 .cursor-pointer{cursor:pointer;}
-.cursor-not-allowed{cursor:not-allowed;}
 .cursor-grab{cursor:grab;}
 .\\[\\&\\[data-dragging\\=true\\]\\]\\:cursor-grabbing[data-dragging=true]{cursor:grabbing;}
 .active\\:cursor-grabbing:active{cursor:grabbing;}
@@ -5857,11 +5459,13 @@ body #gdt[class],
 .\\!text-0{font-size:0 !important;}
 .\\[\\&_\\.auto-complete-item\\]\\:\\!text-\\[length\\:var\\(--font-size-lg\\)\\] .auto-complete-item{font-size:var(--font-size-lg) !important;}
 .\\!text-\\[var\\(--color-site-text\\)\\]{color:var(--color-site-text) !important;}
+.\\!text-\\[var\\(--ehpeek-my-tag-color\\)\\],
+.\\[\\&\\>a\\]\\:\\!text-\\[var\\(--ehpeek-my-tag-color\\)\\]>a{color:var(--ehpeek-my-tag-color) !important;}
 .text-\\[clamp\\(88px\\,25vw\\,180px\\)\\]{font-size:clamp(88px,25vw,180px);}
-.text-\\[var\\(--color-accent\\)\\]{color:var(--color-accent);}
 .text-\\[var\\(--color-background\\)\\]{color:var(--color-background);}
 .text-\\[var\\(--color-danger\\)\\]{color:var(--color-danger);}
 .text-\\[var\\(--color-muted\\)\\]{color:var(--color-muted);}
+.text-\\[var\\(--color-rating-submitted\\)\\]{color:var(--color-rating-submitted);}
 .text-\\[var\\(--color-site-surface\\)\\]{color:var(--color-site-surface);}
 .text-\\[var\\(--color-site-text\\)\\]{color:var(--color-site-text);}
 .text-\\[var\\(--color-text\\)\\]{color:var(--color-text);}
@@ -5898,8 +5502,9 @@ body #gdt[class],
 .active\\:no-underline:active{text-decoration:none;}
 .\\[\\&\\[data-disabled\\]\\]\\:opacity-40[data-disabled],
 .opacity-40{opacity:0.4;}
-.\\[\\&\\[data-open\\=false\\]\\]\\:opacity-0[data-open=false]{opacity:0;}
-.opacity-45{opacity:0.45;}
+.\\[\\&\\[data-open\\=false\\]\\]\\:opacity-0[data-open=false],
+.opacity-0{opacity:0;}
+.opacity-100{opacity:1;}
 .opacity-70{opacity:0.7;}
 .opacity-72{opacity:0.72;}
 .opacity-75{opacity:0.75;}
@@ -5923,6 +5528,7 @@ body #gdt[class],
 .focus-visible\\:outline:focus-visible{outline-style:solid;}
 .outline-none{outline:2px solid transparent;outline-offset:2px;}
 .hover\\:brightness-108:hover{--un-brightness:brightness(1.08);filter:var(--un-blur) var(--un-brightness) var(--un-contrast) var(--un-drop-shadow) var(--un-grayscale) var(--un-hue-rotate) var(--un-invert) var(--un-saturate) var(--un-sepia);}
+.filter{filter:var(--un-blur) var(--un-brightness) var(--un-contrast) var(--un-drop-shadow) var(--un-grayscale) var(--un-hue-rotate) var(--un-invert) var(--un-saturate) var(--un-sepia);}
 .backdrop-filter{-webkit-backdrop-filter:var(--un-backdrop-blur) var(--un-backdrop-brightness) var(--un-backdrop-contrast) var(--un-backdrop-grayscale) var(--un-backdrop-hue-rotate) var(--un-backdrop-invert) var(--un-backdrop-opacity) var(--un-backdrop-saturate) var(--un-backdrop-sepia);backdrop-filter:var(--un-backdrop-blur) var(--un-backdrop-brightness) var(--un-backdrop-contrast) var(--un-backdrop-grayscale) var(--un-backdrop-hue-rotate) var(--un-backdrop-invert) var(--un-backdrop-opacity) var(--un-backdrop-saturate) var(--un-backdrop-sepia);}
 .transition-\\[background-color\\,transform\\]{transition-property:background-color,transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[border-color\\,background-color\\,color\\]{transition-property:border-color,background-color,color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
@@ -5992,6 +5598,7 @@ body #gdt[class],
   --color-danger: #ffb2a7;
   --color-state-on: #4ec46a;
   --color-state-off: #8c8f96;
+  --color-rating-submitted: #8595ff;
   --color-shadow: #000000;
 
   --color-site-favorite-0: #646464;
@@ -6130,7 +5737,7 @@ body #gdt[class],
   };
 
   // src/components/Reader/Viewport.tsx
-  var _tmpl$31 = /* @__PURE__ */ template('<div class="w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden [&amp;[data-dragging=true]]:cursor-grabbing [&amp;[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:touch-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:select-none"tabindex=-1><main class="ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-row [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-auto [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0">'), _tmpl$212 = /* @__PURE__ */ template('<section class="ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:items-center [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0"><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full">'), _tmpl$39 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$47 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans textsize-lg font-700 leading-1 active:scale-96 [touch-action:manipulation]"><span aria-hidden=true>↻'), _tmpl$54 = /* @__PURE__ */ template("<div>"), _tmpl$63 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner">'), FALLBACK_ASPECT_RATIO = 1.42;
+  var _tmpl$30 = /* @__PURE__ */ template('<div class="w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden [&amp;[data-dragging=true]]:cursor-grabbing [&amp;[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:touch-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:select-none"tabindex=-1><main class="ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-row [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-auto [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0">'), _tmpl$211 = /* @__PURE__ */ template('<section class="ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:items-center [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0"><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full">'), _tmpl$39 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$47 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans textsize-lg font-700 leading-1 active:scale-96 [touch-action:manipulation]"><span aria-hidden=true>↻'), _tmpl$54 = /* @__PURE__ */ template("<div>"), _tmpl$63 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner">'), FALLBACK_ASPECT_RATIO = 1.42;
   function pageWindowNumbers(currentPageNum, windowSize) {
     let numbers = [];
     for (let offset = -windowSize; offset <= windowSize; offset += 1)
@@ -6268,7 +5875,7 @@ body #gdt[class],
     }), onCleanup(() => {
       disposed = !0, stopMotion(), resizeFrame !== null && (window.cancelAnimationFrame(resizeFrame), resizeFrame = null);
     }), (() => {
-      var _el$ = _tmpl$31(), _el$2 = _el$.firstChild;
+      var _el$ = _tmpl$30(), _el$2 = _el$.firstChild;
       return _el$.addEventListener("wheel", (event) => {
         let delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
         props.callbacks.onWheel(delta, event);
@@ -6306,7 +5913,7 @@ body #gdt[class],
     return onCleanup(() => {
       props.slot.elements?.node === node && (props.slot.elements = null);
     }), (() => {
-      var _el$3 = _tmpl$212(), _el$4 = _el$3.firstChild, _ref$ = node;
+      var _el$3 = _tmpl$211(), _el$4 = _el$3.firstChild, _ref$ = node;
       return typeof _ref$ == "function" ? use(_ref$, _el$3) : node = _el$3, use((element) => {
         frame = element, props.slot.elements = {
           node,
@@ -6530,7 +6137,7 @@ body #gdt[class],
 `;
 
   // src/components/Widgets/ProgressBar.tsx
-  var _tmpl$40 = /* @__PURE__ */ template("<input type=range>"), PROGRESS_BAR_CLASS = "ehpeek-progress-bar", PROGRESS_BAR_CLASS_NAME = [PROGRESS_BAR_CLASS, "w-full h-[2.4em] px-[0.6em] py-0 m-0", "bg-transparent", "cursor-grab active:cursor-grabbing touch-none select-none", "[-webkit-appearance:none] [appearance:none]", "[--progress-bar-fill:0%] [--progress-bar-track-direction:to_right]", "[accent-color:var(--color-text)]"].join(" ");
+  var _tmpl$31 = /* @__PURE__ */ template("<input type=range>"), PROGRESS_BAR_CLASS = "ehpeek-progress-bar", PROGRESS_BAR_CLASS_NAME = [PROGRESS_BAR_CLASS, "w-full h-[2.4em] px-[0.6em] py-0 m-0", "bg-transparent", "cursor-grab active:cursor-grabbing touch-none select-none", "[-webkit-appearance:none] [appearance:none]", "[--progress-bar-fill:0%] [--progress-bar-track-direction:to_right]", "[accent-color:var(--color-text)]"].join(" ");
   registerGlobalStyle(PROGRESS_BAR_CLASS, ProgressBar_default);
   function ProgressBar(props) {
     let input;
@@ -6540,7 +6147,7 @@ body #gdt[class],
     });
     let currentValue = (event) => Number(event.currentTarget.value || "");
     return (() => {
-      var _el$ = _tmpl$40();
+      var _el$ = _tmpl$31();
       return _el$.addEventListener("pointercancel", (event) => {
         props.onCommit?.(currentValue(event));
       }), _el$.$$pointerup = (event) => {
@@ -6568,7 +6175,7 @@ body #gdt[class],
   delegateEvents(["pointerdown", "input", "pointerup"]);
 
   // src/components/Reader/Toolbar.tsx
-  var _tmpl$41 = /* @__PURE__ */ template('<div class="ehpeek-reader-fullscreen-status fixed z-3 flex items-center gap-sm pointer-events-none top-[calc(10px+env(safe-area-inset-top,0px))] left-[max(10px,env(safe-area-inset-left,0px))] py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap"role=status><span>'), _tmpl$213 = /* @__PURE__ */ template('<div class=contents><div class="ehpeek-reader-toolbar fixed z-3 flex justify-end pointer-events-none top-[calc(10px+env(safe-area-inset-top,0px))] right-10px coarse:top-[calc(8px+env(safe-area-inset-top,0px))] coarse:right-8px"><div><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button></div></div><div class="ehpeek-reader-page-number fixed z-3 pointer-events-none top-[calc(70px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 coarse:top-[calc(80px+env(safe-area-inset-top,0px))] landscape:top-[calc(62px+env(safe-area-inset-top,0px))] landscape:left-auto landscape:right-10px landscape:translate-x-0 coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap text-center landscape:text-right"></div><div class="fixed z-2 flex items-center p-0 transition-[opacity,transform] duration-160 ease-in-out right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(12px+env(safe-area-inset-bottom,0px))] left-[max(12px,env(safe-area-inset-left,0px))] [&amp;[data-open=false]]:opacity-0 [&amp;[data-open=false]]:translate-y-[calc(100%+16px)] [&amp;[data-open=false]]:pointer-events-none">'), _tmpl$310 = /* @__PURE__ */ template('<div class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"role=dialog aria-modal=true><div class="ehpeek-reader-download-dialog-panel w-full max-w-480px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl"><div class="flex items-center justify-between gap-md mb-lg"><div class="font-sans textsize-md font-700"></div><button type=button></button></div><div class="grid gap-md font-sans textsize-md"><button type=button><span class="textsize-md font-700"></span><span class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75"></span></button><button type=button><span class="textsize-md font-700"></span><span class="textsize-sm opacity-75">'), READER_BUTTON_CLASS = ["inline-flex min-w-48px h-48px items-center justify-center px-md py-0 rounded-md coarse:min-w-64px coarse:h-64px coarse:px-lg coarse:rounded-lg", "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:opacity-40 disabled:cursor-default"].join(" "), READER_ICON_SIZE = "1.4em", TIME_FORMATTER = new Intl.DateTimeFormat(void 0, {
+  var _tmpl$40 = /* @__PURE__ */ template('<div class="ehpeek-reader-fullscreen-status fixed z-3 flex items-center gap-sm pointer-events-none top-[calc(10px+env(safe-area-inset-top,0px))] left-[max(10px,env(safe-area-inset-left,0px))] py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap"role=status><span>'), _tmpl$212 = /* @__PURE__ */ template('<div class=contents><div class="ehpeek-reader-toolbar fixed z-3 flex justify-end pointer-events-none top-[calc(10px+env(safe-area-inset-top,0px))] right-10px coarse:top-[calc(8px+env(safe-area-inset-top,0px))] coarse:right-8px"><div><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button><button type=button></button></div></div><div class="ehpeek-reader-page-number fixed z-3 pointer-events-none top-[calc(70px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 coarse:top-[calc(80px+env(safe-area-inset-top,0px))] landscape:top-[calc(62px+env(safe-area-inset-top,0px))] landscape:left-auto landscape:right-10px landscape:translate-x-0 coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap text-center landscape:text-right"></div><div class="fixed z-2 flex items-center p-0 transition-[opacity,transform] duration-160 ease-in-out right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(12px+env(safe-area-inset-bottom,0px))] left-[max(12px,env(safe-area-inset-left,0px))] [&amp;[data-open=false]]:opacity-0 [&amp;[data-open=false]]:translate-y-[calc(100%+16px)] [&amp;[data-open=false]]:pointer-events-none">'), _tmpl$310 = /* @__PURE__ */ template('<div class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"role=dialog aria-modal=true><div class="ehpeek-reader-download-dialog-panel w-full max-w-480px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl"><div class="flex items-center justify-between gap-md mb-lg"><div class="font-sans textsize-md font-700"></div><button type=button></button></div><div class="grid gap-md font-sans textsize-md"><button type=button><span class="textsize-md font-700"></span><span class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75"></span></button><button type=button><span class="textsize-md font-700"></span><span class="textsize-sm opacity-75">'), READER_BUTTON_CLASS = ["inline-flex min-w-48px h-48px items-center justify-center px-md py-0 rounded-md coarse:min-w-64px coarse:h-64px coarse:px-lg coarse:rounded-lg", "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:opacity-40 disabled:cursor-default"].join(" "), READER_ICON_SIZE = "1.4em", TIME_FORMATTER = new Intl.DateTimeFormat(void 0, {
     hour: "2-digit",
     minute: "2-digit"
   }), DOWNLOAD_OPTION_CLASS = ["flex w-full min-h-lg flex-col items-start justify-center gap-xs px-lg py-md rounded-md", "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer text-left", "hover:bg-[var(--color-badge)] disabled:opacity-40 disabled:cursor-default"].join(" ");
@@ -6584,7 +6191,7 @@ body #gdt[class],
       };
       window.addEventListener("keydown", closeOnEscape, !0), onCleanup(() => window.removeEventListener("keydown", closeOnEscape, !0));
     }), (() => {
-      var _el$ = _tmpl$213(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.nextSibling, _el$6 = _el$5.nextSibling, _el$7 = _el$6.nextSibling, _el$8 = _el$7.nextSibling, _el$9 = _el$8.nextSibling, _el$0 = _el$9.nextSibling, _el$1 = _el$2.nextSibling, _el$12 = _el$1.nextSibling;
+      var _el$ = _tmpl$212(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.nextSibling, _el$6 = _el$5.nextSibling, _el$7 = _el$6.nextSibling, _el$8 = _el$7.nextSibling, _el$9 = _el$8.nextSibling, _el$0 = _el$9.nextSibling, _el$1 = _el$2.nextSibling, _el$12 = _el$1.nextSibling;
       return addEventListener(_el$2, "wheel", stopEvent), addEventListener(_el$2, "pointerdown", stopEvent, !0), addEventListener(_el$2, "click", stopEvent, !0), _el$4.$$click = () => props.callbacks.onControlsChange({
         ...props.controls,
         rightTapAction: props.controls.rightTapAction === "previous" ? "next" : "previous"
@@ -6623,7 +6230,7 @@ body #gdt[class],
           return props.fullscreenActive;
         },
         get children() {
-          var _el$10 = _tmpl$41(), _el$11 = _el$10.firstChild;
+          var _el$10 = _tmpl$40(), _el$11 = _el$10.firstChild;
           return insert(_el$11, fullscreenTime), _el$10;
         }
       }), _el$12), addEventListener(_el$12, "wheel", stopEvent), addEventListener(_el$12, "pointerdown", stopEvent, !0), addEventListener(_el$12, "click", stopEvent, !0), insert(_el$12, createComponent(ProgressBar, {
@@ -6734,7 +6341,7 @@ body #gdt[class],
   delegateEvents(["click", "pointerdown"]);
 
   // src/components/Reader/ZoomOverlay.tsx
-  var _tmpl$48 = /* @__PURE__ */ template('<div class="fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none"><img class="block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]">'), MIN_SCALE = 1, MAX_SCALE = 5, CLOSE_SCALE = 1.02;
+  var _tmpl$41 = /* @__PURE__ */ template('<div class="fixed inset-0 z-4 flex items-center justify-center overflow-hidden ehp-color-reader pointer-events-none"><img class="block max-w-screen max-h-screen object-contain origin-center select-none will-change-transform [-webkit-user-drag:none]">'), MIN_SCALE = 1, MAX_SCALE = 5, CLOSE_SCALE = 1.02;
   function ZoomOverlay(props) {
     let [transform, setTransform] = createSignal("translate3d(0px, 0px, 0) scale(1)"), element, scale = 1, requestedScale = 1, offsetX = 0, offsetY = 0, pinchStartScale = 1, pinchStartOffsetX = 0, pinchStartOffsetY = 0, pinchStartCenterX = 0, pinchStartCenterY = 0, dragStartOffsetX = 0, dragStartOffsetY = 0, renderTransform = () => {
       setTransform(`translate3d(${offsetX}px, ${offsetY}px, 0) scale(${scale})`);
@@ -6767,7 +6374,7 @@ body #gdt[class],
       }
     };
     return untrack(() => props.actionsRef(actions)), (() => {
-      var _el$ = _tmpl$48(), _el$2 = _el$.firstChild, _ref$ = element;
+      var _el$ = _tmpl$41(), _el$2 = _el$.firstChild, _ref$ = element;
       return typeof _ref$ == "function" ? use(_ref$, _el$) : element = _el$, createRenderEffect((_p$) => {
         var _v$ = !props.image, _v$2 = props.image ? "" : "none", _v$3 = props.image?.imageUrl, _v$4 = props.image ? `Page ${props.image.pageNum}` : "", _v$5 = props.image?.width ?? void 0, _v$6 = props.image?.height ?? void 0, _v$7 = transform();
         return _v$ !== _p$.e && (_el$.hidden = _p$.e = _v$), _v$2 !== _p$.t && setStyleProperty(_el$, "display", _p$.t = _v$2), _v$3 !== _p$.a && setAttribute(_el$2, "src", _p$.a = _v$3), _v$4 !== _p$.o && setAttribute(_el$2, "alt", _p$.o = _v$4), _v$5 !== _p$.i && setAttribute(_el$2, "width", _p$.i = _v$5), _v$6 !== _p$.n && setAttribute(_el$2, "height", _p$.n = _v$6), _v$7 !== _p$.s && setStyleProperty(_el$2, "transform", _p$.s = _v$7), _p$;
@@ -7009,7 +6616,7 @@ body #gdt[class],
 `;
 
   // src/components/Reader/index.tsx
-  var _tmpl$49 = /* @__PURE__ */ template('<div id=ehpeek-reader class="fixed inset-0 z-reader ehp-color-reader font-sans textsize-sm leading-[1.4]"><header class=contents>');
+  var _tmpl$48 = /* @__PURE__ */ template('<div id=ehpeek-reader class="fixed inset-0 z-reader ehp-color-reader font-sans textsize-sm leading-[1.4]"><header class=contents>');
   registerGlobalStyle("ehpeek-reader-style", Reader_default);
   var DEFAULT_WINDOW_SIZE2 = 10, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, DOUBLE_TAP_MS = 340, DOUBLE_TAP_DISTANCE = 36, TAP_CANCEL_DISTANCE = 8, FALLBACK_ASPECT_RATIO2 = 1.42;
   function Reader(props) {
@@ -7019,7 +6626,7 @@ body #gdt[class],
         readerCallbacks2.cleanup(), session.dispose();
       });
     }), (() => {
-      var _el$ = _tmpl$49(), _el$2 = _el$.firstChild;
+      var _el$ = _tmpl$48(), _el$2 = _el$.firstChild;
       return insert(_el$2, createComponent(Toolbar, {
         get callbacks() {
           return readerCallbacks2.toolbar;
@@ -7626,148 +7233,10 @@ body #gdt[class],
     };
   }
 
-  // src/App/SinglePage.tsx
-  var _tmpl$50 = /* @__PURE__ */ template('<div class="ehpeek-single-page-app contents"><div class="ehpeek-single-page-route contents"></div><div class=hidden aria-hidden=true inert>'), _tmpl$214 = /* @__PURE__ */ template('<aside class="fixed right-md bottom-md z-overlay flex max-w-[min(420px,calc(100vw-24px))] flex-col gap-md rounded-md border ehp-color-site-border p-lg ehp-color-site-elevated ehp-color-site-text font-sans"role=alert><div class="textsize-md font-700"></div><div class="flex flex-wrap justify-end gap-sm"><button type=button class="min-h-md rounded-md border ehp-color-site-border bg-transparent px-md ehp-color-site-text textsize-md font-inherit"></button><a data-ehpeek-single-page-bypass class="inline-flex min-h-md items-center rounded-md border border-[var(--color-site-accent)] bg-[var(--color-site-accent)] px-md text-[var(--color-background)] no-underline textsize-md font-700">'), HISTORY_STATE_KEY = "ehpeekSinglePageApp";
-  function SinglePage(props) {
-    let [loading, setLoading] = createSignal(!1), [failedUrl, setFailedUrl] = createSignal(null), routeHost, stagingHost, navigationController = null, navigationSequence = 0, scrollFrame = null, disconnectPageNavigation = null, activeUrl = window.location.href, loadPage = async (request, signal) => {
-      let response = await requestPage(request.url, {
-        method: request.method,
-        body: request.body,
-        signal,
-        timeoutMs: null
-      }), page = singlePageRoute(response.url);
-      if (!page)
-        throw new Error(`Unsupported Single Page App route: ${response.url}`);
-      return {
-        page,
-        source: managePageContent(response.document, response.url)
-      };
-    }, updateHistoryScroll = () => {
-      let current = historyState();
-      window.history.replaceState({
-        ...current,
-        [HISTORY_STATE_KEY]: {
-          scrollX: window.scrollX,
-          scrollY: window.scrollY
-        }
-      }, "", window.location.href);
-    }, scheduleHistoryScrollUpdate = () => {
-      scrollFrame === null && (scrollFrame = window.requestAnimationFrame(() => {
-        scrollFrame = null, updateHistoryScroll();
-      }));
-    }, navigate = async (request, mode, popState) => {
-      let sequence = ++navigationSequence;
-      navigationController?.abort();
-      let controller = new AbortController();
-      navigationController = controller, setFailedUrl(null), setLoading(!0), routeHost.inert = !0, routeHost.setAttribute("aria-busy", "true");
-      try {
-        let next = await loadPage(request, controller.signal), nextSource = next.source;
-        if (nextSource.handle.mountPageContent(stagingHost), await ehSyringe_exports.waitForRouteTranslation(stagingHost), sequence !== navigationSequence || controller.signal.aborted)
-          return;
-        props.onPageDeactivate(), mode === "push" && (updateHistoryScroll(), window.history.pushState({
-          ...historyState(),
-          [HISTORY_STATE_KEY]: {
-            scrollX: 0,
-            scrollY: 0
-          }
-        }, "", next.page.url)), nextSource.handle.mountPageContent(routeHost), document.title = nextSource.data.title || document.title, activeUrl = window.location.href, await props.onPageActivate(next.page);
-        let targetScroll = mode === "pop" ? appHistoryState(popState) : null;
-        window.requestAnimationFrame(() => {
-          window.scrollTo(targetScroll?.scrollX ?? 0, targetScroll?.scrollY ?? 0);
-        });
-      } catch (error) {
-        if (controller.signal.aborted)
-          return;
-        console.error("[ehpeek] Single Page App navigation failed", error), setFailedUrl(request.url);
-      } finally {
-        sequence === navigationSequence && (navigationController = null, stagingHost.replaceChildren(), routeHost.inert = !1, routeHost.removeAttribute("aria-busy"), setLoading(!1));
-      }
-    }, navigateUrl = (value) => {
-      let url = new URL(value, window.location.href);
-      return !isSameOriginUrl(url.href) || !singlePageRoute(url.href) ? !1 : (navigate({
-        method: "GET",
-        url: url.href
-      }, "push"), !0);
-    };
-    return onMount(() => {
-      let disposed = !1, previousScrollRestoration = window.history.scrollRestoration;
-      window.history.scrollRestoration = "manual";
-      let onPopState = (event) => {
-        if (window.location.href !== activeUrl) {
-          if (!singlePageRoute(window.location.href)) {
-            window.location.assign(window.location.href);
-            return;
-          }
-          navigate({
-            method: "GET",
-            url: window.location.href
-          }, "pop", event.state);
-        }
-      }, initialize = async () => {
-        if (await ehSyringe_exports.waitForInitialUi(), disposed)
-          return;
-        let page = singlePageRoute(window.location.href);
-        if (!page)
-          return;
-        let pageSource = managePageContent();
-        pageSource.handle.mountPageContent(routeHost), activeUrl = window.location.href;
-        let onPageNavigation = (request) => {
-          navigate(request, "push");
-        };
-        disconnectPageNavigation = pageSource.handle.interceptSinglePageNavigation(routeHost, onPageNavigation), updateHistoryScroll(), window.addEventListener("popstate", onPopState), window.addEventListener("scroll", scheduleHistoryScrollUpdate, {
-          passive: !0
-        }), await props.onPageActivate(page);
-      };
-      props.actionsRef({
-        navigate: navigateUrl
-      }), initialize(), onCleanup(() => {
-        disposed = !0, navigationController?.abort(), disconnectPageNavigation?.(), props.onPageDeactivate(), window.history.scrollRestoration = previousScrollRestoration, window.removeEventListener("popstate", onPopState), window.removeEventListener("scroll", scheduleHistoryScrollUpdate), scrollFrame !== null && window.cancelAnimationFrame(scrollFrame);
-      });
-    }), (() => {
-      var _el$ = _tmpl$50(), _el$2 = _el$.firstChild, _el$3 = _el$2.nextSibling, _ref$ = routeHost;
-      typeof _ref$ == "function" ? use(_ref$, _el$2) : routeHost = _el$2;
-      var _ref$2 = stagingHost;
-      return typeof _ref$2 == "function" ? use(_ref$2, _el$3) : stagingHost = _el$3, insert(_el$, createComponent(LoadingOverlay, {
-        get label() {
-          return texts_default.reader.loading;
-        },
-        get visible() {
-          return loading();
-        }
-      }), null), insert(_el$, createComponent(Show, {
-        get when() {
-          return failedUrl();
-        },
-        keyed: !0,
-        children: (url) => (() => {
-          var _el$4 = _tmpl$214(), _el$5 = _el$4.firstChild, _el$6 = _el$5.nextSibling, _el$7 = _el$6.firstChild, _el$8 = _el$7.nextSibling;
-          return insert(_el$5, () => texts_default.singlePageApp.loadFailed), _el$7.$$click = () => setFailedUrl(null), insert(_el$7, () => texts_default.singlePageApp.dismiss), setAttribute(_el$8, "href", url), insert(_el$8, () => texts_default.singlePageApp.openOriginal), _el$4;
-        })()
-      }), null), _el$;
-    })();
-  }
-  function historyState() {
-    let value = window.history.state;
-    return value && typeof value == "object" ? value : {};
-  }
-  function appHistoryState(value) {
-    if (!value || typeof value != "object")
-      return null;
-    let state2 = value[HISTORY_STATE_KEY];
-    if (!state2 || typeof state2 != "object")
-      return null;
-    let scrollX = Number(state2.scrollX), scrollY = Number(state2.scrollY);
-    return Number.isFinite(scrollX) && Number.isFinite(scrollY) ? {
-      scrollX,
-      scrollY
-    } : null;
-  }
-  delegateEvents(["click"]);
-
   // src/App/host.ts
-  function createAppMount(className2 = "", persistent = !1) {
+  function createAppMount(className2 = "") {
     let mount = createManagedElement("div");
-    return className2 && mount.replaceClasses(className2), persistent && mount.attribute("data-ehpeek-persistent", "true"), document.body.append(mount.Component()), mount;
+    return className2 && mount.replaceClasses(className2), document.body.append(mount.Component()), mount;
   }
 
   // src/App/viewport.ts
@@ -7854,7 +7323,7 @@ body #gdt[class],
   }
 
   // src/App/index.tsx
-  var _tmpl$51 = /* @__PURE__ */ template("<a href=#>");
+  var _tmpl$49 = /* @__PURE__ */ template("<a href=#>");
   function settingsMenuState(defaults = !1) {
     let read = (setting) => defaults ? setting.defaultValue : setting.value;
     return {
@@ -7876,27 +7345,22 @@ body #gdt[class],
   var gState = (() => {
     let [settingsMenuOpen, setSettingsMenuOpen] = createSignal(!1), [readProgress, setReadProgress] = createSignal({
       currentPage: 1,
+      hasHistory: !1,
       totalPages: null
     });
     return {
-      page: {
-        cleanups: /* @__PURE__ */ new Set(),
-        generation: 0,
-        managedHosts: /* @__PURE__ */ new Set()
-      },
       readProgress,
       setReadProgress,
       settings: settingsMenuState(),
       settingsMenuOpen,
       setSettingsMenuOpen,
-      singlePageActions: void 0,
       thumbsGridsActions: void 0
     };
   })();
   document.documentElement.setAttribute("data-ehpeek-site", ehSiteTheme());
   registerGlobalStyle("ehpeek-uno-style", ehpeek_uno_default);
   registerGlobalStyle("ehpeek-theme-style", theme_default);
-  var settingsMenuMount = createAppMount("fixed inset-0 z-[1150] pointer-events-none", !0), readerCallbacks = {
+  var settingsMenuMount = createAppMount("fixed inset-0 z-[1150] pointer-events-none"), readerCallbacks = {
     enhanceThumbsGridsEnabled: gState.settings.enhanceThumbsGridsEnabled,
     readHistoryEnabled: gState.settings.readHistoryEnabled,
     onGotoPreviewIndex: (previewIndex) => {
@@ -7905,6 +7369,7 @@ body #gdt[class],
     onReaderClosed: (currentPage, totalPages) => {
       gState.setReadProgress({
         currentPage,
+        hasHistory: !0,
         totalPages
       });
     }
@@ -7923,15 +7388,6 @@ body #gdt[class],
       return console.error(`[ehpeek] ${name} failed`, error), null;
     }
   }
-  function deactivatePage() {
-    gState.page.generation += 1;
-    for (let cleanup of gState.page.cleanups)
-      cleanup();
-    gState.page.cleanups.clear(), gState.thumbsGridsActions = void 0;
-    for (let host of gState.page.managedHosts)
-      host.remove();
-    gState.page.managedHosts.clear();
-  }
   function openGalleryPage(previewCache, startPageUrl, preferredPageNum) {
     state.reader.enabled.value ? openReaderFromUserAction(startPageUrl, readerCallbacks, previewCache, readerViewport, preferredPageNum) : preferredPageNum !== void 0 && openOriginalReader(preferredPageNum, previewCache).catch(reportReaderOpenError);
   }
@@ -7943,6 +7399,9 @@ body #gdt[class],
     return createComponent(ReadButton, {
       get currentPage() {
         return gState.readProgress().currentPage;
+      },
+      get hasHistory() {
+        return gState.readProgress().hasHistory;
       },
       get totalPages() {
         return gState.readProgress().totalPages;
@@ -7976,16 +7435,16 @@ body #gdt[class],
   function injectEnhanceUI(page, previewCache, searchTextInput, searchResultsDom, touchResultsDom) {
     let galleryPage = page.type === "gallery", resultsPage = page.type === "search" || page.type === "favorites", preview = previewCache?.current() ?? null, previewMount = preview?.elems.mount ?? null;
     galleryPage && preview && previewCache && gState.settings.readerEnabled && allowFeatureFailure("Reader thumbnail links", () => {
-      gState.page.cleanups.add(preview.handle.interceptPreviewImageOpen((pageUrl) => {
+      preview.handle.interceptPreviewImageOpen((pageUrl) => {
         openGalleryPage(previewCache, pageUrl);
-      }));
+      });
     }), searchTextInput && allowFeatureFailure("Search autocomplete", () => {
       ehSyringe_exports.reuseTagTipInput(searchTextInput.elems.input);
     }), resultsPage && allowFeatureFailure("Search grid mode selector", () => {
       mutateSearchGridModeSelect(state.search.grid.value, () => {
         state.search.grid.set(!0), window.location.assign(new URL("/?inline_set=dm_e", window.location.href).href);
-      }, (value) => {
-        state.search.grid.set(!1), window.location.assign(new URL(`/?inline_set=dm_${value}`, window.location.href).href);
+      }, () => {
+        state.search.grid.set(!1);
       });
     });
     let searchGridEnabled = !!(resultsPage && state.search.grid.value);
@@ -7993,15 +7452,14 @@ body #gdt[class],
       searchResultsDom.handle.ensureGalleryLinksOpenInNewTab();
     }), gState.settings.touchUiEnabled || allowFeatureFailure("Desktop settings entry", () => {
       let settingsMount = manageSettingsMenuMount();
-      settingsMount && (settingsMount.mount(() => (() => {
-        var _el$ = _tmpl$51();
+      settingsMount && settingsMount.mount(() => (() => {
+        var _el$ = _tmpl$49();
         return _el$.$$click = (event) => {
           event.preventDefault(), event.stopPropagation(), gState.setSettingsMenuOpen(!0);
         }, insert(_el$, () => texts_default.settings.menuLabel), _el$;
-      })()), gState.page.managedHosts.add(settingsMount));
+      })());
     }), !gState.settings.touchUiEnabled && gState.settings.readHistoryEnabled && galleryPage && preview && previewCache && allowFeatureFailure("Desktop Read button", () => {
-      let galleryReadButtonMount = manageGalleryContinueReadingButtonMount();
-      gState.page.managedHosts.add(galleryReadButtonMount), galleryReadButtonMount.mount(() => createComponent(GalleryReadButton, {
+      manageGalleryContinueReadingButtonMount().mount(() => createComponent(GalleryReadButton, {
         previewCache,
         variant: "gallery"
       }));
@@ -8012,40 +7470,36 @@ body #gdt[class],
         },
         onLoadError: reportReaderOpenError,
         previewCache
-      })), gState.page.managedHosts.add(previewMount);
+      }));
     }) : galleryPage && preview && previewCache && allowFeatureFailure("Original thumbnail grid", () => {
       preview.elems.mount?.remove();
     }), gState.settings.enhanceSearchGridsEnabled && searchResultsDom && (searchResultsDom.data.previousUrl || searchResultsDom.data.nextUrl) && allowFeatureFailure("Enhanced Search pagination", () => {
-      let host = createAppMount();
-      host.mount(() => createComponent(EnhanceSearchGrids, {
+      createAppMount().mount(() => createComponent(EnhanceSearchGrids, {
         source: searchResultsDom,
-        onNavigateRequest: (url) => gState.singlePageActions?.navigate(url) ?? !1,
         onPageChange: (source) => {
           allowFeatureFailure("Changed Search page", () => {
             gState.settings.openGalleryInNewTab && source.handle.ensureGalleryLinksOpenInNewTab(), touchResultsDom?.handle.updateTouchResultsLayout(), searchGridEnabled && mutateSearchGrid();
           });
         }
-      })), gState.page.managedHosts.add(host);
+      }));
     }), gState.settings.searchHistoryEnabled && searchTextInput && allowFeatureFailure("Search history", () => {
-      let host = createAppMount();
-      host.mount(() => createComponent(SearchHistory, {
+      createAppMount().mount(() => createComponent(SearchHistory, {
         source: searchTextInput
-      })), gState.page.managedHosts.add(host);
+      }));
     });
   }
   function injectTouchUI(page, previewCache) {
-    let galleryPage = page.type === "gallery", resultsPage = page.type === "search" || page.type === "favorites", preview = previewCache?.current() ?? null, resultsDom = resultsPage ? allowFeatureFailure("Touch results layout", () => manageTouchResultsPage(page, singlePageActive)) : null;
-    return resultsDom && gState.page.cleanups.add(resultsDom.handle.removeTouchResultsLayout), allowFeatureFailure("Touch top bar", () => {
+    let galleryPage = page.type === "gallery", resultsPage = page.type === "search" || page.type === "favorites", preview = previewCache?.current() ?? null, resultsDom = resultsPage ? allowFeatureFailure("Touch results layout", () => manageTouchResultsPage(page)) : null;
+    return allowFeatureFailure("Touch top bar", () => {
       let topBarDom = manageTopBar();
       topBarDom && (topBarDom.handle.updateNavItemVisual(TOUCH_TOP_BAR_NAV_ITEM_CLASS), topBarDom.elems.mount.mount(() => createComponent(TouchTopBar, {
         source: topBarDom,
         onSettingsMenuOpen: () => {
           gState.setSettingsMenuOpen(!0);
         }
-      })), gState.page.managedHosts.add(topBarDom.elems.mount));
+      })));
     }), (galleryPage || resultsPage) && allowFeatureFailure("Back to top", () => {
-      let host = createAppMount("ehpeek-back-to-top-host");
-      host.mount(() => createComponent(BackToTop, {})), gState.page.managedHosts.add(host);
+      createAppMount("ehpeek-back-to-top-host").mount(() => createComponent(BackToTop, {}));
     }), galleryPage && (allowFeatureFailure("Touch GalleryInfo", () => {
       registerGlobalStyle("ehpeek-touch-gallery-page-rearrange-style", galleryRearrange_default);
       let galleryInfoDom = manageGalleryInfo(preview?.data ?? null);
@@ -8057,7 +7511,7 @@ body #gdt[class],
             variant: "touchGallery"
           }) : void 0;
         }
-      })), gState.page.managedHosts.add(galleryInfoDom.elems.mount));
+      })));
     }), allowFeatureFailure("Touch Gallery comments", () => {
       mutateGalleryCommentsTouch();
     })), resultsPage && allowFeatureFailure("Touch Search panel", () => {
@@ -8066,70 +7520,52 @@ body #gdt[class],
         source: searchPanelDom,
         get after() {
           return memo(() => !!resultsDom?.data.favoritesCategory)() ? createComponent(FavoritesCategorySelect, {
-            get info() {
-              return resultsDom.data.favoritesCategory;
-            }
+            source: resultsDom
           }) : void 0;
         }
-      })), gState.page.managedHosts.add(searchPanelDom.elems.mount), searchPanelDom.elems.categoryToggleMount && (searchPanelDom.elems.categoryToggleMount.mount(() => createComponent(TouchSearchCategoryToggle, {
+      })), searchPanelDom.elems.categoryToggleMount && searchPanelDom.elems.categoryToggleMount.mount(() => createComponent(TouchSearchCategoryToggle, {
         source: searchPanelDom
-      })), gState.page.managedHosts.add(searchPanelDom.elems.categoryToggleMount)), searchPanelDom.elems.advancedToggleMount && (searchPanelDom.elems.advancedToggleMount.mount(() => createComponent(TouchSearchAdvancedToggle, {
-        source: searchPanelDom
-      })), gState.page.managedHosts.add(searchPanelDom.elems.advancedToggleMount)), searchPanelDom.elems.fileSearchToggleMount && (searchPanelDom.elems.fileSearchToggleMount.mount(() => createComponent(TouchSearchFileToggle, {
-        source: searchPanelDom
-      })), gState.page.managedHosts.add(searchPanelDom.elems.fileSearchToggleMount)), searchPanelDom.elems.searchActionMount.mount(() => createComponent(TouchSearchAction, {
+      })), searchPanelDom.elems.searchActionMount.mount(() => createComponent(TouchSearchAction, {
         action: "search",
         source: searchPanelDom
-      })), gState.page.managedHosts.add(searchPanelDom.elems.searchActionMount), searchPanelDom.elems.clearActionMount && (searchPanelDom.elems.clearActionMount.mount(() => createComponent(TouchSearchAction, {
+      })), searchPanelDom.elems.clearActionMount && searchPanelDom.elems.clearActionMount.mount(() => createComponent(TouchSearchAction, {
         action: "clear",
         source: searchPanelDom
-      })), gState.page.managedHosts.add(searchPanelDom.elems.clearActionMount)));
+      })));
     }), resultsDom;
   }
-  async function injectPage(nextPage) {
-    let galleryPage = nextPage.type === "gallery", resultsPage = nextPage.type === "search" || nextPage.type === "favorites", generation = ++gState.page.generation;
-    if (gState.settings.touchUiEnabled && (await ehSyringe_exports.waitForInitialUi(), nextPage.type === "search" && await ehSyringe_exports.waitForSearchUi(), generation !== gState.page.generation))
-      return;
-    galleryPage && allowFeatureFailure("Gallery API session", () => {
-      manageGalleryApiSession();
-    });
+  async function injectPage() {
+    let page = extractPageType(), galleryPage = page.type === "gallery", resultsPage = page.type === "search" || page.type === "favorites";
+    gState.settings.touchUiEnabled && (await ehSyringe_exports.waitForInitialUi(), page.type === "search" && await ehSyringe_exports.waitForSearchUi());
     let galleryPreview = galleryPage ? allowFeatureFailure("Gallery Preview", () => manageGalleryPreview()) : null, galleryPreviewCache = galleryPreview ? allowFeatureFailure("Gallery Preview cache", () => createGalleryPreviewCache(galleryPreview)) : null;
-    nextPage.type === "gallery" && galleryPreview && allowFeatureFailure("Gallery Read History", () => {
-      let record = loadReadHistory(nextPage.galleryId, nextPage.token);
+    page.type === "gallery" && galleryPreview && allowFeatureFailure("Gallery Read History", () => {
+      let record = loadReadHistory(page.galleryId, page.token);
       gState.setReadProgress({
         currentPage: record?.pageNum && record.pageNum > 0 ? record.pageNum : 1,
+        hasHistory: record !== null,
         totalPages: record?.totalPages ?? galleryPreview.data.totalImages
       });
     });
     let searchTextInput = resultsPage ? allowFeatureFailure("Search text input", () => manageSearchTextInput()) : null, searchResultsSource = resultsPage ? allowFeatureFailure("Search results", () => manageSearchResults()) : null, myTagAppearances = null;
-    if (gState.settings.myTagsEnabled && (nextPage.type === "myTags" ? await allowAsyncFeatureFailure("My Tags refresh", async () => {
+    gState.settings.myTagsEnabled && (page.type === "myTags" ? await allowAsyncFeatureFailure("My Tags refresh", async () => {
       let currentMyTags = extractMyTagsPageData();
       await refreshMyTags(currentMyTags);
-    }) : galleryPage && (myTagAppearances = await allowAsyncFeatureFailure("My Tags appearance", loadMyTagAppearances))), generation !== gState.page.generation)
-      return;
-    myTagAppearances && allowFeatureFailure("Gallery My Tags appearance", () => {
-      gState.page.cleanups.add(mutateGalleryMyTags(myTagAppearances));
-    }), gState.settings.readHistoryEnabled && nextPage.type === "image" && allowFeatureFailure("Image Read History", () => {
+    }) : galleryPage && (myTagAppearances = await allowAsyncFeatureFailure("My Tags appearance", loadMyTagAppearances))), myTagAppearances && allowFeatureFailure("Gallery My Tags appearance", () => {
+      mutateGalleryMyTags(myTagAppearances);
+    }), gState.settings.readHistoryEnabled && page.type === "image" && allowFeatureFailure("Image Read History", () => {
       let gallery = extractImageGalleryPage();
-      if (gallery?.galleryId === nextPage.galleryId) {
-        let previous = loadReadHistory(gallery.galleryId, gallery.token), historySession = new ReadHistorySession({
+      if (gallery?.galleryId === page.galleryId) {
+        let previous = loadReadHistory(gallery.galleryId, gallery.token);
+        new ReadHistorySession({
           galleryId: gallery.galleryId,
           token: gallery.token,
           totalPages: previous?.totalPages
-        });
-        historySession.update(nextPage.pageNum, previous?.totalPages), gState.page.cleanups.add(() => historySession.dispose());
+        }).update(page.pageNum, previous?.totalPages);
       }
     });
-    let touchResultsDom = gState.settings.touchUiEnabled ? injectTouchUI(nextPage, galleryPreviewCache) : null;
-    injectEnhanceUI(nextPage, galleryPreviewCache, searchTextInput, searchResultsSource, touchResultsDom), nextPage.type === "gallery" && state.reader.enabled.value && nextPage.peekPage !== null && galleryPreviewCache && allowAsyncFeatureFailure("Reader deep link", () => openReaderFromHash(readerCallbacks, galleryPreviewCache, readerViewport));
+    let touchResultsDom = gState.settings.touchUiEnabled ? injectTouchUI(page, galleryPreviewCache) : null;
+    injectEnhanceUI(page, galleryPreviewCache, searchTextInput, searchResultsSource, touchResultsDom), page.type === "gallery" && state.reader.enabled.value && page.peekPage !== null && galleryPreviewCache && allowAsyncFeatureFailure("Reader deep link", () => openReaderFromHash(readerCallbacks, galleryPreviewCache, readerViewport));
   }
-  var singlePageActive = gState.settings.touchUiEnabled && gState.settings.singlePageAppEnabled && singlePageRoute(window.location.href) !== null;
-  singlePageActive ? createAppMount("isolate", !0).mount(() => createComponent(SinglePage, {
-    actionsRef: (actions) => {
-      gState.singlePageActions = actions;
-    },
-    onPageActivate: (page) => injectPage(page),
-    onPageDeactivate: deactivatePage
-  })) : injectPage(extractPageType());
+  injectPage();
   delegateEvents(["click"]);
 })();
