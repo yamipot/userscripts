@@ -226,6 +226,20 @@ function injectEnhanceUI(
   const resultsPage = page.type === "search" || page.type === "favorites";
   const preview = previewCache?.current() ?? null;
   const previewMount = preview?.elems.mount ?? null;
+  const updateSearchGridModeSelector = () => {
+    eh.mutateSearchGridModeSelect(
+      state.search.grid.value,
+      () => {
+        state.search.grid.set(true);
+        window.location.assign(
+          new URL("/?inline_set=dm_e", window.location.href).href,
+        );
+      },
+      () => {
+        state.search.grid.set(false);
+      },
+    );
+  };
 
   if (galleryPage && preview && previewCache && gState.settings.readerEnabled) {
     allowFeatureFailure("Reader thumbnail links", () => {
@@ -237,18 +251,7 @@ function injectEnhanceUI(
 
   if (resultsPage) {
     allowFeatureFailure("Search grid mode selector", () => {
-      eh.mutateSearchGridModeSelect(
-        state.search.grid.value,
-        () => {
-          state.search.grid.set(true);
-          window.location.assign(
-            new URL("/?inline_set=dm_e", window.location.href).href,
-          );
-        },
-        () => {
-          state.search.grid.set(false);
-        },
-      );
+      updateSearchGridModeSelector();
     });
   }
   const searchGridEnabled = Boolean(resultsPage && state.search.grid.value);
@@ -332,6 +335,7 @@ function injectEnhanceUI(
           source={searchResultsDom}
           onPageChange={(source) => {
             allowFeatureFailure("Changed Search page", () => {
+              updateSearchGridModeSelector();
               if (gState.settings.openGalleryInNewTab) {
                 source.handle.ensureGalleryLinksOpenInNewTab();
               }
@@ -555,8 +559,21 @@ async function injectPage(page: eh.PageType): Promise<void> {
   }
 }
 
-const page = eh.extractPageType();
-eh.EhSyringe.initialize(page.type === "search", () => {
+eh.EhSyringe.initialize();
+
+async function startApp(): Promise<void> {
+  if (document.readyState === "loading") {
+    await new Promise<void>((resolve) => {
+      document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+    });
+  }
+
   installSettingsMenu();
-  void injectPage(page).finally(removeWelcomeIcon);
+  await injectPage(eh.extractPageType());
+}
+
+void startApp().catch((error) => {
+  console.error("[ehpeek] App startup failed", error);
+}).finally(() => {
+  removeWelcomeIcon();
 });
