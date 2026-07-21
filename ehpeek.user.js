@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260720.1429
+// @version      260721.1456
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -2017,13 +2017,19 @@
     if (!original || !host)
       return null;
     let readMeta = () => {
-      let values = page.all("#gdd tr").map((row) => row.all("td, th").slice(1).map((cell) => cell.text()).filter(Boolean).join(" "));
+      let rows = page.all("#gdd tr").map((row) => {
+        let cells = row.all("td, th");
+        return {
+          label: cells[0]?.text() ?? "",
+          value: cells.slice(1).map((cell) => cell.text()).filter(Boolean).join(" ")
+        };
+      });
       return {
-        favorited: values[6],
-        fileSize: values[4],
-        language: values[3],
-        parent: values[1],
-        posted: values[0]
+        favorited: rows[6]?.value ? [rows[6].label, rows[6].value].filter(Boolean).join(" ") : void 0,
+        fileSize: rows[4]?.value,
+        language: rows[3]?.value,
+        parent: rows[1]?.value,
+        posted: rows[0]?.value
       };
     }, readCategory = (node) => {
       let style2 = node?.computedStyle();
@@ -2044,7 +2050,7 @@
       }
       return "";
     }, readFavorite = (element, scripts2) => {
-      let displayed = element?.one("#favoritelink")?.text() || element?.one("[title]")?.attribute("title")?.trim() || "", favorited = /^favorites?\s+\d+/i.test(displayed), slot = displayed.match(/^favorites?\s+([0-9])/i)?.[1], match = (scripts2.find(
+      let displayed = element?.one("#favoritelink")?.text() || element?.one("[title]")?.attribute("title")?.trim() || "", slot = displayed.match(/(?:^|\D)([0-9])(?:\D|$)/)?.[1], favorited = slot !== void 0 || /^favorited$/i.test(displayed), match = (scripts2.find(
         (item) => item.includes("popbase") && item.includes("addfav")
       ) ?? "").match(
         /popbase\s*=\s*base_url\s*\+\s*"gallerypopups\.php\?gid=(\d+)&t=([^"]+)&act="/
@@ -2153,7 +2159,12 @@
       tagContents: tagContentSources.map((source) => source.inplace()),
       tagList: page.one("#taglist")?.inplace() ?? null,
       tagMenuAction: tagMenuAction?.inplace() ?? null
-    }, selectedTagSource = null;
+    }, selectedTagSource = null, activateTagMenu = (source) => {
+      let stopNavigation = source.listen("click", (event) => {
+        event.preventDefault();
+      }, { once: !0 });
+      source.click(), stopNavigation();
+    };
     return { data, elems, handle: {
       /** Normalizes the original cover for GalleryInfoPanel's responsive layout. */
       updateCoverVisual(className2) {
@@ -2183,7 +2194,7 @@
       /** Submits a tag to the chosen My Tags collection and validates the response. */
       async submitFavoriteTag(tag, tagSet, mode) {
         let response = await addMyTag(tag.name, tagSet, mode);
-        extractMyTagsPageData(response.document, tagSet);
+        return extractMyTagsPageData(response.document, tagSet);
       },
       /** Keeps component tag groups synchronized with original-page tag updates. */
       observeGalleryTagGroups(onChange) {
@@ -2203,18 +2214,18 @@
       /** Removes the selected tag from its stored My Tags collection. */
       async removeFavoriteTag(tag) {
         if (!tag.myTag)
-          return;
+          throw new Error("The tag is not in My Tags.");
         let response = await deleteMyTag(tag.myTag.id, tag.myTag.tagSet);
-        extractMyTagsPageData(response.document, tag.myTag.tagSet);
+        return extractMyTagsPageData(response.document, tag.myTag.tagSet);
       },
       /** Opens E-H's original tag actions and only adapts their presentation. */
       openGalleryTagMenu(tag, containerClassName, itemClassName) {
         if (!elems.tagMenuAction)
           throw new Error("Gallery tag actions are unavailable.");
-        tag.contentSource.click(), elems.newTag?.setHidden(!1).removeStyles("display");
+        activateTagMenu(tag.contentSource), elems.newTag?.setHidden(!1).removeStyles("display");
         let actions = elems.tagMenuAction.all("a");
         if (actions.length === 0)
-          throw tag.contentSource.click(), elems.newTag?.setHidden(!1).removeStyles("display"), new Error("Gallery tag actions could not be opened.");
+          throw activateTagMenu(tag.contentSource), elems.newTag?.setHidden(!1).removeStyles("display"), new Error("Gallery tag actions could not be opened.");
         selectedTagSource = tag.contentSource, elems.tagMenuAction.replaceClasses(containerClassName), elems.tagMenuAction.all("img").forEach((image) => {
           image.setHidden(!0);
         }), actions.forEach((action) => {
@@ -2223,7 +2234,7 @@
       },
       /** Closes E-H's selected tag without replacing its action DOM. */
       closeGalleryTagMenu() {
-        selectedTagSource?.click(), elems.newTag?.setHidden(!1).removeStyles("display"), selectedTagSource = null;
+        selectedTagSource && activateTagMenu(selectedTagSource), elems.newTag?.setHidden(!1).removeStyles("display"), selectedTagSource = null;
       },
       /** Updates the Gallery favorite state through the original site endpoint. */
       updateGalleryFavorite
@@ -2270,8 +2281,8 @@
       nextUrl: page.one(".searchnav a[id$='next'][href]")?.attribute("href") ?? null,
       previousUrl: page.one(".searchnav a[id$='prev'][href]")?.attribute("href") ?? null
     }, elems = {
-      navigationBars: page.all(".searchnav").map((source) => source.inplace()),
-      resultList: resultSource.inplace()
+      resultList: resultSource.inplace(),
+      searchInput: page.one("#f_search, input[name='f_search']")?.inplace() ?? null
     };
     return { data, elems, handle: {
       /** Routes the original pagination controls through the active page owner. */
@@ -2291,9 +2302,9 @@
           throw new Error(texts_default.errors.searchPageContentNotFound);
         window.history.pushState(window.history.state, "", url);
       },
-      /** Returns the viewport to the result page's upper navigation bar. */
-      scrollSearchResultsToTop() {
-        elems.navigationBars[0]?.scrollIntoView({ block: "start", behavior: "auto" });
+      /** Returns enhanced Search navigation to its input, or the page top when absent. */
+      scrollSearchPageToInput() {
+        elems.searchInput ? elems.searchInput.scrollIntoView({ block: "start", behavior: "auto" }) : window.scrollTo({ top: 0, behavior: "auto" });
       },
       /** Exposes result loading state without removing the current result list. */
       updateSearchLoading(busy) {
@@ -3219,7 +3230,7 @@
           let nextSource = manageSearchResults();
           if (!nextSource)
             throw new Error(texts_default.errors.searchPageContentNotFound);
-          source = nextSource, props.onPageChange(source), source.handle.ensureSearchSwipeInput(), setGestureTarget(source.elems.resultList.Component()), source.handle.scrollSearchResultsToTop();
+          source = nextSource, props.onPageChange(source), source.handle.ensureSearchSwipeInput(), setGestureTarget(source.elems.resultList.Component()), source.handle.scrollSearchPageToInput();
         } catch (error) {
           console.error("[ehpeek]", error);
         } finally {
@@ -3994,7 +4005,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260720.1429", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260721.1456", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -4164,6 +4175,11 @@
       }
     }, closeTagMenu = () => {
       selectedTag() && (source.handle.closeGalleryTagMenu(), setSelectedTag(null));
+    }, updateTag = (updatedTag) => {
+      setTagGroups((groups) => groups.map((group) => ({
+        ...group,
+        tags: group.tags.map((tag) => tag.url === updatedTag.url ? updatedTag : tag)
+      }))), setSelectedTag((tag) => tag?.url === updatedTag.url ? updatedTag : tag);
     };
     return (() => {
       var _el$ = _tmpl$34(), _el$2 = _el$.firstChild, _el$3 = _el$2.firstChild, _el$4 = _el$3.firstChild, _el$5 = _el$4.firstChild, _el$6 = _el$5.firstChild, _el$7 = _el$6.nextSibling, _el$8 = _el$5.nextSibling, _el$9 = _el$8.firstChild, _el$0 = _el$2.nextSibling, _el$1 = _el$0.firstChild, _el$10 = _el$0.nextSibling, _el$11 = _el$10.firstChild;
@@ -4268,7 +4284,8 @@
         get tag() {
           return selectedTag();
         },
-        onClose: closeTagMenu
+        onClose: closeTagMenu,
+        onTagUpdated: updateTag
       }), null), insert(_el$, createComponent(Show, {
         get when() {
           return ratingPickerOpen();
@@ -4376,7 +4393,7 @@
     })();
   }
   function TouchGalleryTagMenu(props) {
-    let [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(!1), tagSets = state.gallery.myTagSets.reload(), [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1"), [tagMode, setTagMode] = createSignal("marked"), [updating, setUpdating] = createSignal(!1), [favoriteTag, setFavoriteTag] = createSignal(null);
+    let onClose = untrack(() => props.onClose), onTagUpdated = untrack(() => props.onTagUpdated), [favoriteDialogOpen, setFavoriteDialogOpen] = createSignal(!1), tagSets = state.gallery.myTagSets.reload(), [selectedTagSet, setSelectedTagSet] = createSignal(tagSets.find((option) => option.selected)?.value ?? tagSets[0]?.value ?? "1"), [tagMode, setTagMode] = createSignal("marked"), [updating, setUpdating] = createSignal(!1), [favoriteTag, setFavoriteTag] = createSignal(null);
     onMount(() => {
       let onKeyDown = (event) => {
         event.key === "Escape" && props.tag && props.onClose();
@@ -4389,7 +4406,25 @@
       if (!updating()) {
         setUpdating(!0);
         try {
-          tag.myTag ? await props.source.handle.removeFavoriteTag(tag) : await props.source.handle.submitFavoriteTag(tag, selectedTagSet(), tagMode()), state.gallery.myTagAppearances.clear(), window.location.reload();
+          let myTagsPage = tag.myTag ? await props.source.handle.removeFavoriteTag(tag) : await props.source.handle.submitFavoriteTag(tag, selectedTagSet(), tagMode()), updateAppearance = (appearance) => onTagUpdated({
+            ...tag,
+            appearance: appearance ? {
+              ...tag.appearance,
+              backgroundColor: appearance.backgroundColor,
+              color: appearance.color
+            } : {
+              backgroundColor: "",
+              borderColor: "",
+              color: ""
+            },
+            myTag: appearance ? {
+              id: appearance.id,
+              tagSet: appearance.tagSet
+            } : null
+          });
+          updateAppearance(myTagsPage.appearances.find((item) => item.name === tag.name)), setFavoriteDialogOpen(!1), onClose(), refreshMyTags(myTagsPage).then((appearances) => {
+            appearances && updateAppearance(appearances.find((item) => item.name === tag.name));
+          });
         } catch (error) {
           console.error("[ehpeek]", error), window.alert(error instanceof Error ? error.message : texts_default.errors.loadFailed);
         } finally {
@@ -5063,7 +5098,7 @@ body #gdt[class],
 .rounded-xl{border-radius:10px;}
 .rounded-xs{border-radius:3px;}
 .focus-visible\\:rounded-xs:focus-visible{border-radius:3px;}
-.ehp-color-reader{background-color:var(--color-background);color:var(--color-text);}
+.ehp-color-reader{background-color:var(--color-reader-background);color:var(--color-reader-text);}
 .ehp-color-site-elevated{background-color:var(--color-site-elevated);--un-shadow:0 8px 24px var(--un-shadow-color, var(--color-shadow-elevated));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .ehp-color-site-page{background-color:var(--color-site-page);}
 .ehp-color-site-surface{background-color:var(--color-site-surface);}
@@ -5107,6 +5142,7 @@ body #gdt[class],
 @media (pointer: coarse){
 .coarse\\:\\!h-md{height:40px !important;}
 .coarse\\:\\!w-md{width:40px !important;}
+.coarse\\:w-xl{width:80px;}
 .coarse\\:gap-lg{gap:16px;}
 .coarse\\:gap-xl{gap:24px;}
 .coarse\\:rounded-lg{border-radius:8px;}
@@ -5167,6 +5203,7 @@ body #gdt[class],
 .relative{position:relative;}
 .static{position:static;}
 .inset-0{inset:0;}
+.inset-y-0{top:0;bottom:0;}
 .bottom-\\[calc\\(12px\\+env\\(safe-area-inset-bottom\\,0px\\)\\)\\]{bottom:calc(12px + env(safe-area-inset-bottom,0px));}
 .bottom-\\[calc\\(max\\(16px\\,env\\(safe-area-inset-bottom\\,0px\\)\\)_\\+_64px\\)\\]{bottom:calc(max(16px,env(safe-area-inset-bottom,0px)) + 64px);}
 .left-\\[max\\(10px\\,env\\(safe-area-inset-left\\,0px\\)\\)\\]{left:max(10px,env(safe-area-inset-left,0px));}
@@ -5178,6 +5215,7 @@ body #gdt[class],
 .right-0{right:0;}
 .right-10px{right:10px;}
 .right-24px{right:24px;}
+.right-2px{right:2px;}
 .right-auto{right:auto;}
 .top-\\[calc\\(100\\%\\+8px\\)\\]{top:calc(100% + 8px);}
 .top-\\[calc\\(10px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(10px + env(safe-area-inset-top,0px));}
@@ -5258,6 +5296,7 @@ body #gdt[class],
 .\\!min-w-0{min-width:0 !important;}
 .\\!w-full,
 .\\[\\&_\\.searchadv\\]\\:\\!w-full .searchadv{width:100% !important;}
+.h-\\[120px\\]{height:120px;}
 .h-\\[2\\.4em\\]{height:2.4em;}
 .h-\\[var\\(--reader-frame-height\\)\\]{height:var(--reader-frame-height);}
 .h-\\[var\\(--reader-page-height\\)\\]{height:var(--reader-page-height);}
@@ -5300,10 +5339,12 @@ body #gdt[class],
 .w-\\[var\\(--reader-frame-width\\)\\]{width:var(--reader-frame-width);}
 .w-10px{width:10px;}
 .w-15px{width:15px;}
+.w-18px{width:18px;}
 .w-20px{width:20px;}
 .w-240px{width:240px;}
 .w-320px{width:320px;}
 .w-32px{width:32px;}
+.w-3px{width:3px;}
 .w-42px{width:42px;}
 .w-60px{width:60px;}
 .w-64px{width:64px;}
@@ -5398,6 +5439,7 @@ body #gdt[class],
 .\\!border-transparent{border-color:transparent !important;}
 .border-\\[var\\(--color-border\\)\\]{border-color:var(--color-border);}
 .border-\\[var\\(--color-danger-border\\)\\]{border-color:var(--color-danger-border);}
+.border-\\[var\\(--color-reader-border\\)\\]{border-color:var(--color-reader-border);}
 .border-\\[var\\(--color-site-accent\\)\\]{border-color:var(--color-site-accent);}
 .border-\\[var\\(--color-site-border-subtle\\)\\]{border-color:var(--color-site-border-subtle);}
 .border-\\[var\\(--color-site-swipe-border\\)\\]{border-color:var(--color-site-swipe-border);}
@@ -5406,9 +5448,11 @@ body #gdt[class],
 .focus\\:border-\\[var\\(--color-site-accent\\)\\]:focus{border-color:var(--color-site-accent);}
 .border-l-\\[var\\(--color-site-border-subtle\\)\\]{border-left-color:var(--color-site-border-subtle);}
 .border-l-\\[var\\(--color-site-page\\)\\]{border-left-color:var(--color-site-page);}
+.border-t-\\[var\\(--color-reader-accent\\)\\]{border-top-color:var(--color-reader-accent);}
 .border-t-\\[var\\(--color-site-border-subtle\\)\\]{border-top-color:var(--color-site-border-subtle);}
 .rounded-3px{border-radius:3px;}
 .rounded-full{border-radius:9999px;}
+.rounded-l-md{border-top-left-radius:0.375rem;border-bottom-left-radius:0.375rem;}
 .border-solid{border-style:solid;}
 .\\!bg-\\[color-mix\\(in_srgb\\,var\\(--color-site-page\\)_82\\%\\,black\\)\\]{background-color:color-mix(in srgb,var(--color-site-page) 82%,black) !important;}
 .\\!bg-\\[var\\(--color-site-elevated\\)\\]{background-color:var(--color-site-elevated) !important;}
@@ -5419,6 +5463,9 @@ body #gdt[class],
 .bg-\\[var\\(--color-control\\)\\]{background-color:var(--color-control);}
 .bg-\\[var\\(--color-danger-soft\\)\\]{background-color:var(--color-danger-soft);}
 .bg-\\[var\\(--color-loading\\)\\]{background-color:var(--color-loading);}
+.bg-\\[var\\(--color-reader-border\\)\\]{background-color:var(--color-reader-border);}
+.bg-\\[var\\(--color-reader-scrollbar\\)\\]{background-color:var(--color-reader-scrollbar);}
+.bg-\\[var\\(--color-reader-surface\\)\\]{background-color:var(--color-reader-surface);}
 .bg-\\[var\\(--color-site-accent-hover\\)\\]{background-color:var(--color-site-accent-hover);}
 .bg-\\[var\\(--color-site-accent\\)\\]{background-color:var(--color-site-accent);}
 .bg-\\[var\\(--color-site-elevated\\)\\]{background-color:var(--color-site-elevated);}
@@ -5427,7 +5474,6 @@ body #gdt[class],
 .bg-\\[var\\(--color-site-swipe-background\\)\\]{background-color:var(--color-site-swipe-background);}
 .bg-\\[var\\(--color-state-off\\)\\]{background-color:var(--color-state-off);}
 .bg-\\[var\\(--color-state-on\\)\\]{background-color:var(--color-state-on);}
-.bg-\\[var\\(--color-surface\\)\\]{background-color:var(--color-surface);}
 .bg-black\\/65{background-color:rgb(0 0 0 / 0.65);}
 .bg-transparent{background-color:transparent;}
 .hover\\:\\!bg-\\[var\\(--color-site-item-hover\\)\\]:hover{background-color:var(--color-site-item-hover) !important;}
@@ -5480,6 +5526,7 @@ body #gdt[class],
 .text-\\[var\\(--color-danger\\)\\]{color:var(--color-danger);}
 .text-\\[var\\(--color-muted\\)\\]{color:var(--color-muted);}
 .text-\\[var\\(--color-rating-submitted\\)\\]{color:var(--color-rating-submitted);}
+.text-\\[var\\(--color-reader-muted\\)\\]{color:var(--color-reader-muted);}
 .text-\\[var\\(--color-site-surface\\)\\]{color:var(--color-site-surface);}
 .text-\\[var\\(--color-site-text\\)\\]{color:var(--color-site-text);}
 .text-\\[var\\(--color-text\\)\\]{color:var(--color-text);}
@@ -5527,6 +5574,7 @@ body #gdt[class],
 .active\\:opacity-70:active{opacity:0.7;}
 .disabled\\:opacity-40:disabled{opacity:0.4;}
 .disabled\\:opacity-50:disabled{opacity:0.5;}
+.shadow-\\[0_2px_10px_var\\(--color-shadow-control\\)\\]{--un-shadow:0 2px 10px var(--un-shadow-color, var(--color-shadow-control));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .shadow-\\[0_2px_10px_var\\(--color-shadow-panel\\)\\]{--un-shadow:0 2px 10px var(--un-shadow-color, var(--color-shadow-panel));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .shadow-\\[0_2px_6px_var\\(--color-shadow-control\\)\\]{--un-shadow:0 2px 6px var(--un-shadow-color, var(--color-shadow-control));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
 .shadow-\\[0_2px_8px_var\\(--color-shadow-panel\\)\\]{--un-shadow:0 2px 8px var(--un-shadow-color, var(--color-shadow-panel));box-shadow:var(--un-ring-offset-shadow), var(--un-ring-shadow), var(--un-shadow);}
@@ -5549,6 +5597,7 @@ body #gdt[class],
 .transition-\\[border-color\\,background-color\\,color\\]{transition-property:border-color,background-color,color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[filter\\,transform\\,box-shadow\\]{transition-property:filter,transform,box-shadow;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[opacity\\,transform\\]{transition-property:opacity,transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
+.transition-\\[width\\]{transition-property:width;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .duration-120{transition-duration:120ms;}
 .duration-160{transition-duration:160ms;}
@@ -5577,6 +5626,7 @@ body #gdt[class],
 .coarse\\:top-\\[calc\\(8px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(8px + env(safe-area-inset-top,0px));}
 .coarse\\:top-8px{top:8px;}
 .coarse\\:block{display:block;}
+.coarse\\:h-\\[200px\\]{height:200px;}
 .coarse\\:h-18px{height:18px;}
 .coarse\\:h-64px{height:64px;}
 .coarse\\:max-h-\\[calc\\(100dvh-16px\\)\\]{max-height:calc(100dvh - 16px);}
@@ -5587,7 +5637,9 @@ body #gdt[class],
 .coarse\\:min-w-64px{min-width:64px;}
 .coarse\\:w-\\[calc\\(100vw-16px\\)\\]{width:calc(100vw - 16px);}
 .coarse\\:w-\\[calc\\(100vw-32px\\)\\]{width:calc(100vw - 32px);}
+.coarse\\:w-12px{width:12px;}
 .coarse\\:w-18px{width:18px;}
+.coarse\\:w-24px{width:24px;}
 .coarse\\:w-48px{width:48px;}
 .coarse\\:border-spacing-6px{--un-border-spacing-x:6px;--un-border-spacing-y:6px;border-spacing:var(--un-border-spacing-x) var(--un-border-spacing-y);}
 }`;
@@ -5752,7 +5804,7 @@ body #gdt[class],
   };
 
   // src/components/Reader/Viewport.tsx
-  var _tmpl$31 = /* @__PURE__ */ template('<div class="w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden [&amp;[data-dragging=true]]:cursor-grabbing [&amp;[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:touch-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:select-none"tabindex=-1><main class="ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-row [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-auto [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0">'), _tmpl$211 = /* @__PURE__ */ template('<section class="ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:items-center [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0"><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full">'), _tmpl$38 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$47 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans textsize-lg font-700 leading-1 active:scale-96 [touch-action:manipulation]"><span aria-hidden=true>↻'), _tmpl$54 = /* @__PURE__ */ template("<div>"), _tmpl$64 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid ehp-color-spinner">'), FALLBACK_ASPECT_RATIO = 1.42;
+  var _tmpl$31 = /* @__PURE__ */ template('<div class="w-full h-full overflow-auto overscroll-contain scroll-auto touch-pan-y cursor-grab scrollbar-hidden [&amp;[data-dragging=true]]:cursor-grabbing [&amp;[data-dragging=true]]:select-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:touch-none [#ehpeek-reader[data-view-mode=paged]_&amp;]:select-none"tabindex=-1><main class="ehpeek-reader-page-strip flex flex-col w-full min-h-full py-56px px-0 pb-72px [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-row [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-auto [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:min-h-0 [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0">'), _tmpl$211 = /* @__PURE__ */ template('<section class="ehpeek-page flex w-full h-[var(--reader-page-height)] items-start justify-center pb-sm [#ehpeek-reader[data-view-mode=paged]_&amp;]:flex-[0_0_100%] [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:items-center [#ehpeek-reader[data-view-mode=paged]_&amp;]:p-0"><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden [#ehpeek-reader[data-view-mode=paged]_&amp;]:w-full [#ehpeek-reader[data-view-mode=paged]_&amp;]:h-full">'), _tmpl$38 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$47 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload inline-flex w-64px h-64px items-center justify-center border border-[var(--color-danger-border)] rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)] cursor-pointer font-sans textsize-lg font-700 leading-1 active:scale-96 [touch-action:manipulation]"><span aria-hidden=true>↻'), _tmpl$54 = /* @__PURE__ */ template("<div>"), _tmpl$64 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid border-[var(--color-reader-border)] border-t-[var(--color-reader-accent)]">'), FALLBACK_ASPECT_RATIO = 1.42, DEFAULT_DECODED_IMAGE_CACHE_LIMIT = 24, DECODED_IMAGE_CACHE_BYTES = 96 * 1024 * 1024;
   function pageWindowNumbers(currentPageNum, windowSize) {
     let numbers = [];
     for (let offset = -windowSize; offset <= windowSize; offset += 1)
@@ -5760,7 +5812,7 @@ body #gdt[class],
     return numbers;
   }
   function PagesViewport(props) {
-    let [slots, setSlots] = createSignal([]), [revision, setRevision] = createSignal(0), horizontalAnimator = new ScrollAnimator("x"), flingAnimator = new ScrollFlingAnimator(), pageSlots2 = [], scroller, scrollerApi, dragStartPosition = null, resizeFrame = null, moveRequestToken = 0, disposed = !1, refresh = () => setRevision((value) => value + 1), slotFor = (pageNum) => pageSlots2.find((slot) => slot.pageNum === pageNum), viewportWidth = () => scrollerApi.viewportWidth(), viewportHeight = () => scrollerApi.viewportHeight(), scrollTop = () => scrollerApi.scrollTop(), visualSlotIndex = (index, slotCount) => props.mode === "paged" && props.readDirection === "rtl" ? slotCount - 1 - index : index, applySlotSize = (slot) => {
+    let [slots, setSlots] = createSignal([]), [revision, setRevision] = createSignal(0), horizontalAnimator = new ScrollAnimator("x"), flingAnimator = new ScrollFlingAnimator(), pageSlots2 = [], scroller, scrollerApi, dragStartPosition = null, resizeFrame = null, moveRequestToken = 0, disposed = !1, decodedImageCacheLimit = Math.max(0, Math.floor(untrack(() => props.decodedImageCacheLimit) ?? DEFAULT_DECODED_IMAGE_CACHE_LIMIT)), cachedImages = /* @__PURE__ */ new Map(), cachedImageBytes = 0, refresh = () => setRevision((value) => value + 1), slotFor = (pageNum) => pageSlots2.find((slot) => slot.pageNum === pageNum), viewportWidth = () => scrollerApi.viewportWidth(), viewportHeight = () => scrollerApi.viewportHeight(), scrollTop = () => scrollerApi.scrollTop(), visualSlotIndex = (index, slotCount) => props.mode === "paged" && props.readDirection === "rtl" ? slotCount - 1 - index : index, applySlotSize = (slot) => {
       let frameWidth = Math.max(1, viewportWidth());
       slot.frameWidth = frameWidth, slot.frameHeight = Math.ceil(frameWidth * pageSlotAspectRatio(slot));
     }, renderSlots = () => {
@@ -5807,6 +5859,10 @@ body #gdt[class],
       let oldSlots = new Map(pageSlots2.map((slot) => [slot.pageNum, slot])), nextSlots = [];
       for (let pageNum of pageWindowNumbers(options.currentPageNum, options.windowSize)) {
         let kind = pageSlotKind(pageNum, options.totalPages), oldSlot = oldSlots.get(pageNum), slot = oldSlot && oldSlot.kind === kind ? oldSlot : pageSlot(pageNum, kind);
+        if (!oldSlot && kind === "page") {
+          let cached = cachedImages.get(pageNum);
+          cached && (cachedImages.delete(pageNum), cachedImageBytes -= cached.bytes, slot.state = "ready", slot.image = cached.image, slot.width = cached.width, slot.height = cached.height);
+        }
         if (kind === "page") {
           let page = options.pages.get(pageNum);
           page && applyPageMetaToSlot(slot, page);
@@ -5816,7 +5872,24 @@ body #gdt[class],
       }
       let nextSet = new Set(nextSlots);
       for (let slot of pageSlots2)
-        nextSet.has(slot) || (slot.token += 1);
+        if (!nextSet.has(slot)) {
+          if (slot.kind === "page" && slot.state === "ready" && slot.image) {
+            let width = positiveNumber(slot.image.naturalWidth) ?? slot.width, height = positiveNumber(slot.image.naturalHeight) ?? slot.height, cached = {
+              bytes: width && height ? width * height * 4 : 0,
+              height,
+              image: slot.image,
+              width
+            }, previous = cachedImages.get(slot.pageNum);
+            previous && (cachedImageBytes -= previous.bytes), cachedImages.delete(slot.pageNum), cachedImages.set(slot.pageNum, cached), cachedImageBytes += cached.bytes;
+          }
+          slot.token += 1;
+        }
+      for (; cachedImages.size > decodedImageCacheLimit || cachedImageBytes > DECODED_IMAGE_CACHE_BYTES; ) {
+        let oldest = cachedImages.entries().next().value;
+        if (!oldest)
+          break;
+        cachedImages.delete(oldest[0]), cachedImageBytes -= oldest[1].bytes, oldest[1].image.removeAttribute("src");
+      }
       pageSlots2 = nextSlots, pageSlots2.forEach((slot, index) => {
         slot.index = index;
       }), renderSlots();
@@ -5888,7 +5961,10 @@ body #gdt[class],
       });
       observer.observe(scroller), onCleanup(() => observer.disconnect());
     }), onCleanup(() => {
-      disposed = !0, stopMotion(), resizeFrame !== null && (window.cancelAnimationFrame(resizeFrame), resizeFrame = null);
+      disposed = !0, stopMotion();
+      for (let cached of cachedImages.values())
+        cached.image.removeAttribute("src");
+      cachedImages.clear(), cachedImageBytes = 0, resizeFrame !== null && (window.cancelAnimationFrame(resizeFrame), resizeFrame = null);
     }), (() => {
       var _el$ = _tmpl$31(), _el$2 = _el$.firstChild;
       return _el$.addEventListener("wheel", (event) => {
@@ -5998,7 +6074,7 @@ body #gdt[class],
           })()];
         }
       })), createRenderEffect((_p$) => {
-        var _v$3 = props.content.state === "error" ? "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-surface)] p-xl text-[var(--color-danger)] text-center textsize-md font-700 leading-1" : "relative flex w-full h-full items-center justify-center bg-[var(--color-surface)] text-[var(--color-muted)] text-center " + (props.content.kind === "end" ? "p-xl [direction:ltr] textsize-xl font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 leading-[1] [font-variant-numeric:tabular-nums]"), _v$4 = props.content.state === "loading" ? "status" : void 0, _v$5 = props.content.state === "loading" ? `${texts_default.reader.loading} ${props.text}` : void 0;
+        var _v$3 = props.content.state === "error" ? "flex w-full h-full flex-col items-center justify-center gap-lg bg-[var(--color-reader-surface)] p-xl text-[var(--color-danger)] text-center textsize-md font-700 leading-1" : "relative flex w-full h-full items-center justify-center bg-[var(--color-reader-surface)] text-[var(--color-reader-muted)] text-center " + (props.content.kind === "end" ? "p-xl [direction:ltr] textsize-xl font-700 leading-[1.3] [unicode-bidi:plaintext]" : "text-[clamp(88px,25vw,180px)] desktop:text-[clamp(72px,10vw,140px)] font-mono font-850 leading-[1] [font-variant-numeric:tabular-nums]"), _v$4 = props.content.state === "loading" ? "status" : void 0, _v$5 = props.content.state === "loading" ? `${texts_default.reader.loading} ${props.text}` : void 0;
         return _v$3 !== _p$.e && className(_el$5, _p$.e = _v$3), _v$4 !== _p$.t && setAttribute(_el$5, "role", _p$.t = _v$4), _v$5 !== _p$.a && setAttribute(_el$5, "aria-label", _p$.a = _v$5), _p$;
       }, {
         e: void 0,
@@ -6406,20 +6482,19 @@ body #gdt[class],
   }
 
   // src/components/Reader/session.ts
-  var DEFAULT_WINDOW_SIZE = 10, DEFAULT_NEAR_CONCURRENT_LOADS = 3, DEFAULT_FAR_CONCURRENT_LOADS = 6, DEFAULT_NEAR_LOAD_AHEAD = 3, ReaderSession = class {
+  var DEFAULT_WINDOW_SIZE = 10, DEFAULT_FAR_CONCURRENT_LOADS = 6, ReaderSession = class {
     constructor(options) {
       this.animationFrames = /* @__PURE__ */ new Set();
       this.timers = /* @__PURE__ */ new Set();
       this.disposed = !1;
-      this.imageQueue = new TwoTierImageQueue(
-        options.nearConcurrentLoads,
-        options.farConcurrentLoads
+      this.imageQueue = new PriorityLoadQueue(
+        options.concurrentLoads
       );
       let [controls, setControls] = createSignal({
         mode: state.reader.viewMode.value,
         readDirection: state.reader.readDirection.value,
         rightTapAction: state.reader.rightTapAction.value
-      }), [toolbarOpen, setToolbarOpen] = createSignal(!1), [viewportWindow, setViewportWindow] = createSignal(initialViewportWindow(options)), [zoomImage, setZoomImage] = createSignal(null), [currentPageNum, setCurrentPageNum] = createSignal(initialPageNumber(options)), [direction, setDirection] = createSignal(1), [downloadInfo, setDownloadInfo] = createSignal(null), [maxProgressPageNum, setMaxProgressPageNum] = createSignal(1), [progressInputActive, setProgressInputActive] = createSignal(!1);
+      }), [toolbarOpen, setToolbarOpen] = createSignal(!1), [viewportWindow, setViewportWindow] = createSignal(initialViewportWindow(options)), [zoomImage, setZoomImage] = createSignal(null), [currentPageNum, setCurrentPageNum] = createSignal(initialPageNumber(options)), [direction, setDirection] = createSignal(1), [downloadInfo, setDownloadInfo] = createSignal(null), [maxProgressPageNum, setMaxProgressPageNum] = createSignal(1), [progressInputActive, setProgressInputActive] = createSignal(!1), [scrollBarVisible, setScrollBarVisible] = createSignal(!1), [scrollBarExpanded, setScrollBarExpanded] = createSignal(!1);
       this.state = {
         navi: {
           currentPageNum,
@@ -6443,6 +6518,12 @@ body #gdt[class],
         toolbar: {
           open: toolbarOpen,
           toggle: () => setToolbarOpen((open) => !open)
+        },
+        scrollBar: {
+          expanded: scrollBarExpanded,
+          updateExpanded: setScrollBarExpanded,
+          updateVisible: setScrollBarVisible,
+          visible: scrollBarVisible
         },
         overlay: { image: zoomImage, update: setZoomImage }
       };
@@ -6488,15 +6569,11 @@ body #gdt[class],
     let totalPages = options.totalPages && options.totalPages > 0 ? options.totalPages : Number.MAX_SAFE_INTEGER;
     return clamp(Math.round(options.initialPageNum), 1, totalPages);
   }
-  var TwoTierImageQueue = class {
-    constructor(nearConcurrentLoads = DEFAULT_NEAR_CONCURRENT_LOADS, farConcurrentLoads = DEFAULT_FAR_CONCURRENT_LOADS, nearLoadAhead = DEFAULT_NEAR_LOAD_AHEAD) {
-      this.nearConcurrentLoads = nearConcurrentLoads;
-      this.farConcurrentLoads = farConcurrentLoads;
-      this.nearLoadAhead = nearLoadAhead;
-      this.nearQueue = /* @__PURE__ */ new Map();
-      this.farQueue = /* @__PURE__ */ new Map();
-      this.activeNearLoads = 0;
-      this.activeTotalLoads = 0;
+  var PriorityLoadQueue = class {
+    constructor(concurrentLoads = DEFAULT_FAR_CONCURRENT_LOADS) {
+      this.concurrentLoads = concurrentLoads;
+      this.pending = /* @__PURE__ */ new Map();
+      this.active = /* @__PURE__ */ new Set();
       this.timer = null;
       this.disposed = !1;
       this.callbacks = {};
@@ -6505,28 +6582,10 @@ body #gdt[class],
       this.callbacks = callbacks, this.schedule();
     }
     dispose() {
-      this.disposed = !0, this.nearQueue.clear(), this.farQueue.clear(), this.timer !== null && (window.clearTimeout(this.timer), this.timer = null);
+      this.disposed = !0, this.pending.clear(), this.timer !== null && (window.clearTimeout(this.timer), this.timer = null);
     }
-    sync(targets, currentPageNum, direction, windowNumbers, preloadWindowSize) {
-      for (let queue of [this.nearQueue, this.farQueue])
-        for (let pageNum of queue.keys())
-          windowNumbers.has(pageNum) || queue.delete(pageNum);
-      this.enqueue(targets.find((target) => target.pageNum === currentPageNum), "near");
-      for (let offset = 1; offset <= preloadWindowSize; offset += 1) {
-        let pageNum = currentPageNum + offset * direction, target = targets.find((candidate) => candidate.pageNum === pageNum);
-        target && this.enqueue(target, offset <= this.nearLoadAhead ? "near" : "far");
-      }
-      this.schedule();
-    }
-    enqueue(target, tier) {
-      if (!target)
-        return;
-      let pageNum = target.pageNum;
-      if (tier === "near") {
-        this.farQueue.delete(pageNum), this.nearQueue.set(pageNum, target);
-        return;
-      }
-      this.nearQueue.has(pageNum) || this.farQueue.set(pageNum, target);
+    sync(targets) {
+      this.pending = new Map(targets.filter(({ key }) => !this.active.has(key)).map((target) => [target.key, target])), this.schedule();
     }
     schedule() {
       this.timer !== null || this.disposed || !this.callbacks.loadTarget || (this.timer = window.setTimeout(() => {
@@ -6535,41 +6594,89 @@ body #gdt[class],
     }
     process() {
       if (!this.disposed)
-        for (; this.activeTotalLoads < this.currentConcurrency(); ) {
-          let tier = this.nearQueue.size > 0 ? "near" : this.activeNearLoads > 0 ? null : "far";
-          if (tier === null)
+        for (; this.active.size < this.concurrentLoads; ) {
+          let next = Array.from(this.pending.values()).sort((left, right) => left.priority - right.priority)[0];
+          if (!next)
             return;
-          let queue = tier === "near" ? this.nearQueue : this.farQueue, target = queue.values().next().value;
-          if (!target)
-            return;
-          queue.delete(target.pageNum), this.start(target, tier);
+          this.pending.delete(next.key), this.start(next);
         }
     }
-    currentConcurrency() {
-      return this.nearQueue.size > 0 || this.activeNearLoads > 0 ? Math.min(this.nearConcurrentLoads, this.farConcurrentLoads) : this.farConcurrentLoads;
-    }
-    start(target, tier) {
+    start({ key, target }) {
       let { loadTarget, markLoading, onLoaded, onError } = this.callbacks;
       if (!loadTarget || !markLoading || !onLoaded || !onError)
         return;
-      let token = markLoading(target.pageNum);
-      token !== null && (this.activeTotalLoads += 1, tier === "near" && (this.activeNearLoads += 1), loadTarget(target).then((loaded) => {
+      let token = markLoading(target);
+      token !== null && (this.active.add(key), loadTarget(target).then((loaded) => {
         this.disposed || onLoaded(target, loaded, token);
       }).catch((error) => {
         this.disposed || onError(target, error, token);
       }).finally(() => {
-        this.activeTotalLoads -= 1, tier === "near" && (this.activeNearLoads -= 1), this.process();
+        this.active.delete(key), this.process();
       }));
     }
   };
 
+  // src/components/Reader/ScrollBar.tsx
+  var _tmpl$48 = /* @__PURE__ */ template('<div><div class="absolute inset-y-0 right-2px w-3px bg-[var(--color-reader-border)]"></div><div class="absolute right-0 flex w-lg coarse:w-xl h-[120px] coarse:h-[200px] items-center justify-end cursor-grab active:cursor-grabbing"><span>');
+  function ReaderScrollBar(props) {
+    let track, thumb, [dragging, setDragging] = createSignal(!1), dragOffset = 0, position = () => props.totalPages <= 1 ? 0 : (props.currentPage - 1) / (props.totalPages - 1) * 100, pageAt = (clientY) => {
+      let trackRect = track.getBoundingClientRect(), travel = Math.max(1, trackRect.height - thumb.offsetHeight), ratio = clamp((clientY - trackRect.top - dragOffset) / travel, 0, 1);
+      return Math.round(1 + ratio * (props.totalPages - 1));
+    }, updatePage = (clientY) => {
+      let page = pageAt(clientY);
+      return props.callbacks.onProgressInput(page), page;
+    };
+    return (() => {
+      var _el$ = _tmpl$48(), _el$2 = _el$.firstChild, _el$3 = _el$2.nextSibling, _el$4 = _el$3.firstChild;
+      _el$.addEventListener("wheel", (event) => event.stopPropagation()), _el$.addEventListener("pointercancel", (event) => {
+        dragging() && (setDragging(!1), track.releasePointerCapture(event.pointerId), props.callbacks.onProgressCommit(props.currentPage));
+      }), _el$.$$pointerup = (event) => {
+        if (!dragging())
+          return;
+        setDragging(!1);
+        let page = updatePage(event.clientY);
+        track.releasePointerCapture(event.pointerId), props.callbacks.onProgressCommit(page);
+      }, _el$.$$pointermove = (event) => {
+        dragging() && updatePage(event.clientY);
+      }, _el$.$$pointerdown = (event) => {
+        event.preventDefault(), event.stopPropagation(), setDragging(!0), track.setPointerCapture(event.pointerId);
+        let thumbRect = thumb.getBoundingClientRect();
+        dragOffset = event.target instanceof Node && thumb.contains(event.target) ? event.clientY - thumbRect.top : thumbRect.height / 2, props.callbacks.onProgressPointerDown(event), updatePage(event.clientY);
+      }, _el$.$$contextmenu = (event) => {
+        event.preventDefault(), event.stopPropagation();
+      }, _el$.$$click = (event) => event.stopPropagation();
+      var _ref$ = track;
+      typeof _ref$ == "function" ? use(_ref$, _el$) : track = _el$;
+      var _ref$2 = thumb;
+      return typeof _ref$2 == "function" ? use(_ref$2, _el$3) : thumb = _el$3, createRenderEffect((_p$) => {
+        var _v$ = "fixed inset-y-0 right-0 z-2 w-lg coarse:w-xl touch-none select-none transition-opacity duration-160 ease-in-out " + (props.visible || dragging() ? "opacity-100" : "opacity-0 pointer-events-none"), _v$2 = `${position()}%`, _v$3 = `translateY(-${position()}%)`, _v$4 = `block h-full rounded-l-md bg-[var(--color-reader-scrollbar)] shadow-[0_2px_10px_var(--color-shadow-control)] transition-[width] duration-160 ${props.expanded || dragging() ? "w-18px coarse:w-24px" : "w-10px coarse:w-12px"}`;
+        return _v$ !== _p$.e && className(_el$, _p$.e = _v$), _v$2 !== _p$.t && setStyleProperty(_el$3, "top", _p$.t = _v$2), _v$3 !== _p$.a && setStyleProperty(_el$3, "transform", _p$.a = _v$3), _v$4 !== _p$.o && className(_el$4, _p$.o = _v$4), _p$;
+      }, {
+        e: void 0,
+        t: void 0,
+        a: void 0,
+        o: void 0
+      }), _el$;
+    })();
+  }
+  delegateEvents(["click", "contextmenu", "pointerdown", "pointermove", "pointerup"]);
+
   // src/components/Reader/index.css
-  var Reader_default = `#ehpeek-reader {
-  --color-background: #070707;
-  --color-surface: #151515;
-  --color-elevated: #232323;
-  --color-text: #f3f3f3;
-  --color-accent: #4da3ff;
+  var Reader_default = `#ehpeek-reader,
+[data-ehpeek-reader-container="true"]:fullscreen {
+  --color-reader-background: #070707;
+  --color-reader-surface: #151515;
+  --color-reader-elevated: #232323;
+  --color-reader-text: #f3f3f3;
+  --color-reader-accent: #4da3ff;
+  --color-reader-border: color-mix(in srgb, var(--color-reader-text) 18%, transparent);
+  --color-reader-muted: color-mix(in srgb, var(--color-reader-text) 72%, transparent);
+  --color-reader-scrollbar: color-mix(in srgb, var(--color-reader-text) 56%, transparent);
+  --color-background: var(--color-reader-background);
+  --color-surface: var(--color-reader-surface);
+  --color-elevated: var(--color-reader-elevated);
+  --color-text: var(--color-reader-text);
+  --color-accent: var(--color-reader-accent);
   --color-border: color-mix(in srgb, var(--color-text) 18%, transparent);
   --color-muted: color-mix(in srgb, var(--color-text) 72%, transparent);
   --color-track: color-mix(in srgb, var(--color-text) 34%, var(--color-background));
@@ -6586,7 +6693,7 @@ body #gdt[class],
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--color-background);
+  background: var(--color-reader-background);
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-toolbar-buttons {
@@ -6631,11 +6738,11 @@ body #gdt[class],
 `;
 
   // src/components/Reader/index.tsx
-  var _tmpl$48 = /* @__PURE__ */ template('<div id=ehpeek-reader class="fixed inset-0 z-reader ehp-color-reader font-sans textsize-sm leading-[1.4]"><header class=contents>');
+  var _tmpl$49 = /* @__PURE__ */ template('<div id=ehpeek-reader class="fixed inset-0 z-reader ehp-color-reader font-sans textsize-sm leading-[1.4]"><header class=contents>');
   registerGlobalStyle("ehpeek-reader-style", Reader_default);
-  var DEFAULT_WINDOW_SIZE2 = 10, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 1e3, DOUBLE_TAP_MS = 340, DOUBLE_TAP_DISTANCE = 36, TAP_CANCEL_DISTANCE = 8, FALLBACK_ASPECT_RATIO2 = 1.42;
+  var DEFAULT_WINDOW_SIZE2 = 10, PAGED_SWIPE_THRESHOLD = 24, PAGED_WHEEL_THRESHOLD = 8, PROGRESS_IDLE_COMMIT_MS = 180, LOADED_IMAGE_INFO_CACHE_LIMIT = 160, SCROLL_GESTURE_IDLE_MS = 160, SCROLL_BAR_IDLE_MS = 900, SCROLL_BAR_SHOW_DISTANCE = 48, SCROLL_BAR_EXPAND_VIEWPORTS = 2, DOUBLE_TAP_MS = 340, DOUBLE_TAP_DISTANCE = 36, TAP_CANCEL_DISTANCE = 8, FALLBACK_ASPECT_RATIO2 = 1.42;
   function Reader(props) {
-    let options = untrack(() => props.options), previewCache = untrack(() => props.previewCache), callbacks = untrack(() => props.callbacks), session = new ReaderSession(options), readerState = session.state, readerCallbacks2 = wireReaderCallbacks(session, options, previewCache, callbacks), previousFullscreenActive = untrack(() => props.fullscreenActive);
+    let options = untrack(() => props.options), totalPages = options.totalPages ?? 0, previewCache = untrack(() => props.previewCache), callbacks = untrack(() => props.callbacks), session = new ReaderSession(options), readerState = session.state, readerCallbacks2 = wireReaderCallbacks(session, options, previewCache, callbacks), previousFullscreenActive = untrack(() => props.fullscreenActive);
     return createEffect(() => {
       let fullscreenActive = props.fullscreenActive;
       fullscreenActive !== previousFullscreenActive && (previousFullscreenActive = fullscreenActive, session.requestAnimationFrame(() => {
@@ -6646,7 +6753,7 @@ body #gdt[class],
         readerCallbacks2.cleanup(), session.dispose();
       });
     }), (() => {
-      var _el$ = _tmpl$48(), _el$2 = _el$.firstChild;
+      var _el$ = _tmpl$49(), _el$2 = _el$.firstChild;
       return insert(_el$2, createComponent(Toolbar, {
         get callbacks() {
           return readerCallbacks2.toolbar;
@@ -6678,6 +6785,9 @@ body #gdt[class],
         get callbacks() {
           return readerCallbacks2.viewport;
         },
+        get decodedImageCacheLimit() {
+          return options.decodedImageCacheLimit;
+        },
         get mode() {
           return readerState.ctrls.value().mode;
         },
@@ -6686,6 +6796,27 @@ body #gdt[class],
         },
         get window() {
           return readerState.navi.viewportWindow();
+        }
+      }), null), insert(_el$, createComponent(Show, {
+        get when() {
+          return readerState.ctrls.value().mode === "scroll" && totalPages > 1;
+        },
+        get children() {
+          return createComponent(ReaderScrollBar, {
+            get callbacks() {
+              return readerCallbacks2.toolbar;
+            },
+            get currentPage() {
+              return readerState.navi.currentPageNum();
+            },
+            get expanded() {
+              return readerState.scrollBar.expanded();
+            },
+            totalPages,
+            get visible() {
+              return readerState.scrollBar.visible();
+            }
+          });
         }
       }), null), insert(_el$, createComponent(ZoomOverlay, {
         get actionsRef() {
@@ -6729,7 +6860,7 @@ body #gdt[class],
         console.error("[ehpeek]", error);
         return;
       }
-      closed || token !== syncToken || (addPages(incoming), syncViewportWindow(), maintainLoadQueue(), notifyActivePageChange());
+      closed || (addPages(incoming), token === syncToken && (syncViewportWindow(), maintainLoadQueue(), notifyActivePageChange()));
     }
     function addPages(incomingPages) {
       for (let [index, page] of incomingPages.entries()) {
@@ -6750,8 +6881,17 @@ body #gdt[class],
       }), updatePageNumber();
     }
     function maintainLoadQueue() {
-      let targets = pageWindowNumbers(state2.navi.currentPageNum(), renderWindowSize).map((pageNum) => loadTargetFor(pageNum)).filter((target) => !!target), windowSet = new Set(targets.map((target) => target.pageNum));
-      session.imageQueue.sync(targets, state2.navi.currentPageNum(), state2.navi.direction(), windowSet, preloadWindowSize);
+      let currentPageNum = state2.navi.currentPageNum(), pageNums = [currentPageNum];
+      for (let offset = 1; offset <= preloadWindowSize; offset += 1)
+        pageNums.push(currentPageNum + offset * state2.navi.direction());
+      session.imageQueue.sync(pageNums.flatMap((pageNum, priority) => {
+        let target = loadTargetFor(pageNum);
+        return target ? [{
+          key: pageNum,
+          priority,
+          target
+        }] : [];
+      }));
     }
     function pageMetaForViewport() {
       return new Map(Array.from(pages, ([pageNum, page]) => [pageNum, {
@@ -6797,7 +6937,7 @@ body #gdt[class],
     }
     function updatePageNumber() {
       let pageNum = state2.navi.currentPageNum(), image = loadedImages.get(pageNum);
-      state2.navi.setDownloadInfo(image && isRealPageNum(pageNum) ? {
+      image && (loadedImages.delete(pageNum), loadedImages.set(pageNum, image)), state2.navi.setDownloadInfo(image && isRealPageNum(pageNum) ? {
         currentFileName: displayedImageFileName(options.galleryId, pageNum, image.imageUrl),
         currentImageUrl: image.imageUrl,
         originalImageUrl: image.originalImageUrl,
@@ -6841,13 +6981,22 @@ body #gdt[class],
       viewport
     };
     function wireViewport() {
-      let scrollFrame = null;
-      return {
+      let scrollFrame = null, scrollBarTimer = null, scrollGestureTimer = null, previousScrollTop = null, scrollDistance = 0, updateScrollBarActivity = () => {
+        let currentScrollTop = viewportActions.scrollTop();
+        previousScrollTop !== null && (scrollDistance += Math.abs(currentScrollTop - previousScrollTop)), previousScrollTop = currentScrollTop, scrollDistance >= SCROLL_BAR_SHOW_DISTANCE && state2.scrollBar.updateVisible(!0), scrollDistance >= window.innerHeight * SCROLL_BAR_EXPAND_VIEWPORTS && state2.scrollBar.updateExpanded(!0), session.clearTimeout(scrollGestureTimer), scrollGestureTimer = session.setTimeout(() => {
+          scrollGestureTimer = null, scrollDistance = 0, previousScrollTop = viewportActions.scrollTop();
+        }, SCROLL_GESTURE_IDLE_MS), session.clearTimeout(scrollBarTimer), scrollBarTimer = session.setTimeout(() => {
+          scrollBarTimer = null, scrollDistance = 0, previousScrollTop = viewportActions.scrollTop(), state2.scrollBar.updateExpanded(!1), state2.scrollBar.updateVisible(!1);
+        }, SCROLL_BAR_IDLE_MS);
+      };
+      return onCleanup(() => {
+        session.clearTimeout(scrollBarTimer), session.clearTimeout(scrollGestureTimer);
+      }), {
         onNativeScroll: () => {
-          if (state2.overlay.image() !== null || viewportActions.isDragging() || state.reader.viewMode.value === "paged")
+          if (state2.overlay.image() !== null || state.reader.viewMode.value === "paged" || (updateScrollBarActivity(), viewportActions.isDragging()))
             return;
-          let previousScrollTop = viewportActions.scrollTop();
-          viewportActions.moveToTop(previousScrollTop), !(viewportActions.scrollTop() !== previousScrollTop || scrollFrame !== null) && (scrollFrame = session.requestAnimationFrame(() => {
+          let previousScrollTop2 = viewportActions.scrollTop();
+          viewportActions.moveToTop(previousScrollTop2), !(viewportActions.scrollTop() !== previousScrollTop2 || scrollFrame !== null) && (scrollFrame = session.requestAnimationFrame(() => {
             scrollFrame = null, updateCurrentFromScroll();
           }));
         },
@@ -6865,7 +7014,22 @@ body #gdt[class],
       };
     }
     function wireImageQueue() {
-      let installImage = async (target, loaded, token) => {
+      let rememberLoadedImage = (pageNum, loaded) => {
+        let image = {
+          pageNum,
+          imageUrl: loaded.imageUrl,
+          originalImageUrl: loaded.originalImageUrl ?? null,
+          width: positiveNumber(loaded.width),
+          height: positiveNumber(loaded.height)
+        };
+        for (loadedImages.delete(pageNum), loadedImages.set(pageNum, image); loadedImages.size > LOADED_IMAGE_INFO_CACHE_LIMIT; ) {
+          let oldestPageNum = loadedImages.keys().next().value;
+          if (oldestPageNum === void 0)
+            break;
+          loadedImages.delete(oldestPageNum);
+        }
+        return image;
+      }, installImage = async (target, loaded, token) => {
         let imageUrl = loaded.imageUrl, width = positiveNumber(loaded.width), height = positiveNumber(loaded.height);
         try {
           await viewportActions.loadPageImage(target.pageNum, token, {
@@ -6879,19 +7043,14 @@ body #gdt[class],
           viewportActions.setPageError(target.pageNum, token, message);
           return;
         }
-        closed || (loadedImages.set(target.pageNum, {
-          pageNum: target.pageNum,
-          imageUrl,
-          originalImageUrl: loaded.originalImageUrl ?? null,
-          width,
-          height
-        }), target.pageNum === state2.navi.currentPageNum() && updatePageNumber());
+        closed || target.pageNum === state2.navi.currentPageNum() && updatePageNumber();
       };
       session.imageQueue.updateCallbacks({
-        loadTarget: (target) => previewCache.loadImage(target.page),
-        markLoading: (pageNum) => viewportActions.markPageLoading(pageNum),
+        loadTarget: (target) => Promise.resolve(loadedImages.get(target.pageNum) ?? previewCache.loadImage(target.page)),
+        markLoading: (target) => viewportActions.markPageLoading(target.pageNum),
         onLoaded: async (target, loaded, token) => {
-          pageWindowNumbers(state2.navi.currentPageNum(), renderWindowSize).includes(target.pageNum) && await installImage(target, loaded, token);
+          let image = rememberLoadedImage(target.pageNum, loaded);
+          pageWindowNumbers(state2.navi.currentPageNum(), renderWindowSize).includes(target.pageNum) && await installImage(target, image, token);
         },
         onError: (target, error, token) => {
           let message = error instanceof Error ? error.message : texts_default.errors.loadFailed;
@@ -7357,7 +7516,7 @@ body #gdt[class],
   }
 
   // src/App/index.tsx
-  var _tmpl$49 = /* @__PURE__ */ template("<a href=#>");
+  var _tmpl$50 = /* @__PURE__ */ template("<a href=#>");
   function settingsMenuState(defaults = !1) {
     let read = (setting) => defaults ? setting.defaultValue : setting.value;
     return {
@@ -7487,7 +7646,7 @@ body #gdt[class],
     }), gState.settings.touchUiEnabled || allowFeatureFailure("Desktop settings entry", () => {
       let settingsMount = manageSettingsMenuMount();
       settingsMount && settingsMount.mount(() => (() => {
-        var _el$ = _tmpl$49();
+        var _el$ = _tmpl$50();
         return _el$.$$click = (event) => {
           event.preventDefault(), event.stopPropagation(), gState.setSettingsMenuOpen(!0);
         }, insert(_el$, () => texts_default.settings.menuLabel), _el$;
