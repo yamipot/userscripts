@@ -1,6 +1,7 @@
 # <img src="./icon.svg" width="42" alt="ehpeek panda icon" align="absmiddle"> EhPeek
 
 [![GitHub](https://img.shields.io/badge/GitHub-EhPeek-181717?style=flat&logo=github)](https://github.com/yamipot/ehpeek)
+[![Sleazy Fork](https://img.shields.io/badge/Sleazy%20Fork-EhPeek-8b0000?style=flat)](https://sleazyfork.org/en/scripts/588026-ehpeek)
 
 Another touch-optimized reader for E-H / ExH galleries. Inspired by [EhViewer-NekoInverter/EhViewer](https://github.com/EhViewer-NekoInverter/EhViewer).
 
@@ -22,5 +23,5 @@ For a better experience, EhPeek maintains best-effort compatibility with the fol
 
 | Channel | Sources |
 | --- | --- |
-| Stable | [GitHub](https://github.com/yamipot/ehpeek/raw/build-stable/ehpeek.user.js) · [jsDelivr](https://cdn.jsdelivr.net/gh/yamipot/ehpeek@build-stable/ehpeek.user.js) |
+| Stable | [Sleazy Fork](https://sleazyfork.org/en/scripts/588026-ehpeek) · [GitHub](https://github.com/yamipot/ehpeek/raw/build-stable/ehpeek.user.js) · [jsDelivr](https://cdn.jsdelivr.net/gh/yamipot/ehpeek@build-stable/ehpeek.user.js) |
 | Latest | [GitHub](https://github.com/yamipot/ehpeek/raw/build-master/ehpeek.user.js) · [jsDelivr](https://cdn.jsdelivr.net/gh/yamipot/ehpeek@build-master/ehpeek.user.js) |

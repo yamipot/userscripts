@@ -102,11 +102,11 @@ export function manageSearchPanel() {
   }
   if (elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount) {
     elems.advancedToggle.after(elems.advancedToggleMount);
-    elems.advancedToggle.setHidden(true);
+    elems.advancedToggle.remove();
   }
   if (elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount) {
     elems.fileSearchToggle.after(elems.fileSearchToggleMount);
-    elems.fileSearchToggle.setHidden(true);
+    elems.fileSearchToggle.remove();
   }
   elems.fileSearch?.remove();
 
