@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260721.1456
+// @version      260721.1531
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -2695,8 +2695,10 @@
     let mount = createAnchor("search-panel"), categoryToggleMount = categories && optionLinks ? createAnchor("search-category-toggle") : null, searchActionMount = createAnchor("search-action"), clearActionMount = clearButton ? createAnchor("search-clear-action") : null;
     if (!mount || !searchActionMount || clearButton && !clearActionMount)
       return null;
-    let categoryRows = categories?.all("tr") ?? [], categoryCells = categories?.all("td") ?? [], categoryItems = categories?.all("[id^='cat_']") ?? [], optionLinkItems = optionLinks?.all("a") ?? [], searchControls = createManagedElement("div"), elems = {
+    let categoryRows = categories?.all("tr") ?? [], categoryCells = categories?.all("td") ?? [], categoryItems = categories?.all("[id^='cat_']") ?? [], optionLinkItems = optionLinks?.all("a") ?? [], advancedToggle = advancedPanel ? optionLinkItems[0] ?? null : null, fileSearchToggle = fileSearch ? optionLinkItems[advancedToggle ? 1 : 0] ?? null : null, advancedToggleMount = advancedToggle ? createAnchor("search-advanced-toggle") : null, fileSearchToggleMount = fileSearchToggle ? createAnchor("search-file-toggle") : null, searchControls = createManagedElement("div"), elems = {
       advancedPanel: advancedPanel?.inplace() ?? null,
+      advancedToggle: advancedToggle?.inplace() ?? null,
+      advancedToggleMount,
       categories: categories?.inplace() ?? null,
       categoryCells: categoryCells.map((cell) => cell.inplace()),
       categoryItems: categoryItems.map((item) => item.inplace()),
@@ -2705,6 +2707,8 @@
       clearActionMount,
       clearButton: clearButton?.inplace() ?? null,
       fileSearch: fileSearch?.inplace() ?? null,
+      fileSearchToggle: fileSearchToggle?.inplace() ?? null,
+      fileSearchToggleMount,
       form: form.inplace(),
       mount,
       optionLinks: optionLinks?.inplace() ?? null,
@@ -2715,7 +2719,7 @@
       searchInput: searchInput.inplace(),
       searchSubmit: searchSubmit.inplace()
     };
-    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.fileSearch?.remove();
+    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount && (elems.advancedToggle.after(elems.advancedToggleMount), elems.advancedToggle.setHidden(!0)), elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount && (elems.fileSearchToggle.after(elems.fileSearchToggleMount), elems.fileSearchToggle.setHidden(!0)), elems.fileSearch?.remove();
     let formInsideSearchBox = standardSearchBox?.one("form")?.sameNode(form) ?? !1, formId = form.attribute("id") || "ehpeek-search-form", categoryColors = categoryItems.map(
       (item) => ["ct1", "ct2", "ct3", "ct4", "ct5", "ct6", "ct7", "ct8", "ct9", "cta"].find((name) => item.hasClass(name)) ?? null
     );
@@ -2739,6 +2743,12 @@
       /** Clears only the Search text without invoking E-H's page-navigation reset. */
       clearSearchText() {
         elems.searchInput.setInputValue(""), elems.searchInput.dispatchInput(), elems.searchInput.focus();
+      },
+      toggleAdvancedOptions() {
+        elems.advancedToggle?.click();
+      },
+      toggleFileSearch() {
+        elems.fileSearchToggle?.click();
       }
     } };
   }
@@ -4005,7 +4015,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260721.1456", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260721.1531", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -4783,6 +4793,20 @@
         return texts_default.search.categories;
       },
       onClick: () => setOpen((value) => !value)
+    });
+  }
+  function TouchSearchOptionToggle(props) {
+    let [open, setOpen] = createSignal(!1);
+    return createComponent(ToggleButton, {
+      get expanded() {
+        return open();
+      },
+      get label() {
+        return texts_default.search[props.option];
+      },
+      onClick: () => {
+        props.option === "advancedOptions" ? props.source.handle.toggleAdvancedOptions() : props.source.handle.toggleFileSearch(), setOpen((value) => !value);
+      }
     });
   }
   function ToggleButton(props) {
@@ -7717,6 +7741,12 @@ body #gdt[class],
           }) : void 0;
         }
       })), searchPanelDom.elems.categoryToggleMount && searchPanelDom.elems.categoryToggleMount.mount(() => createComponent(TouchSearchCategoryToggle, {
+        source: searchPanelDom
+      })), searchPanelDom.elems.advancedToggleMount && searchPanelDom.elems.advancedToggleMount.mount(() => createComponent(TouchSearchOptionToggle, {
+        option: "advancedOptions",
+        source: searchPanelDom
+      })), searchPanelDom.elems.fileSearchToggleMount && searchPanelDom.elems.fileSearchToggleMount.mount(() => createComponent(TouchSearchOptionToggle, {
+        option: "fileSearch",
         source: searchPanelDom
       })), searchPanelDom.elems.searchActionMount.mount(() => createComponent(TouchSearchAction, {
         action: "search",
