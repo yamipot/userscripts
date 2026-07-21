@@ -7,6 +7,7 @@
   --color-reader-accent: #4da3ff;
   --color-reader-border: color-mix(in srgb, var(--color-reader-text) 18%, transparent);
   --color-reader-muted: color-mix(in srgb, var(--color-reader-text) 72%, transparent);
+  --color-reader-scrollbar: color-mix(in srgb, var(--color-reader-text) 56%, transparent);
   --color-background: var(--color-reader-background);
   --color-surface: var(--color-reader-surface);
   --color-elevated: var(--color-reader-elevated);

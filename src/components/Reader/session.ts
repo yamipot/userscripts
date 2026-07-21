@@ -52,6 +52,8 @@ export class ReaderSession {
     const [downloadInfo, setDownloadInfo] = createSignal<ReaderDownloadInfo | null>(null);
     const [maxProgressPageNum, setMaxProgressPageNum] = createSignal(1);
     const [progressInputActive, setProgressInputActive] = createSignal(false);
+    const [scrollBarVisible, setScrollBarVisible] = createSignal(false);
+    const [scrollBarExpanded, setScrollBarExpanded] = createSignal(false);
 
     this.state = {
       navi: {
@@ -76,6 +78,12 @@ export class ReaderSession {
       toolbar: {
         open: toolbarOpen,
         toggle: () => setToolbarOpen((open) => !open),
+      },
+      scrollBar: {
+        expanded: scrollBarExpanded,
+        updateExpanded: setScrollBarExpanded,
+        updateVisible: setScrollBarVisible,
+        visible: scrollBarVisible,
       },
       overlay: { image: zoomImage, update: setZoomImage },
     };

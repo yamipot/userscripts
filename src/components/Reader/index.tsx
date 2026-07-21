@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, onMount, untrack } from "solid-js";
+import { createEffect, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { GalleryPreviewCache } from "../../App/GalleryPreviewCache";
 import texts from "../../texts.json";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
@@ -24,6 +24,7 @@ import {
 } from "./Toolbar";
 import { ZoomOverlay, type ZoomOverlayActions, type ZoomOverlayImage } from "./ZoomOverlay";
 import { ReaderSession, type ReaderLoadTarget, type ReaderOptions } from "./session";
+import { ReaderScrollBar } from "./ScrollBar";
 import readerCss from "./index.css";
 
 registerGlobalStyle("ehpeek-reader-style", readerCss);
@@ -34,6 +35,10 @@ const DEFAULT_WINDOW_SIZE = 10;
 const PAGED_SWIPE_THRESHOLD = 24;
 const PAGED_WHEEL_THRESHOLD = 8;
 const PROGRESS_IDLE_COMMIT_MS = 1000;
+const SCROLL_GESTURE_IDLE_MS = 160;
+const SCROLL_BAR_IDLE_MS = 900;
+const SCROLL_BAR_SHOW_DISTANCE = 48;
+const SCROLL_BAR_EXPAND_VIEWPORTS = 2;
 const DOUBLE_TAP_MS = 340;
 const DOUBLE_TAP_DISTANCE = 36;
 const TAP_CANCEL_DISTANCE = 8;
@@ -58,6 +63,7 @@ export function Reader(props: {
   fullscreenActive: boolean;
 }) {
   const options = untrack(() => props.options);
+  const totalPages = options.totalPages ?? 0;
   const previewCache = untrack(() => props.previewCache);
   const callbacks = untrack(() => props.callbacks);
   const session = new ReaderSession(options);
@@ -119,6 +125,15 @@ export function Reader(props: {
         readDirection={readerState.ctrls.value().readDirection}
         window={readerState.navi.viewportWindow()}
       />
+      <Show when={readerState.ctrls.value().mode === "scroll" && totalPages > 1}>
+        <ReaderScrollBar
+          callbacks={readerCallbacks.toolbar}
+          currentPage={readerState.navi.currentPageNum()}
+          expanded={readerState.scrollBar.expanded()}
+          totalPages={totalPages}
+          visible={readerState.scrollBar.visible()}
+        />
+      </Show>
       <ZoomOverlay
         actionsRef={readerCallbacks.zoomOverlayActionsRef}
         image={readerState.overlay.image()}
@@ -361,11 +376,51 @@ function wireReaderCallbacks(
 
   function wireViewport(): PagesViewportCallbacks {
     let scrollFrame: number | null = null;
+    let scrollBarTimer: number | null = null;
+    let scrollGestureTimer: number | null = null;
+    let previousScrollTop: number | null = null;
+    let scrollDistance = 0;
+
+    const updateScrollBarActivity = (): void => {
+      const currentScrollTop = viewportActions.scrollTop();
+      if (previousScrollTop !== null) {
+        scrollDistance += Math.abs(currentScrollTop - previousScrollTop);
+      }
+      previousScrollTop = currentScrollTop;
+      if (scrollDistance >= SCROLL_BAR_SHOW_DISTANCE) {
+        state.scrollBar.updateVisible(true);
+      }
+      if (scrollDistance >= window.innerHeight * SCROLL_BAR_EXPAND_VIEWPORTS) {
+        state.scrollBar.updateExpanded(true);
+      }
+      session.clearTimeout(scrollGestureTimer);
+      scrollGestureTimer = session.setTimeout(() => {
+        scrollGestureTimer = null;
+        scrollDistance = 0;
+        previousScrollTop = viewportActions.scrollTop();
+      }, SCROLL_GESTURE_IDLE_MS);
+      session.clearTimeout(scrollBarTimer);
+      scrollBarTimer = session.setTimeout(() => {
+        scrollBarTimer = null;
+        scrollDistance = 0;
+        previousScrollTop = viewportActions.scrollTop();
+        state.scrollBar.updateExpanded(false);
+        state.scrollBar.updateVisible(false);
+      }, SCROLL_BAR_IDLE_MS);
+    };
+
+    onCleanup(() => {
+      session.clearTimeout(scrollBarTimer);
+      session.clearTimeout(scrollGestureTimer);
+    });
+
     return {
       onNativeScroll: (): void => {
-        if (state.overlay.image() !== null ||
-          viewportActions.isDragging() ||
-          appState.reader.viewMode.value === "paged") {
+        if (state.overlay.image() !== null || appState.reader.viewMode.value === "paged") {
+          return;
+        }
+        updateScrollBarActivity();
+        if (viewportActions.isDragging()) {
           return;
         }
         const previousScrollTop = viewportActions.scrollTop();
