@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260721.1531
+// @version      260721.1622
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -2501,9 +2501,9 @@
           "align-items": "center",
           "justify-content": "center",
           "box-sizing": "border-box",
-          width: "72px",
-          height: "32px",
-          padding: "0 8px"
+          width: "max(72px, 6em)",
+          height: "max(32px, 2.2em)",
+          padding: "0 0.6em"
         }, "important");
       }
     }
@@ -2719,7 +2719,7 @@
       searchInput: searchInput.inplace(),
       searchSubmit: searchSubmit.inplace()
     };
-    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount && (elems.advancedToggle.after(elems.advancedToggleMount), elems.advancedToggle.setHidden(!0)), elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount && (elems.fileSearchToggle.after(elems.fileSearchToggleMount), elems.fileSearchToggle.setHidden(!0)), elems.fileSearch?.remove();
+    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount && (elems.advancedToggle.after(elems.advancedToggleMount), elems.advancedToggle.remove()), elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount && (elems.fileSearchToggle.after(elems.fileSearchToggleMount), elems.fileSearchToggle.remove()), elems.fileSearch?.remove();
     let formInsideSearchBox = standardSearchBox?.one("form")?.sameNode(form) ?? !1, formId = form.attribute("id") || "ehpeek-search-form", categoryColors = categoryItems.map(
       (item) => ["ct1", "ct2", "ct3", "ct4", "ct5", "ct6", "ct7", "ct8", "ct9", "cta"].find((name) => item.hasClass(name)) ?? null
     );
@@ -4015,7 +4015,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260721.1531", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260721.1622", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
@@ -5166,7 +5166,6 @@ body #gdt[class],
 @media (pointer: coarse){
 .coarse\\:\\!h-md{height:40px !important;}
 .coarse\\:\\!w-md{width:40px !important;}
-.coarse\\:w-xl{width:80px;}
 .coarse\\:gap-lg{gap:16px;}
 .coarse\\:gap-xl{gap:24px;}
 .coarse\\:rounded-lg{border-radius:8px;}
@@ -5621,6 +5620,7 @@ body #gdt[class],
 .transition-\\[border-color\\,background-color\\,color\\]{transition-property:border-color,background-color,color;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[filter\\,transform\\,box-shadow\\]{transition-property:filter,transform,box-shadow;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[opacity\\,transform\\]{transition-property:opacity,transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
+.transition-\\[width\\,opacity\\]{transition-property:width,opacity;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-\\[width\\]{transition-property:width;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .transition-opacity{transition-property:opacity;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms;}
 .duration-120{transition-duration:120ms;}
@@ -6641,9 +6641,9 @@ body #gdt[class],
   };
 
   // src/components/Reader/ScrollBar.tsx
-  var _tmpl$48 = /* @__PURE__ */ template('<div><div class="absolute inset-y-0 right-2px w-3px bg-[var(--color-reader-border)]"></div><div class="absolute right-0 flex w-lg coarse:w-xl h-[120px] coarse:h-[200px] items-center justify-end cursor-grab active:cursor-grabbing"><span>');
+  var _tmpl$48 = /* @__PURE__ */ template('<div><div class="absolute inset-y-0 right-2px w-3px bg-[var(--color-reader-border)]"></div><div><span>');
   function ReaderScrollBar(props) {
-    let track, thumb, [dragging, setDragging] = createSignal(!1), dragOffset = 0, position = () => props.totalPages <= 1 ? 0 : (props.currentPage - 1) / (props.totalPages - 1) * 100, pageAt = (clientY) => {
+    let track, thumb, [dragging, setDragging] = createSignal(!1), dragOffset = 0, expanded = () => props.expanded || dragging(), interactionWidth = () => expanded() ? "w-18px coarse:w-24px" : "w-10px coarse:w-12px", position = () => props.totalPages <= 1 ? 0 : (props.currentPage - 1) / (props.totalPages - 1) * 100, pageAt = (clientY) => {
       let trackRect = track.getBoundingClientRect(), travel = Math.max(1, trackRect.height - thumb.offsetHeight), ratio = clamp((clientY - trackRect.top - dragOffset) / travel, 0, 1);
       return Math.round(1 + ratio * (props.totalPages - 1));
     }, updatePage = (clientY) => {
@@ -6673,13 +6673,14 @@ body #gdt[class],
       typeof _ref$ == "function" ? use(_ref$, _el$) : track = _el$;
       var _ref$2 = thumb;
       return typeof _ref$2 == "function" ? use(_ref$2, _el$3) : thumb = _el$3, createRenderEffect((_p$) => {
-        var _v$ = "fixed inset-y-0 right-0 z-2 w-lg coarse:w-xl touch-none select-none transition-opacity duration-160 ease-in-out " + (props.visible || dragging() ? "opacity-100" : "opacity-0 pointer-events-none"), _v$2 = `${position()}%`, _v$3 = `translateY(-${position()}%)`, _v$4 = `block h-full rounded-l-md bg-[var(--color-reader-scrollbar)] shadow-[0_2px_10px_var(--color-shadow-control)] transition-[width] duration-160 ${props.expanded || dragging() ? "w-18px coarse:w-24px" : "w-10px coarse:w-12px"}`;
-        return _v$ !== _p$.e && className(_el$, _p$.e = _v$), _v$2 !== _p$.t && setStyleProperty(_el$3, "top", _p$.t = _v$2), _v$3 !== _p$.a && setStyleProperty(_el$3, "transform", _p$.a = _v$3), _v$4 !== _p$.o && className(_el$4, _p$.o = _v$4), _p$;
+        var _v$ = `fixed inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out ` + (props.visible || dragging() ? "opacity-100" : "opacity-0 pointer-events-none"), _v$2 = `absolute right-0 flex ${interactionWidth()} h-[120px] coarse:h-[200px] items-center justify-end cursor-grab active:cursor-grabbing transition-[width] duration-160`, _v$3 = `${position()}%`, _v$4 = `translateY(-${position()}%)`, _v$5 = `block h-full rounded-l-md bg-[var(--color-reader-scrollbar)] shadow-[0_2px_10px_var(--color-shadow-control)] transition-[width] duration-160 ${expanded() ? "w-18px coarse:w-24px" : "w-10px coarse:w-12px"}`;
+        return _v$ !== _p$.e && className(_el$, _p$.e = _v$), _v$2 !== _p$.t && className(_el$3, _p$.t = _v$2), _v$3 !== _p$.a && setStyleProperty(_el$3, "top", _p$.a = _v$3), _v$4 !== _p$.o && setStyleProperty(_el$3, "transform", _p$.o = _v$4), _v$5 !== _p$.i && className(_el$4, _p$.i = _v$5), _p$;
       }, {
         e: void 0,
         t: void 0,
         a: void 0,
-        o: void 0
+        o: void 0,
+        i: void 0
       }), _el$;
     })();
   }
