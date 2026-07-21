@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260721.1531
+// @version      260721.1543
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -2719,7 +2719,7 @@
       searchInput: searchInput.inplace(),
       searchSubmit: searchSubmit.inplace()
     };
-    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount && (elems.advancedToggle.after(elems.advancedToggleMount), elems.advancedToggle.setHidden(!0)), elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount && (elems.fileSearchToggle.after(elems.fileSearchToggleMount), elems.fileSearchToggle.setHidden(!0)), elems.fileSearch?.remove();
+    (standardSearchBox ? elems.searchBox : elems.form).before(elems.mount), standardSearchBox && elems.searchBox.remove(), elems.searchInput.replaceWith(elems.searchControls), elems.searchControls.append(elems.searchInput), elems.searchSubmit.remove(), elems.clearButton && elems.clearActionMount && (elems.clearButton.remove(), elems.searchControls.append(elems.clearActionMount)), elems.searchControls.append(elems.searchActionMount), elems.categories && elems.optionLinks && elems.categoryToggleMount && (elems.optionLinks.after(elems.categories), elems.optionLinks.prepend(elems.categoryToggleMount)), elems.optionLinks && elems.advancedToggle && elems.advancedToggleMount && (elems.advancedToggle.after(elems.advancedToggleMount), elems.advancedToggle.remove()), elems.optionLinks && elems.fileSearchToggle && elems.fileSearchToggleMount && (elems.fileSearchToggle.after(elems.fileSearchToggleMount), elems.fileSearchToggle.remove()), elems.fileSearch?.remove();
     let formInsideSearchBox = standardSearchBox?.one("form")?.sameNode(form) ?? !1, formId = form.attribute("id") || "ehpeek-search-form", categoryColors = categoryItems.map(
       (item) => ["ct1", "ct2", "ct3", "ct4", "ct5", "ct6", "ct7", "ct8", "ct9", "cta"].find((name) => item.hasClass(name)) ?? null
     );
@@ -4015,7 +4015,7 @@
               onChange: (value) => setDraft("searchHistoryEnabled", value)
             }), null), _el$18;
           }
-        }), null), insert(_el$19, "260721.1531", null), _el$22.$$click = (event) => {
+        }), null), insert(_el$19, "260721.1543", null), _el$22.$$click = (event) => {
           event.stopPropagation(), props.onApply({
             ...draft
           });
