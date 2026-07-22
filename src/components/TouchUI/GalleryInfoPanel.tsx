@@ -42,7 +42,7 @@ export const TOUCH_GALLERY_INFO_CLASSES = {
 };
 const RATING_STAR_INDEXES = [0, 1, 2, 3, 4];
 const RATING_ACTION_BUTTON_CLASS =
-  "block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default";
+  "flex w-full min-h-md coarse:min-h-64px items-center justify-center py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98 disabled:opacity-50 disabled:cursor-default";
 
 type GalleryPanelTagGroup = GalleryInfoTagGroup;
 
@@ -166,17 +166,16 @@ export function GalleryInfoPanel(props: {
                 {source.data.titleSub}
               </div>
             </div>
-            <div class="ehpeek-touch-gallery-category-row grid grid-cols-[minmax(0,35fr)_minmax(0,65fr)] w-full flex-none items-center gap-lg mt-auto pt-md">
-              <div
-                class="ehpeek-touch-gallery-category box-border w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-xs border border-solid py-6px px-10px text-center textsize-md font-700 leading-[1.1] uppercase"
-                style={source.data.categoryAppearance}
-              >
-                {source.data.category}
-              </div>
-              {rating && (
+            <div
+              class="ehpeek-touch-gallery-category box-border flex-none self-start whitespace-nowrap rounded-xs border border-solid py-6px px-10px text-center textsize-md font-700 leading-[1.1] uppercase"
+              style={source.data.categoryAppearance}
+            >
+              {source.data.category}
+            </div>
+            {rating && (
                 <button
                   type="button"
-                  class="ehpeek-touch-gallery-rating flex w-full min-w-0 flex-col items-center gap-4px p-0 border-0 bg-transparent ehp-color-site-text font-inherit text-center cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"
+                  class="ehpeek-touch-gallery-rating flex w-[65%] max-w-full flex-none self-end flex-col items-end gap-4px mt-auto p-0 border-0 bg-transparent ehp-color-site-text font-inherit text-right cursor-pointer select-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:rounded-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-site-accent)] focus-visible:outline-offset-3px"
                   aria-label="Rate gallery"
                   onClick={() => {
                     setRatingPreview(null);
@@ -190,7 +189,7 @@ export function GalleryInfoPanel(props: {
                   }}
                 >
                   <div
-                    class="ehpeek-touch-gallery-rating-stars relative inline-flex max-w-full overflow-hidden"
+                    class="ehpeek-touch-gallery-rating-stars relative inline-flex"
                     onPointerMove={(event: PointerEvent) => {
                       if (event.pointerType !== "mouse") {
                         return;
@@ -222,9 +221,9 @@ export function GalleryInfoPanel(props: {
                       </For>
                     </span>
                   </div>
-                  <div class="ehpeek-touch-gallery-rating-meta flex max-w-full min-w-0 items-center justify-center gap-6px text-[var(--color-muted)] textsize-md leading-[1.15] whitespace-nowrap">
+                  <div class="ehpeek-touch-gallery-rating-meta flex items-center justify-end gap-6px text-[var(--color-muted)] textsize-md leading-[1.15] whitespace-nowrap">
                     <span
-                      class="ehpeek-touch-gallery-rating-label min-w-0 overflow-hidden text-ellipsis"
+                      class="ehpeek-touch-gallery-rating-label"
                       aria-live="polite"
                     >
                       {ratingLabel()}
@@ -236,8 +235,7 @@ export function GalleryInfoPanel(props: {
                     )}
                   </div>
                 </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -505,6 +503,7 @@ function TouchGalleryTagMenu(props: {
       tagSets[0]?.value ??
       "1",
   );
+  const [collectionOpen, setCollectionOpen] = createSignal(false);
   const [tagMode, setTagMode] = createSignal<MyTagMode>("marked");
   const [updating, setUpdating] = createSignal(false);
   const [favoriteTag, setFavoriteTag] = createSignal<
@@ -620,6 +619,7 @@ function TouchGalleryTagMenu(props: {
                   role="menuitem"
                   onClick={() => {
                     setFavoriteTag(tag());
+                    setCollectionOpen(false);
                     setFavoriteDialogOpen(true);
                   }}
                 >
@@ -639,11 +639,12 @@ function TouchGalleryTagMenu(props: {
           aria-label={texts.gallery.favoriteTag}
           onClick={(event) => {
             if (event.target === event.currentTarget) {
+              setCollectionOpen(false);
               setFavoriteDialogOpen(false);
             }
           }}
         >
-          <div class="box-border flex w-full max-w-420px flex-col gap-lg rounded-md border ehp-color-site-border ehp-color-site-elevated p-lg shadow-xl">
+          <div class="box-border flex w-full max-w-420px max-h-[calc(100dvh-32px)] flex-col gap-lg overflow-y-auto overscroll-contain rounded-md border ehp-color-site-border ehp-color-site-elevated p-lg shadow-xl">
             <div class="ehp-color-site-text textsize-lg font-700">
               {texts.gallery.favoriteTag}
             </div>
@@ -651,45 +652,81 @@ function TouchGalleryTagMenu(props: {
               when={!updating()}
               fallback={<WelcomeIcon embedded label={texts.reader.loading} showIcon={false} />}
             >
-              <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+              <div class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
                 <span>{texts.gallery.tagCollection}</span>
-                <select
-                  class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
-                  value={selectedTagSet()}
-                  onChange={(event) =>
-                    setSelectedTagSet(event.currentTarget.value)
-                  }
-                >
-                  <For each={tagSets}>{(option) => (
-                    <option value={option.value}>{option.label}</option>
-                  )}</For>
-                </select>
-              </label>
-              <label class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
+                <div class="relative">
+                  <button
+                    type="button"
+                    class="flex box-border w-full min-h-md coarse:min-h-64px items-center justify-between gap-md rounded-md border ehp-color-site-border !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text px-md font-inherit text-left textsize-md cursor-pointer"
+                    aria-haspopup="listbox"
+                    aria-expanded={collectionOpen()}
+                    onClick={() => setCollectionOpen((open) => !open)}
+                  >
+                    <span class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                      {tagSets.find((option) => option.value === selectedTagSet())?.label ?? selectedTagSet()}
+                    </span>
+                    <span class="flex-none" aria-hidden="true">{collectionOpen() ? "▴" : "▾"}</span>
+                  </button>
+                  <Show when={collectionOpen()}>
+                    <div class="absolute top-full left-0 right-0 z-2 mt-xs max-h-240px overflow-y-auto overscroll-contain rounded-md border ehp-color-site-border ehp-color-site-elevated shadow-xl" role="listbox" aria-label={texts.gallery.tagCollection}>
+                      <For each={tagSets}>{(option) => (
+                        <button
+                          type="button"
+                          class={`flex box-border w-full min-h-md coarse:min-h-64px items-center justify-between gap-md px-md border-0 border-b last:border-b-0 ehp-color-site-border-subtle-b ehp-color-site-text font-inherit text-left textsize-md cursor-pointer ${selectedTagSet() === option.value ? "bg-[var(--color-site-item-hover)] font-700" : "!bg-transparent hover:!bg-[var(--color-site-item-hover)]"}`}
+                          role="option"
+                          aria-selected={selectedTagSet() === option.value}
+                          onClick={() => {
+                            setSelectedTagSet(option.value);
+                            setCollectionOpen(false);
+                          }}
+                        >
+                          <span>{option.label}</span>
+                          <Show when={selectedTagSet() === option.value}>
+                            <Icon name="check" />
+                          </Show>
+                        </button>
+                      )}</For>
+                    </div>
+                  </Show>
+                </div>
+              </div>
+              <div class="flex flex-col gap-sm ehp-color-site-text textsize-md font-600">
                 <span>{texts.gallery.tagBehavior}</span>
-                <select
-                  class="box-border min-h-md w-full rounded-xs border ehp-color-site-border ehp-color-site-surface ehp-color-site-text px-md font-inherit textsize-md"
-                  value={tagMode()}
-                  onChange={(event) =>
-                    setTagMode(event.currentTarget.value as MyTagMode)
-                  }
-                >
-                  <option value="marked">{texts.gallery.markTag}</option>
-                  <option value="watched">{texts.gallery.watchTag}</option>
-                  <option value="hidden">{texts.gallery.hideTag}</option>
-                </select>
-              </label>
+                <div class="overflow-hidden rounded-md border ehp-color-site-border" role="radiogroup" aria-label={texts.gallery.tagBehavior}>
+                  <For each={([
+                    ["marked", texts.gallery.markTag],
+                    ["watched", texts.gallery.watchTag],
+                    ["hidden", texts.gallery.hideTag],
+                  ] as const)}>{([value, label]) => (
+                    <button
+                      type="button"
+                      class={`flex box-border w-full min-h-md coarse:min-h-64px items-center justify-between gap-md px-md border-0 border-b last:border-b-0 ehp-color-site-border-subtle-b ehp-color-site-text font-inherit text-left textsize-md cursor-pointer ${tagMode() === value ? "bg-[var(--color-site-item-hover)] font-700" : "!bg-transparent hover:!bg-[var(--color-site-item-hover)]"}`}
+                      role="radio"
+                      aria-checked={tagMode() === value}
+                      onClick={() => setTagMode(value)}
+                    >
+                      <span>{label}</span>
+                      <Show when={tagMode() === value}>
+                        <Icon name="check" />
+                      </Show>
+                    </button>
+                  )}</For>
+                </div>
+              </div>
               <div class="grid grid-cols-2 gap-md">
                 <button
                   type="button"
-                  class="min-h-md rounded-xs border-0 ehp-color-site-surface ehp-color-site-text font-inherit font-700 textsize-md cursor-pointer"
-                  onClick={() => setFavoriteDialogOpen(false)}
+                  class={`${RATING_ACTION_BUTTON_CLASS} border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]`}
+                  onClick={() => {
+                    setCollectionOpen(false);
+                    setFavoriteDialogOpen(false);
+                  }}
                 >
                   {texts.button.close}
                 </button>
                 <button
                   type="button"
-                  class="flex min-h-md items-center justify-center gap-md rounded-xs border-0 bg-[var(--color-site-accent)] text-[var(--color-background)] font-inherit font-700 textsize-md cursor-pointer"
+                  class={`${RATING_ACTION_BUTTON_CLASS} gap-md border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108`}
                   onClick={() => {
                     const tag = favoriteTag();
                     if (tag) {
