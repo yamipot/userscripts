@@ -44,7 +44,9 @@ jobs:
         run: pnpm build
 
       - name: Publish built userscript branch
-        if: github.event_name != 'pull_request'
+        if: >-
+          github.event_name != 'pull_request' &&
+          (github.ref_name == 'master' || github.ref_name == 'stable')
         working-directory: .
         run: |
           safe_ref="${GITHUB_REF_NAME//\//-}"

@@ -26,10 +26,15 @@ type ZoomDragMove = {
   dy: number;
 };
 
+type ZoomWheelMove = ZoomPinchStart & {
+  delta: number;
+};
+
 export type ZoomOverlayActions = {
   endPinch: () => void;
   moveDrag: (move: ZoomDragMove) => void;
   movePinch: (pinch: ZoomPinchMove) => void;
+  moveWheel: (wheel: ZoomWheelMove) => void;
   reset: (pinch: ZoomPinchStart) => void;
   startDrag: () => void;
   startPinch: (pinch: ZoomPinchStart) => void;
@@ -88,6 +93,30 @@ export function ZoomOverlay(props: {
       const ratio = scale / pinchStartScale;
       offsetX = pinch.centerX - viewportCenterX - (pinchStartCenterX - viewportCenterX - pinchStartOffsetX) * ratio;
       offsetY = pinch.centerY - viewportCenterY - (pinchStartCenterY - viewportCenterY - pinchStartOffsetY) * ratio;
+      renderTransform();
+    },
+    moveWheel(wheel): void {
+      if (!props.image) {
+        return;
+      }
+
+      const nextScale = clamp(
+        scale * Math.exp(-clamp(wheel.delta, -100, 100) * 0.0025),
+        MIN_SCALE,
+        MAX_SCALE,
+      );
+      if (nextScale === scale) {
+        return;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const viewportCenterX = rect.left + rect.width / 2;
+      const viewportCenterY = rect.top + rect.height / 2;
+      const ratio = nextScale / scale;
+      offsetX = wheel.centerX - viewportCenterX - (wheel.centerX - viewportCenterX - offsetX) * ratio;
+      offsetY = wheel.centerY - viewportCenterY - (wheel.centerY - viewportCenterY - offsetY) * ratio;
+      scale = nextScale;
+      requestedScale = nextScale;
       renderTransform();
     },
     endPinch(): void {

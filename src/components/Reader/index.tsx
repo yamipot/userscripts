@@ -455,6 +455,11 @@ function wireReaderCallbacks(
       onWheel: (delta: number, event: WheelEvent): void => {
         if (state.overlay.image() !== null) {
           event.preventDefault();
+          zoomOverlay.moveWheel({
+            centerX: event.clientX,
+            centerY: event.clientY,
+            delta: wheelDeltaPixels(delta, event.deltaMode),
+          });
           return;
         }
         if (appState.reader.viewMode.value !== "paged") {
@@ -794,6 +799,16 @@ function wireReaderCallbacks(
     gesture.tapMoveThreshold = TAP_CANCEL_DISTANCE;
     return gesture;
   }
+}
+
+function wheelDeltaPixels(delta: number, mode: number): number {
+  if (mode === WheelEvent.DOM_DELTA_LINE) {
+    return delta * 16;
+  }
+  if (mode === WheelEvent.DOM_DELTA_PAGE) {
+    return delta * window.innerHeight;
+  }
+  return delta;
 }
 
 function displayedImageFileName(galleryId: number, pageNum: number, imageUrl: string): string {
