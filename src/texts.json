@@ -8,6 +8,23 @@
     "default": "Default",
     "removeHistory": "Delete History"
   },
+  "help": {
+    "title": "Help",
+    "content": {
+      "Reader": [
+        "**Tap** the center to show or hide the toolbar.",
+        "**Swipe (scroll)**, tap either side or use the **Left and Right Arrow keys** to turn pages.",
+        "**Pinch** to zoom the image. Or **double-tap** to enter zoom mode and use the **mouse wheel** to adjust the scale."
+      ],
+      "Browse": [
+        "When **Enhance > Search Grids** is enabled, **swipe** horizontally to change search result pages."
+      ],
+      "Gallery": [
+        "When **Enhance > Thumbs Grids** is enabled, **swipe** horizontally to change preview pages.",
+        "The Page Bar in Gallery can be **dragged** to adjust the range."
+      ]
+    }
+  },
   "reader": {
     "download": "Download",
     "downloadDisplayedImage": "Displayed image",
@@ -49,6 +66,10 @@
     "menuLabel": "Ehpeek",
     "on": "On",
     "off": "Off",
+    "discardChanges": "Discard unsaved settings changes?",
+    "modes": "Modes",
+    "options": "Options",
+    "about": "About",
     "readerLabel": "Reader",
     "readerHelp": "Opens gallery images in Ehpeek's reader",
     "readerFullscreenLabel": "Reader in Fullscreen",
@@ -61,7 +82,7 @@
     "enhanceSearchHelp": "Adds swipe navigation to search pages",
     "enhanceThumbsLabel": "Thumbs Grids",
     "enhanceThumbsHelp": "Adds swipe navigation and scrollable pages bar for gallery preview",
-    "myTagsLabel": "My Tag",
+    "myTagsLabel": "My Tag in Gallery",
     "myTagsHelp": "Highlights your saved tags with colors in gallery",
     "readHistoryLabel": "Read History",
     "readHistoryHelp": "Remembers reading progress",

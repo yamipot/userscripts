@@ -4,6 +4,7 @@ import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
 import { Icon } from "../Widgets/Icon";
 import { ProgressBar } from "../Widgets/ProgressBar";
+import { InteractionHelp } from "../InteractionHelp";
 
 export type ReaderControls = {
   mode: ViewMode;
@@ -60,6 +61,7 @@ export function Toolbar(props: {
   progress: PageProgress;
 }) {
   const [dialogDownloadInfo, setDialogDownloadInfo] = createSignal<ReaderDownloadInfo | null>(null);
+  const [helpOpen, setHelpOpen] = createSignal(false);
   const fullscreenTime = createFullscreenTime(() => props.fullscreenActive);
 
   createEffect(() => {
@@ -149,6 +151,15 @@ export function Toolbar(props: {
             onClick={() => props.callbacks.onFullscreenClick()}
           >
             <Icon name={props.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            class={READER_BUTTON_CLASS}
+            aria-label={texts.help.title}
+            title={texts.help.title}
+            onClick={() => setHelpOpen(true)}
+          >
+            ?
           </button>
           <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onCloseClick()}>
             <Icon name="close" size={READER_ICON_SIZE} />
@@ -272,6 +283,9 @@ export function Toolbar(props: {
           </div>
         </div>
         )}
+      </Show>
+      <Show when={helpOpen()}>
+        <InteractionHelp variant="reader" onClose={() => setHelpOpen(false)} />
       </Show>
     </div>
   );
