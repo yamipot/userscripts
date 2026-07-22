@@ -201,19 +201,51 @@ function wireReaderCallbacks(
   }
 
   async function loadMissingPages(pageNums: number[], token: number): Promise<void> {
-    let incoming: ReaderPage[];
-    try {
-      incoming = await previewCache.getPages(pageNums);
+    const pageGroups = new Map<number, number[]>();
+    for (const pageNum of pageNums) {
+      const previewIndex = previewCache.previewIndexForPage(pageNum);
+      pageGroups.set(previewIndex, [...(pageGroups.get(previewIndex) ?? []), pageNum]);
     }
-    catch (error) {
-      console.error("[ehpeek]", error);
-      return;
-    }
-    if (closed) {
-      return;
-    }
-    addPages(incoming);
-    if (token !== syncToken) {
+
+    await Promise.all(Array.from(pageGroups.values(), async (groupPageNums) => {
+      const loadingTokens = new Map(groupPageNums.flatMap((pageNum) => {
+        const loadingToken = viewportActions.markPageLoading(pageNum);
+        return loadingToken === null ? [] : [[pageNum, loadingToken] as const];
+      }));
+      let incoming: ReaderPage[];
+      try {
+        incoming = await previewCache.getPages(groupPageNums);
+      }
+      catch (error) {
+        console.error("[ehpeek]", error);
+        const message = error instanceof Error ? error.message : texts.errors.loadFailed;
+        for (const [pageNum, loadingToken] of loadingTokens) {
+          viewportActions.setPageError(pageNum, loadingToken, message);
+        }
+        return;
+      }
+
+      if (closed) {
+        return;
+      }
+      addPages(incoming);
+      const loadedPageNums = new Set(incoming.flatMap((page) =>
+        page.pageNum && page.pageNum > 0 ? [page.pageNum] : []
+      ));
+      for (const [pageNum, loadingToken] of loadingTokens) {
+        if (loadedPageNums.has(pageNum)) {
+          viewportActions.resetPageLoading(pageNum, loadingToken);
+        } else {
+          viewportActions.setPageError(
+            pageNum,
+            loadingToken,
+            texts.errors.imageNotFound,
+          );
+        }
+      }
+    }));
+
+    if (closed || token !== syncToken) {
       return;
     }
     syncViewportWindow();
@@ -455,7 +487,11 @@ function wireReaderCallbacks(
         if (!viewportActions.resetPageError(pageNum)) {
           return;
         }
-        maintainLoadQueue();
+        if (pages.has(pageNum)) {
+          maintainLoadQueue();
+        } else {
+          void loadMissingPages([pageNum], ++syncToken);
+        }
       },
       onWheel: (delta: number, event: WheelEvent): void => {
         if (state.overlay.image() !== null) {
@@ -640,6 +676,9 @@ function wireReaderCallbacks(
       event: PointerEvent | MouseEvent;
       time: number;
     } | null = null;
+    const isPageReloadButtonTarget = (event: PointerEvent | MouseEvent): boolean =>
+      event.target instanceof Element &&
+      event.target.closest(".ehpeek-reader-page-reload") !== null;
     const shouldStartDrag = (event: PointerEvent): boolean =>
       state.overlay.image() !== null ||
       horizontalMode() ||
@@ -791,6 +830,9 @@ function wireReaderCallbacks(
     });
     gesture.onPinchEnd = () => zoomOverlay.endPinch();
     gesture.shouldCaptureDrag = (event) => {
+      if (isPageReloadButtonTarget(event)) {
+        return false;
+      }
       if (!(event instanceof PointerEvent)) {
         return false;
       }
@@ -801,6 +843,7 @@ function wireReaderCallbacks(
     };
     gesture.shouldObserveTap = (event) =>
       event instanceof PointerEvent &&
+      !isPageReloadButtonTarget(event) &&
       event.pointerType !== "mouse" &&
       !shouldStartDrag(event);
     gesture.dragStartThreshold = TAP_CANCEL_DISTANCE;

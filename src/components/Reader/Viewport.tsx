@@ -101,6 +101,7 @@ export type PagesViewportActions = {
   pageNumAtPoint: (point: { clientX: number; clientY: number }) => number | null;
   pageOffset: (pageNum: number) => number | null;
   resetPageError: (pageNum: number) => boolean;
+  resetPageLoading: (pageNum: number, token: number) => boolean;
   resetPosition: () => void;
   scrollTop: () => number;
   setPageError: (pageNum: number, token: number, errorMessage: string) => boolean;
@@ -411,6 +412,17 @@ export function PagesViewport(props: {
 
       slot.state = "idle";
       slot.errorMessage = null;
+      refreshSlot(slot);
+      return true;
+    },
+    resetPageLoading(pageNum, token): boolean {
+      const slot = slotFor(pageNum);
+
+      if (!slot || slot.kind !== "page" || slot.state !== "loading" || slot.token !== token) {
+        return false;
+      }
+
+      slot.state = "idle";
       refreshSlot(slot);
       return true;
     },
