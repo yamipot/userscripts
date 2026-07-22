@@ -272,7 +272,7 @@ export function SettingsMenu(props: {
             />
           </Show>
           <Show when={activeTab() === "about"}>
-            <div class="flex w-full min-h-md coarse:min-h-64px items-center px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text textsize-lg font-700">
+            <div class="flex w-full min-h-md coarse:min-h-64px items-center px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text textsize-md font-700">
               Ehpeek
             </div>
             <a

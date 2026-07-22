@@ -26,6 +26,7 @@
     }
   },
   "reader": {
+    "more": "More",
     "download": "Download",
     "downloadDisplayedImage": "Displayed image",
     "downloadOriginalImage": "Original image",

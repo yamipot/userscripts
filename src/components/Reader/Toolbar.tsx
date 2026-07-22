@@ -62,7 +62,14 @@ export function Toolbar(props: {
 }) {
   const [dialogDownloadInfo, setDialogDownloadInfo] = createSignal<ReaderDownloadInfo | null>(null);
   const [helpOpen, setHelpOpen] = createSignal(false);
+  const [moreOpen, setMoreOpen] = createSignal(false);
   const fullscreenTime = createFullscreenTime(() => props.fullscreenActive);
+
+  createEffect(() => {
+    if (!props.open) {
+      setMoreOpen(false);
+    }
+  });
 
   createEffect(() => {
     if (dialogDownloadInfo()?.pageNum !== props.progress.pageNum) {
@@ -99,27 +106,8 @@ export function Toolbar(props: {
         onPointerDown={stopEvent}
         onWheel={stopEvent}
       >
-        <div class={`ehpeek-reader-toolbar-buttons flex flex-row gap-md coarse:gap-lg pointer-events-auto${props.open ? "" : " !hidden"}`}>
-          <button
-            type="button"
-            class={READER_BUTTON_CLASS}
-            onClick={() => props.callbacks.onControlsChange({
-              ...props.controls,
-              rightTapAction: props.controls.rightTapAction === "previous" ? "next" : "previous",
-            })}
-          >
-            {props.controls.rightTapAction === "previous" ? "R-" : "R+"}
-          </button>
-          <button
-            type="button"
-            class={READER_BUTTON_CLASS}
-            onClick={() => props.callbacks.onControlsChange({
-              ...props.controls,
-              readDirection: props.controls.readDirection === "rtl" ? "ltr" : "rtl",
-            })}
-          >
-            <Icon name={props.controls.readDirection === "rtl" ? "arrow-left" : "arrow-right"} size={READER_ICON_SIZE} />
-          </button>
+        <div class={`ehpeek-reader-toolbar-buttons flex flex-col items-end gap-md coarse:gap-lg pointer-events-auto${props.open ? "" : " !hidden"}`}>
+          <div class="flex flex-row gap-md coarse:gap-lg">
           <button
             type="button"
             class={READER_BUTTON_CLASS}
@@ -155,24 +143,59 @@ export function Toolbar(props: {
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            aria-label={texts.help.title}
-            title={texts.help.title}
-            onClick={() => setHelpOpen(true)}
+            aria-label={texts.reader.more}
+            title={texts.reader.more}
+            aria-expanded={moreOpen()}
+            onClick={() => setMoreOpen((open) => !open)}
           >
-            ?
+            {moreOpen() ? "▴" : "▾"}
           </button>
           <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onCloseClick()}>
             <Icon name="close" size={READER_ICON_SIZE} />
           </button>
+          </div>
+          <Show when={moreOpen()}>
+            <div class="flex flex-row gap-md coarse:gap-lg">
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                onClick={() => props.callbacks.onControlsChange({
+                  ...props.controls,
+                  rightTapAction: props.controls.rightTapAction === "previous" ? "next" : "previous",
+                })}
+              >
+                {props.controls.rightTapAction === "previous" ? "R-" : "R+"}
+              </button>
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                onClick={() => props.callbacks.onControlsChange({
+                  ...props.controls,
+                  readDirection: props.controls.readDirection === "rtl" ? "ltr" : "rtl",
+                })}
+              >
+                <Icon name={props.controls.readDirection === "rtl" ? "arrow-left" : "arrow-right"} size={READER_ICON_SIZE} />
+              </button>
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                aria-label={texts.help.title}
+                title={texts.help.title}
+                onClick={() => setHelpOpen(true)}
+              >
+                ?
+              </button>
+            </div>
+          </Show>
         </div>
       </div>
       <div
         class={
           "ehpeek-reader-page-number fixed z-3 pointer-events-none " +
-          "top-[calc(70px+env(safe-area-inset-top,0px))] left-1/2 right-auto -translate-x-1/2 " +
-          "coarse:top-[calc(80px+env(safe-area-inset-top,0px))] " +
-          "landscape:top-[calc(62px+env(safe-area-inset-top,0px))] landscape:(left-auto right-10px translate-x-0) " +
-          "coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] coarse-landscape:right-8px " +
+          (moreOpen()
+            ? "top-[calc(130px+env(safe-area-inset-top,0px))] coarse:top-[calc(160px+env(safe-area-inset-top,0px))] landscape:top-[calc(122px+env(safe-area-inset-top,0px))] coarse-landscape:top-[calc(150px+env(safe-area-inset-top,0px))] "
+            : "top-[calc(70px+env(safe-area-inset-top,0px))] coarse:top-[calc(80px+env(safe-area-inset-top,0px))] landscape:top-[calc(62px+env(safe-area-inset-top,0px))] coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] ") +
+          "left-1/2 right-auto -translate-x-1/2 landscape:(left-auto right-10px translate-x-0) coarse-landscape:right-8px " +
           "min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] " +
           "py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text " +
           "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
