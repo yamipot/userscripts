@@ -3,7 +3,7 @@ import type { GalleryPreviewCache } from "../../App/GalleryPreviewCache";
 import texts from "../../texts.json";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
 import {
-  normalizeReaderScrollViewportWidth,
+  normalizeReaderScrollSizeScale,
   state as appState,
 } from "../../state";
 import {
@@ -38,6 +38,7 @@ const DEFAULT_WINDOW_SIZE = 10;
 
 const PAGED_SWIPE_THRESHOLD = 24;
 const PAGED_WHEEL_THRESHOLD = 8;
+const HORIZONTAL_SCROLL_WHEEL_FACTOR = 0.5;
 const PROGRESS_IDLE_COMMIT_MS = 180;
 const LOADED_IMAGE_INFO_CACHE_LIMIT = 160;
 const SCROLL_GESTURE_IDLE_MS = 160;
@@ -73,6 +74,7 @@ export function Reader(props: {
   const callbacks = untrack(() => props.callbacks);
   const session = new ReaderSession(options);
   const readerState = session.state;
+  const scrollFitPageNum = readerState.navi.currentPageNum();
   const readerCallbacks = wireReaderCallbacks(
     session,
     options,
@@ -105,15 +107,16 @@ export function Reader(props: {
     <div
       id={VIEWER_ID}
       class="fixed inset-0 z-reader overflow-hidden ehp-color-reader font-sans textsize-sm leading-[1.4]"
-      data-read-direction={readerState.ctrls.value().readDirection}
-      data-view-mode={readerState.ctrls.value().mode}
+      data-navigation-mode={readerState.ctrls.value().navigationMode}
+      data-page-layout={readerState.ctrls.value().pageLayout}
+      data-read-direction={readerState.ctrls.value().direction}
     >
       <Show when={!readerState.scrollViewport.adjusting()}>
         <header class="contents">
           <Toolbar
             callbacks={readerCallbacks.toolbar}
             controls={readerState.ctrls.value()}
-            downloadInfo={readerState.navi.downloadInfo()}
+            downloadInfos={readerState.navi.downloadInfos()}
             fullscreenActive={props.fullscreenActive}
             open={readerState.toolbar.open()}
             progress={{
@@ -135,13 +138,20 @@ export function Reader(props: {
           actionsRef={readerCallbacks.viewportActionsRef}
           callbacks={readerCallbacks.viewport}
           decodedImageCacheLimit={options.decodedImageCacheLimit}
-          mode={readerState.ctrls.value().mode}
-          readDirection={readerState.ctrls.value().readDirection}
-          scrollWidthScale={readerState.scrollViewport.widthScale()}
+          direction={readerState.ctrls.value().direction}
+          navigationMode={readerState.ctrls.value().navigationMode}
+          pageLayout={readerState.ctrls.value().pageLayout}
+          scrollFitImageSize={readerState.scrollViewport.fitImageSize()}
+          scrollFitPageNum={scrollFitPageNum}
+          scrollSizeScale={readerState.scrollViewport.sizeScale()}
           window={readerState.navi.viewportWindow()}
         />
       </ViewportCanvas>
-      <Show when={readerState.ctrls.value().mode === "scroll" && totalPages > 1}>
+      <Show when={
+        readerState.ctrls.value().navigationMode === "scroll" &&
+        readerState.ctrls.value().direction === "ttb" &&
+        totalPages > 1
+      }>
         <ReaderScrollBar
           callbacks={readerCallbacks.toolbar}
           currentPage={readerState.navi.currentPageNum()}
@@ -175,19 +185,13 @@ function wireReaderCallbacks(
   let pagedTargetPageNumber: number | null = null;
   let syncToken = 0;
   let closed = false;
-  let pendingInitialScrollWidthScale = untrack(() => appState.reader.scrollWidthScale.reload());
-  const horizontalMode = () => state.ctrls.value().mode !== "scroll";
-  const pageTurnStep = () => state.ctrls.value().mode === "double-page" ? 2 : 1;
-  const updateReaderViewportWidth = () => state.scrollViewport.setViewportWidth(Math.max(1, window.innerWidth));
-
-  createEffect(() => {
-    if (!state.navi.downloadInfo()?.imageWidth || pendingInitialScrollWidthScale === null) {
-      return;
-    }
-    const initialWidthScale = pendingInitialScrollWidthScale;
-    pendingInitialScrollWidthScale = null;
-    state.scrollViewport.setWidthScale(initialWidthScale);
-  });
+  const scrollFitPageNum = state.navi.currentPageNum();
+  const pagedMode = () => state.ctrls.value().navigationMode === "paged";
+  const pageTurnStep = () => state.ctrls.value().pageLayout === "double" ? 2 : 1;
+  const updateReaderViewportSize = () => {
+    state.scrollViewport.setViewportWidth(Math.max(1, window.innerWidth));
+    state.scrollViewport.setViewportHeight(Math.max(1, window.innerHeight));
+  };
 
   function requestReaderClose(): void {
     if (closed) {
@@ -276,6 +280,9 @@ function wireReaderCallbacks(
     syncViewportWindow();
     maintainLoadQueue();
     notifyActivePageChange();
+    if (state.ctrls.value().navigationMode === "scroll" && state.navi.currentPageNum() === scrollFitPageNum) {
+      scrollToCurrentPage();
+    }
   }
   function addPages(incomingPages: ReaderPage[]): void {
     for (const [index, page] of incomingPages.entries()) {
@@ -303,7 +310,10 @@ function wireReaderCallbacks(
   function maintainLoadQueue(): void {
     const currentPageNum = state.navi.currentPageNum();
     const pageNums = [currentPageNum];
-    if (state.ctrls.value().mode === "double-page") {
+    if (state.ctrls.value().navigationMode === "scroll" && !state.scrollViewport.fitImageSize()) {
+      pageNums.push(scrollFitPageNum);
+    }
+    if (state.ctrls.value().navigationMode === "paged" && state.ctrls.value().pageLayout === "double") {
       pageNums.push(currentPageNum + 1);
     }
     for (let offset = 1; offset <= preloadWindowSize; offset += 1) {
@@ -335,7 +345,7 @@ function wireReaderCallbacks(
   }
 
   function turnPageBy(delta: number): void {
-    if (horizontalMode()) {
+    if (pagedMode()) {
       animatePagedStep(delta * pageTurnStep());
       return;
     }
@@ -371,18 +381,25 @@ function wireReaderCallbacks(
 
   function updatePageNumber(): void {
     const pageNum = state.navi.currentPageNum();
-    const image = loadedImages.get(pageNum);
-    if (image) {
-      loadedImages.delete(pageNum);
-      loadedImages.set(pageNum, image);
-    }
-    state.navi.setDownloadInfo(image && isRealPageNum(pageNum) ? {
-      currentFileName: displayedImageFileName(options.galleryId, pageNum, image.imageUrl),
-      currentImageUrl: image.imageUrl,
-      imageWidth: viewportActions.pageImageWidth(pageNum) ?? image.width,
-      originalImageUrl: image.originalImageUrl,
-      pageNum,
-    } : null);
+    const downloadPageNums = pagedMode() && state.ctrls.value().pageLayout === "double"
+      ? [pageNum, pageNum + 1]
+      : [pageNum];
+    state.navi.setDownloadInfos(downloadPageNums.flatMap((downloadPageNum) => {
+      const image = loadedImages.get(downloadPageNum);
+      if (!image || !isRealPageNum(downloadPageNum)) {
+        return [];
+      }
+      loadedImages.delete(downloadPageNum);
+      loadedImages.set(downloadPageNum, image);
+      return [{
+        currentFileName: displayedImageFileName(options.galleryId, downloadPageNum, image.imageUrl),
+        currentImageUrl: image.imageUrl,
+        imageHeight: viewportActions.pageImageHeight(downloadPageNum) ?? image.height,
+        imageWidth: viewportActions.pageImageWidth(downloadPageNum) ?? image.width,
+        originalImageUrl: image.originalImageUrl,
+        pageNum: downloadPageNum,
+      }];
+    }));
     state.navi.setMaxProgressPageNum(Math.max(1, maxProgressPageNum()));
   }
 
@@ -413,10 +430,18 @@ function wireReaderCallbacks(
         requestReaderClose();
       }
       event.preventDefault();
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    } else if (
+      event.key === "ArrowLeft" ||
+      event.key === "ArrowRight" ||
+      (state.ctrls.value().direction === "ttb" && (event.key === "ArrowUp" || event.key === "ArrowDown"))
+    ) {
       event.preventDefault();
       if (state.overlay.image() === null) {
-        turnPageBy(event.key === "ArrowLeft" ? state.navi.leftTapDelta() : state.navi.rightTapDelta());
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          turnPageBy(event.key === "ArrowUp" ? -1 : 1);
+        } else {
+          turnPageBy(event.key === "ArrowLeft" ? state.navi.leftTapDelta() : state.navi.rightTapDelta());
+        }
       }
     }
   };
@@ -436,14 +461,14 @@ function wireReaderCallbacks(
     },
     init: () => {
       document.addEventListener("keydown", onKeydown, true);
-      window.addEventListener("resize", updateReaderViewportWidth);
+      window.addEventListener("resize", updateReaderViewportSize);
       viewportActions.focus();
       updatePageNumber();
       syncAfterPageChange({ scrollIntoView: true });
     },
     cleanup: () => {
       document.removeEventListener("keydown", onKeydown, true);
-      window.removeEventListener("resize", updateReaderViewportWidth);
+      window.removeEventListener("resize", updateReaderViewportSize);
     },
     realignCurrentPage: () => {
       scrollToCurrentPage();
@@ -457,39 +482,40 @@ function wireReaderCallbacks(
     callbacks: ViewportCanvasCallbacks;
     open: () => void;
   } {
-    let adjustmentStartWidthScale = state.scrollViewport.widthScale();
+    let adjustmentStartSizeScale = state.scrollViewport.sizeScale();
     const updateImageScale = (scale: number | null): void => {
-      pendingInitialScrollWidthScale = null;
       if (scale === null) {
-        state.scrollViewport.setWidthScale(null);
+        state.scrollViewport.setSizeScale(null);
         return;
       }
-      const imageWidth = state.navi.downloadInfo()?.imageWidth;
-      if (imageWidth) {
-        state.scrollViewport.setWidthScale(normalizeReaderScrollViewportWidth(
-          imageWidth * scale / state.scrollViewport.viewportWidth(),
+      const fitScale = state.scrollViewport.fitScale();
+      if (fitScale) {
+        state.scrollViewport.setSizeScale(normalizeReaderScrollSizeScale(
+          scale / fitScale,
         ));
       }
     };
 
     return {
       open: () => {
-        pendingInitialScrollWidthScale = null;
-        adjustmentStartWidthScale = state.scrollViewport.widthScale();
+        adjustmentStartSizeScale = state.scrollViewport.sizeScale();
         state.scrollViewport.setAdjusting(true);
       },
       callbacks: {
         onApply: () => state.scrollViewport.setAdjusting(false),
         onApplyAll: () => {
-          appState.reader.scrollWidthScale.set(state.scrollViewport.widthScale());
+          const persistedScale = state.ctrls.value().direction === "ttb"
+            ? appState.reader.scrollTtbScale
+            : appState.reader.scrollHorizontalScale;
+          persistedScale.set(state.scrollViewport.sizeScale());
           state.scrollViewport.setAdjusting(false);
         },
         onClose: () => {
-          state.scrollViewport.setWidthScale(adjustmentStartWidthScale);
+          state.scrollViewport.setSizeScale(adjustmentStartSizeScale);
           state.scrollViewport.setAdjusting(false);
         },
         onFit: () => updateImageScale(null),
-        onOneToOne: () => state.scrollViewport.setWidthScale("one-to-one"),
+        onOneToOne: () => state.scrollViewport.setSizeScale("one-to-one"),
         onScaleChange: updateImageScale,
       },
     };
@@ -499,32 +525,36 @@ function wireReaderCallbacks(
     let scrollFrame: number | null = null;
     let scrollBarTimer: number | null = null;
     let scrollGestureTimer: number | null = null;
-    let previousScrollTop: number | null = null;
+    let previousScrollPosition: number | null = null;
     let scrollDistance = 0;
+    const scrollPosition = () => state.ctrls.value().direction === "ttb"
+      ? viewportActions.scrollTop()
+      : viewportActions.scrollLeft();
 
     const updateScrollBarActivity = (): void => {
-      const currentScrollTop = viewportActions.scrollTop();
-      if (previousScrollTop !== null) {
-        scrollDistance += Math.abs(currentScrollTop - previousScrollTop);
+      const currentScrollPosition = scrollPosition();
+      if (previousScrollPosition !== null) {
+        scrollDistance += Math.abs(currentScrollPosition - previousScrollPosition);
       }
-      previousScrollTop = currentScrollTop;
+      previousScrollPosition = currentScrollPosition;
       if (scrollDistance >= SCROLL_BAR_SHOW_DISTANCE) {
         state.scrollBar.updateVisible(true);
       }
-      if (scrollDistance >= window.innerHeight * SCROLL_BAR_EXPAND_VIEWPORTS) {
+      const viewportSize = state.ctrls.value().direction === "ttb" ? window.innerHeight : window.innerWidth;
+      if (scrollDistance >= viewportSize * SCROLL_BAR_EXPAND_VIEWPORTS) {
         state.scrollBar.updateExpanded(true);
       }
       session.clearTimeout(scrollGestureTimer);
       scrollGestureTimer = session.setTimeout(() => {
         scrollGestureTimer = null;
         scrollDistance = 0;
-        previousScrollTop = viewportActions.scrollTop();
+        previousScrollPosition = scrollPosition();
       }, SCROLL_GESTURE_IDLE_MS);
       session.clearTimeout(scrollBarTimer);
       scrollBarTimer = session.setTimeout(() => {
         scrollBarTimer = null;
         scrollDistance = 0;
-        previousScrollTop = viewportActions.scrollTop();
+        previousScrollPosition = scrollPosition();
         state.scrollBar.updateExpanded(false);
         state.scrollBar.updateVisible(false);
       }, SCROLL_BAR_IDLE_MS);
@@ -537,7 +567,7 @@ function wireReaderCallbacks(
 
     return {
       onNativeScroll: (): void => {
-        if (state.overlay.image() !== null || horizontalMode()) {
+        if (state.overlay.image() !== null || pagedMode()) {
           return;
         }
         if (state.scrollViewport.adjusting()) {
@@ -547,9 +577,13 @@ function wireReaderCallbacks(
         if (viewportActions.isDragging()) {
           return;
         }
-        const previousScrollTop = viewportActions.scrollTop();
-        viewportActions.moveToTop(previousScrollTop);
-        if (viewportActions.scrollTop() !== previousScrollTop || scrollFrame !== null) {
+        const previousPosition = scrollPosition();
+        if (state.ctrls.value().direction === "ttb") {
+          viewportActions.moveToTop(previousPosition);
+        } else {
+          viewportActions.moveToLeft(previousPosition);
+        }
+        if (scrollPosition() !== previousPosition || scrollFrame !== null) {
           return;
         }
         scrollFrame = session.requestAnimationFrame(() => {
@@ -577,10 +611,18 @@ function wireReaderCallbacks(
           });
           return;
         }
-        if (!horizontalMode()) {
+        if (!pagedMode() && state.ctrls.value().direction === "ttb") {
           return;
         }
         event.preventDefault();
+        if (!pagedMode()) {
+          const direction = state.ctrls.value().direction === "rtl" ? -1 : 1;
+          viewportActions.moveToLeft(
+            viewportActions.scrollLeft() +
+              wheelDeltaPixels(delta, event.deltaMode) * direction * HORIZONTAL_SCROLL_WHEEL_FACTOR,
+          );
+          return;
+        }
         if (!viewportActions.isDragging() && Math.abs(delta) >= PAGED_WHEEL_THRESHOLD) {
           turnPageBy(delta > 0 ? 1 : -1);
         }
@@ -599,6 +641,9 @@ function wireReaderCallbacks(
         width: positiveNumber(loaded.width),
         height: positiveNumber(loaded.height),
       };
+      if (pageNum === scrollFitPageNum && image.width && image.height && !state.scrollViewport.fitImageSize()) {
+        state.scrollViewport.setFitImageSize({ height: image.height, width: image.width });
+      }
       loadedImages.delete(pageNum);
       loadedImages.set(pageNum, image);
       while (loadedImages.size > LOADED_IMAGE_INFO_CACHE_LIMIT) {
@@ -619,11 +664,13 @@ function wireReaderCallbacks(
       const imageUrl = loaded.imageUrl;
       const width = positiveNumber(loaded.width);
       const height = positiveNumber(loaded.height);
+      let installed = false;
       try {
-        await viewportActions.loadPageImage(target.pageNum, token, {
+        installed = await viewportActions.loadPageImage(target.pageNum, token, {
           imageUrl,
           highPriority: target.pageNum === state.navi.currentPageNum() || (
-            state.ctrls.value().mode === "double-page" &&
+          state.ctrls.value().navigationMode === "paged" &&
+          state.ctrls.value().pageLayout === "double" &&
             target.pageNum === state.navi.currentPageNum() + 1
           ),
           width,
@@ -634,8 +681,20 @@ function wireReaderCallbacks(
         viewportActions.setPageError(target.pageNum, token, message);
         return;
       }
+      if (installed && target.pageNum === scrollFitPageNum && !state.scrollViewport.fitImageSize()) {
+        const fitWidth = viewportActions.pageImageWidth(target.pageNum);
+        const fitHeight = viewportActions.pageImageHeight(target.pageNum);
+        if (fitWidth && fitHeight) {
+          state.scrollViewport.setFitImageSize({ height: fitHeight, width: fitWidth });
+        }
+      }
       if (!closed) {
-        if (target.pageNum === state.navi.currentPageNum()) {
+        const currentPageNum = state.navi.currentPageNum();
+        if (target.pageNum === currentPageNum || (
+          pagedMode() &&
+          state.ctrls.value().pageLayout === "double" &&
+          target.pageNum === currentPageNum + 1
+        )) {
           updatePageNumber();
         }
       }
@@ -662,21 +721,34 @@ function wireReaderCallbacks(
     let progressNavigationTimer: number | null = null;
     let pendingProgressPageNum: number | null = null;
 
-    const updateControls = (controls: ReaderControls): void => {
+    const updateControls = (requestedControls: ReaderControls): void => {
       const previous = state.ctrls.value();
-      appState.reader.viewMode.set(controls.mode);
-      appState.reader.readDirection.set(controls.readDirection);
+      const controls = requestedControls.navigationMode === previous.navigationMode
+        ? requestedControls
+        : {
+            ...requestedControls,
+            direction: requestedControls.navigationMode === "scroll"
+              ? appState.reader.scrollDirection.value
+              : appState.reader.pagedDirection.value,
+          };
+      appState.reader.navigationMode.set(controls.navigationMode);
+      if (controls.navigationMode === "scroll") {
+        appState.reader.scrollDirection.set(controls.direction);
+      } else {
+        appState.reader.pagedDirection.set(controls.direction);
+      }
+      appState.reader.pageLayout.set(controls.pageLayout);
       appState.reader.rightTapAction.set(controls.rightTapAction);
       state.ctrls.update(controls);
-      if (controls.mode !== "scroll") {
+      if (controls.navigationMode !== "scroll") {
         state.scrollViewport.setAdjusting(false);
       }
 
-      if (controls.mode !== previous.mode) {
+      if (controls.navigationMode !== previous.navigationMode || controls.pageLayout !== previous.pageLayout) {
         viewportActions.stopMotion();
         viewportActions.resetPosition();
         syncAfterPageChange({ scrollIntoView: true });
-      } else if (controls.readDirection !== previous.readDirection) {
+      } else if (controls.direction !== previous.direction) {
         syncViewportWindow();
         scrollToCurrentPage();
       }
@@ -747,7 +819,14 @@ function wireReaderCallbacks(
 
 
   function wireGesture(): PointerGestureCallbacks {
-    const gesture: PointerGestureCallbacks = {};
+    const gesture: PointerGestureCallbacks = {
+      get dragAxis() {
+        if (state.overlay.image() !== null || !pagedMode()) {
+          return "any";
+        }
+        return state.ctrls.value().direction === "ttb" ? "y" : "x";
+      },
+    };
     let tapTimer: number | null = null;
     let pendingTap: {
       info: PointerDragEnd;
@@ -759,7 +838,8 @@ function wireReaderCallbacks(
       event.target.closest(".ehpeek-reader-page-reload") !== null;
     const shouldStartDrag = (event: PointerEvent): boolean =>
       state.overlay.image() !== null ||
-      horizontalMode() ||
+      pagedMode() ||
+      state.ctrls.value().direction !== "ttb" ||
       event.pointerType === "mouse";
     const imageAtPoint = (point: { clientX: number; clientY: number }): ZoomOverlayImage | null => {
       const pageNum = viewportActions.pageNumAtPoint(point);
@@ -812,8 +892,6 @@ function wireReaderCallbacks(
         event.preventDefault();
       } else if (viewportActions.isHitEndPage(info)) {
         requestReaderClose();
-      } else if (appState.reader.viewMode.value === "scroll") {
-        state.toolbar.toggle();
       } else {
         const zone = info.clientX / viewportActions.viewportWidth();
         if (zone >= 1 / 3 && zone <= 2 / 3) {
@@ -867,10 +945,25 @@ function wireReaderCallbacks(
         return;
       }
       viewportActions.cancelDrag();
-      if (!horizontalMode()) {
-        viewportActions.moveToTop(viewportActions.scrollTop());
-        viewportActions.startVerticalFlingFromDragVelocity(info.velocityY, () => updateCurrentFromScroll());
+      if (!pagedMode()) {
+        if (state.ctrls.value().direction === "ttb") {
+          viewportActions.moveToTop(viewportActions.scrollTop());
+          viewportActions.startVerticalFlingFromDragVelocity(info.velocityY, () => updateCurrentFromScroll());
+        } else {
+          viewportActions.moveToLeft(viewportActions.scrollLeft());
+          viewportActions.startHorizontalFlingFromDragVelocity(info.velocityX, () => updateCurrentFromScroll());
+        }
         updateCurrentFromScroll();
+        return;
+      }
+      if (state.ctrls.value().direction === "ttb") {
+        if (info.dy >= PAGED_SWIPE_THRESHOLD) {
+          turnPageBy(-1);
+        } else if (info.dy <= -PAGED_SWIPE_THRESHOLD) {
+          turnPageBy(1);
+        } else {
+          scrollToCurrentPage("animated");
+        }
         return;
       }
       if (info.dx >= PAGED_SWIPE_THRESHOLD) {

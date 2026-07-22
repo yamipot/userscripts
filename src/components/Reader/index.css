@@ -67,16 +67,13 @@
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen
-  #ehpeek-reader[data-view-mode="scroll"]
+  #ehpeek-reader[data-navigation-mode="scroll"][data-read-direction="ttb"]
   .ehpeek-reader-page-strip {
   padding-top: 0;
 }
 
-#ehpeek-reader[data-view-mode="double-page"] .ehpeek-reader-page-strip {
-  gap: 3px;
-}
-
-#ehpeek-reader[data-view-mode="double-page"] .ehpeek-page {
+#ehpeek-reader[data-navigation-mode="paged"][data-page-layout="double"]:not([data-read-direction="ttb"])
+  .ehpeek-page {
   width: calc(50% - 1.5px);
   flex: 0 0 calc(50% - 1.5px);
 }

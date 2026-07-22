@@ -1,5 +1,5 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js";
-import type { ReadDirection, RightTapAction, ViewMode } from "../../state";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import type { NavigationMode, PageLayout, ReadDirection, RightTapAction } from "../../state";
 import texts from "../../texts.json";
 import { stopEvent } from "../../utils";
 import { Icon } from "../Widgets/Icon";
@@ -7,8 +7,9 @@ import { ProgressBar } from "../Widgets/ProgressBar";
 import { InteractionHelp } from "../InteractionHelp";
 
 export type ReaderControls = {
-  mode: ViewMode;
-  readDirection: ReadDirection;
+  navigationMode: NavigationMode;
+  direction: ReadDirection;
+  pageLayout: PageLayout;
   rightTapAction: RightTapAction;
 };
 
@@ -38,6 +39,7 @@ const DOWNLOAD_OPTION_CLASS = [
 export type ReaderDownloadInfo = {
   currentFileName: string;
   currentImageUrl: string;
+  imageHeight: number | null;
   imageWidth: number | null;
   originalImageUrl: string | null;
   pageNum: number;
@@ -57,12 +59,12 @@ export type ToolbarCallbacks = {
 export function Toolbar(props: {
   callbacks: ToolbarCallbacks;
   controls: ReaderControls;
-  downloadInfo: ReaderDownloadInfo | null;
+  downloadInfos: ReaderDownloadInfo[];
   fullscreenActive: boolean;
   open: boolean;
   progress: PageProgress;
 }) {
-  const [dialogDownloadInfo, setDialogDownloadInfo] = createSignal<ReaderDownloadInfo | null>(null);
+  const [downloadDialogPageNum, setDownloadDialogPageNum] = createSignal<number | null>(null);
   const [helpOpen, setHelpOpen] = createSignal(false);
   const [moreOpen, setMoreOpen] = createSignal(false);
   const [controlChange, setControlChange] = createSignal<string | null>(null);
@@ -92,13 +94,14 @@ export function Toolbar(props: {
   });
 
   createEffect(() => {
-    if (dialogDownloadInfo()?.pageNum !== props.progress.pageNum) {
-      setDialogDownloadInfo(null);
+    const pageNum = downloadDialogPageNum();
+    if (pageNum !== null && pageNum !== props.progress.pageNum) {
+      setDownloadDialogPageNum(null);
     }
   });
 
   createEffect(() => {
-    if (!dialogDownloadInfo()) {
+    if (downloadDialogPageNum() === null) {
       return;
     }
 
@@ -108,7 +111,7 @@ export function Toolbar(props: {
       }
       event.preventDefault();
       event.stopPropagation();
-      setDialogDownloadInfo(null);
+      setDownloadDialogPageNum(null);
     };
     window.addEventListener("keydown", closeOnEscape, true);
     onCleanup(() => window.removeEventListener("keydown", closeOnEscape, true));
@@ -131,38 +134,11 @@ export function Toolbar(props: {
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={() => {
-              const mode: ViewMode = props.controls.mode === "scroll"
-                ? "paged"
-                : props.controls.mode === "paged"
-                  ? "double-page"
-                  : "scroll";
-              props.callbacks.onControlsChange({ ...props.controls, mode });
-              showControlChange(
-                mode === "paged"
-                  ? texts.reader.pagedMode
-                  : mode === "double-page"
-                    ? texts.reader.doublePageMode
-                    : texts.reader.scrollMode,
-              );
-            }}
+            aria-label={texts.help.title}
+            title={texts.help.title}
+            onClick={() => setHelpOpen(true)}
           >
-            <Icon
-              name={props.controls.mode === "paged"
-                ? "arrows-horizontal"
-                : props.controls.mode === "double-page"
-                  ? "pages"
-                  : "arrows-vertical"}
-              size={READER_ICON_SIZE}
-            />
-          </button>
-          <button
-            type="button"
-            class={READER_BUTTON_CLASS}
-            disabled={!props.downloadInfo}
-            onClick={() => setDialogDownloadInfo(props.downloadInfo)}
-          >
-            <Icon name="download" size={READER_ICON_SIZE} />
+            ?
           </button>
           <button
             type="button"
@@ -174,19 +150,27 @@ export function Toolbar(props: {
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            onClick={() => props.callbacks.onFullscreenClick()}
+            aria-label={texts.reader.readingOptions}
+            title={texts.reader.readingOptions}
+            aria-expanded={moreOpen()}
+            onClick={() => setMoreOpen((open) => !open)}
           >
-            <Icon name={props.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
+            <Icon name="book-open" size={READER_ICON_SIZE} />
           </button>
           <button
             type="button"
             class={READER_BUTTON_CLASS}
-            aria-label={texts.reader.more}
-            title={texts.reader.more}
-            aria-expanded={moreOpen()}
-            onClick={() => setMoreOpen((open) => !open)}
+            disabled={props.downloadInfos.length === 0}
+            onClick={() => setDownloadDialogPageNum(props.progress.pageNum)}
           >
-            {moreOpen() ? "▴" : "▾"}
+            <Icon name="download" size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            class={READER_BUTTON_CLASS}
+            onClick={() => props.callbacks.onFullscreenClick()}
+          >
+            <Icon name={props.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
           </button>
           <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onCloseClick()}>
             <Icon name="close" size={READER_ICON_SIZE} />
@@ -197,6 +181,69 @@ export function Toolbar(props: {
               <button
                 type="button"
                 class={READER_BUTTON_CLASS}
+                aria-label={props.controls.navigationMode === "scroll" ? texts.reader.scrollMode : texts.reader.pagedMode}
+                title={props.controls.navigationMode === "scroll" ? texts.reader.scrollMode : texts.reader.pagedMode}
+                onClick={() => {
+                  const navigationMode: NavigationMode = props.controls.navigationMode === "scroll" ? "paged" : "scroll";
+                  props.callbacks.onControlsChange({ ...props.controls, navigationMode });
+                  showControlChange(navigationMode === "paged" ? texts.reader.pagedMode : texts.reader.scrollMode);
+                }}
+              >
+                <Icon
+                  name={props.controls.navigationMode === "paged" ? "page" : "pages"}
+                  size={READER_ICON_SIZE}
+                />
+              </button>
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                aria-label={props.controls.direction === "rtl"
+                  ? texts.reader.directionRtl
+                  : props.controls.direction === "ltr"
+                    ? texts.reader.directionLtr
+                    : texts.reader.directionTtb}
+                onClick={() => {
+                  const direction: ReadDirection = props.controls.direction === "rtl"
+                    ? "ltr"
+                    : props.controls.direction === "ltr"
+                      ? "ttb"
+                      : "rtl";
+                  props.callbacks.onControlsChange({ ...props.controls, direction });
+                  showControlChange(
+                    direction === "rtl"
+                      ? texts.reader.directionRtl
+                      : direction === "ltr"
+                        ? texts.reader.directionLtr
+                        : texts.reader.directionTtb,
+                  );
+                }}
+              >
+                <Icon
+                  name={props.controls.direction === "rtl"
+                    ? "arrow-left"
+                    : props.controls.direction === "ltr"
+                      ? "arrow-right"
+                      : "arrow-down"}
+                  size={READER_ICON_SIZE}
+                />
+              </button>
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                aria-label={props.controls.pageLayout === "double" ? texts.reader.doublePageMode : texts.reader.singlePageMode}
+                disabled={props.controls.navigationMode !== "paged"}
+                onClick={() => {
+                  const pageLayout: PageLayout = props.controls.pageLayout === "single" ? "double" : "single";
+                  props.callbacks.onControlsChange({ ...props.controls, pageLayout });
+                  showControlChange(pageLayout === "double" ? texts.reader.doublePageMode : texts.reader.singlePageMode);
+                }}
+              >
+                {props.controls.pageLayout === "double" ? "2P" : "1P"}
+              </button>
+              <button
+                type="button"
+                class={READER_BUTTON_CLASS}
+                aria-label={props.controls.rightTapAction === "previous" ? texts.reader.rightTapPrevious : texts.reader.rightTapNext}
                 onClick={() => {
                   const rightTapAction = props.controls.rightTapAction === "previous" ? "next" : "previous";
                   props.callbacks.onControlsChange({ ...props.controls, rightTapAction });
@@ -208,32 +255,12 @@ export function Toolbar(props: {
               <button
                 type="button"
                 class={READER_BUTTON_CLASS}
-                onClick={() => {
-                  const readDirection = props.controls.readDirection === "rtl" ? "ltr" : "rtl";
-                  props.callbacks.onControlsChange({ ...props.controls, readDirection });
-                  showControlChange(readDirection === "rtl" ? texts.reader.directionRtl : texts.reader.directionLtr);
-                }}
-              >
-                <Icon name={props.controls.readDirection === "rtl" ? "arrow-left" : "arrow-right"} size={READER_ICON_SIZE} />
-              </button>
-              <button
-                type="button"
-                class={READER_BUTTON_CLASS}
                 aria-label={texts.reader.adjustScrollViewport}
                 title={texts.reader.adjustScrollViewport}
-                disabled={props.controls.mode !== "scroll"}
+                disabled={props.controls.navigationMode !== "scroll"}
                 onClick={() => props.callbacks.onViewportAdjustClick()}
               >
                 <Icon name="viewport" size={READER_ICON_SIZE} />
-              </button>
-              <button
-                type="button"
-                class={READER_BUTTON_CLASS}
-                aria-label={texts.help.title}
-                title={texts.help.title}
-                onClick={() => setHelpOpen(true)}
-              >
-                ?
               </button>
             </div>
           </Show>
@@ -251,9 +278,14 @@ export function Toolbar(props: {
           "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
           "text-center landscape:text-right"
         }
-        hidden={props.controls.mode === "scroll" && !props.open && !props.fullscreenActive}
+        hidden={props.controls.navigationMode === "scroll" && !props.open && !props.fullscreenActive}
       >
-        {pageNumberText(props.progress.pageNum, props.progress.totalPages, props.controls.mode)}
+        {pageNumberText(
+          props.progress.pageNum,
+          props.progress.totalPages,
+          props.controls.navigationMode,
+          props.controls.pageLayout,
+        )}
       </div>
       <Show when={props.fullscreenActive}>
         <div
@@ -288,7 +320,7 @@ export function Toolbar(props: {
       >
         <ProgressBar
           class="ehpeek-reader-progress textsize-lg"
-          direction={props.controls.readDirection === "rtl" ? "rtl" : "ltr"}
+          direction={props.controls.direction === "rtl" ? "rtl" : "ltr"}
           fillPercent={progressFillPercent(props.progress)}
           keepInputValue={props.progress.keepInputValue}
           max={Math.max(1, props.progress.maxProgressPageNum)}
@@ -300,8 +332,7 @@ export function Toolbar(props: {
           onCommit={props.callbacks.onProgressCommit}
         />
       </div>
-      <Show when={dialogDownloadInfo()} keyed>
-        {(downloadInfo) => (
+      <Show when={downloadDialogPageNum() !== null && props.downloadInfos.length > 0}>
         <div
           class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 pointer-events-auto"
           role="dialog"
@@ -310,7 +341,7 @@ export function Toolbar(props: {
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
             if (event.target === event.currentTarget) {
-              setDialogDownloadInfo(null);
+              setDownloadDialogPageNum(null);
             }
           }}
           onPointerDown={stopEvent}
@@ -318,51 +349,58 @@ export function Toolbar(props: {
         >
           <div class="ehpeek-reader-download-dialog-panel w-full max-w-480px p-lg rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)] shadow-xl">
             <div class="flex items-center justify-between gap-md mb-lg">
-              <div class="font-sans textsize-md font-700">{`${texts.reader.download} · ${downloadInfo.pageNum}`}</div>
+              <div class="font-sans textsize-md font-700">
+                {`${texts.reader.download} · ${props.downloadInfos.map((info) => info.pageNum).join(", ")}`}
+              </div>
               <button
                 type="button"
                 class={READER_BUTTON_CLASS}
                 title={texts.button.close}
                 aria-label={texts.button.close}
-                onClick={() => setDialogDownloadInfo(null)}
+                onClick={() => setDownloadDialogPageNum(null)}
               >
                 <Icon name="close" size={READER_ICON_SIZE} />
               </button>
             </div>
             <div class="grid gap-md font-sans textsize-md">
-              <button
-                type="button"
-                class={DOWNLOAD_OPTION_CLASS}
-                onClick={() => {
-                  if (startImageDownload(downloadInfo.currentImageUrl, downloadInfo.currentFileName)) {
-                    setDialogDownloadInfo(null);
-                  }
-                }}
-              >
-                <span class="textsize-md font-700">{texts.reader.downloadDisplayedImage}</span>
-                <span class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75">
-                  {downloadInfo.currentFileName}
-                </span>
-              </button>
-              <button
-                type="button"
-                class={DOWNLOAD_OPTION_CLASS}
-                disabled={!downloadInfo.originalImageUrl}
-                onClick={() => {
-                  if (downloadInfo.originalImageUrl && startImageDownload(downloadInfo.originalImageUrl)) {
-                    setDialogDownloadInfo(null);
-                  }
-                }}
-              >
-                <span class="textsize-md font-700">{texts.reader.downloadOriginalImage}</span>
-                <span class="textsize-sm opacity-75">
-                  {downloadInfo.originalImageUrl ? texts.reader.originalImageSource : texts.reader.originalImageUnavailable}
-                </span>
-              </button>
+              <For each={props.downloadInfos}>
+                {(downloadInfo) => (
+                  <div class="grid gap-md">
+                    <button
+                      type="button"
+                      class={DOWNLOAD_OPTION_CLASS}
+                      onClick={() => startImageDownload(downloadInfo.currentImageUrl, downloadInfo.currentFileName)}
+                    >
+                      <span class="textsize-md font-700">
+                        {`${texts.reader.downloadDisplayedImage} · ${downloadInfo.pageNum}`}
+                      </span>
+                      <span class="max-w-full overflow-hidden text-ellipsis whitespace-nowrap textsize-sm opacity-75">
+                        {downloadInfo.currentFileName}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      class={DOWNLOAD_OPTION_CLASS}
+                      disabled={!downloadInfo.originalImageUrl}
+                      onClick={() => {
+                        if (downloadInfo.originalImageUrl) {
+                          startImageDownload(downloadInfo.originalImageUrl);
+                        }
+                      }}
+                    >
+                      <span class="textsize-md font-700">
+                        {`${texts.reader.downloadOriginalImage} · ${downloadInfo.pageNum}`}
+                      </span>
+                      <span class="textsize-sm opacity-75">
+                        {downloadInfo.originalImageUrl ? texts.reader.originalImageSource : texts.reader.originalImageUnavailable}
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </For>
             </div>
           </div>
         </div>
-        )}
       </Show>
       <Show when={helpOpen()}>
         <InteractionHelp variant="reader" onClose={() => setHelpOpen(false)} />
@@ -422,17 +460,22 @@ function progressFillPercent(progress: PageProgress): number {
   return max > min ? ((value - min) / (max - min)) * 100 : 100;
 }
 
-function pageNumberText(pageNum: number, totalPages: number | undefined, mode: ViewMode): string {
+function pageNumberText(
+  pageNum: number,
+  totalPages: number | undefined,
+  navigationMode: NavigationMode,
+  pageLayout: PageLayout,
+): string {
   if (totalPages && pageNum === totalPages + 1) {
     return texts.reader.endPage;
   }
 
   if (!totalPages) {
-    return mode === "double-page" ? `${pageNum}–${pageNum + 1}` : String(pageNum);
+    return navigationMode === "paged" && pageLayout === "double" ? `${pageNum}–${pageNum + 1}` : String(pageNum);
   }
 
   const doublePageEnd = Math.min(totalPages, pageNum + 1);
-  return mode === "double-page" && doublePageEnd > pageNum
+  return navigationMode === "paged" && pageLayout === "double" && doublePageEnd > pageNum
     ? `${pageNum}–${doublePageEnd} / ${totalPages}`
     : `${pageNum} / ${totalPages}`;
 }

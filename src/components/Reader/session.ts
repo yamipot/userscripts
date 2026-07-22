@@ -1,9 +1,13 @@
 import { createSignal } from "solid-js";
 import type { LoadedReaderPage, ReaderPage } from "../../readerTypes";
-import { state as appState, type ReaderScrollWidthScale } from "../../state";
+import { state as appState, type ReaderScrollSizeScale } from "../../state";
 import { clamp } from "../../utils";
 import type { ReaderControls, ReaderDownloadInfo } from "./Toolbar";
-import type { PagesViewportWindowOptions } from "./Viewport";
+import {
+  containFitScale,
+  type PagesViewportWindowOptions,
+  type ScrollFitImageSize,
+} from "./Viewport";
 import type { ZoomOverlayImage } from "./ZoomOverlay";
 
 const DEFAULT_WINDOW_SIZE = 10;
@@ -36,9 +40,13 @@ export class ReaderSession {
     this.imageQueue = new PriorityLoadQueue(
       options.concurrentLoads,
     );
+    const navigationMode = appState.reader.navigationMode.value;
     const [controls, setControls] = createSignal<ReaderControls>({
-      mode: appState.reader.viewMode.value,
-      readDirection: appState.reader.readDirection.value,
+      navigationMode,
+      direction: navigationMode === "scroll"
+        ? appState.reader.scrollDirection.value
+        : appState.reader.pagedDirection.value,
+      pageLayout: appState.reader.pageLayout.value,
       rightTapAction: appState.reader.rightTapAction.value,
     });
     const [toolbarOpen, setToolbarOpen] = createSignal(false);
@@ -46,14 +54,42 @@ export class ReaderSession {
     const [zoomImage, setZoomImage] = createSignal<ZoomOverlayImage | null>(null);
     const [currentPageNum, setCurrentPageNum] = createSignal(initialPageNumber(options));
     const [direction, setDirection] = createSignal<Direction>(1);
-    const [downloadInfo, setDownloadInfo] = createSignal<ReaderDownloadInfo | null>(null);
+    const [downloadInfos, setDownloadInfos] = createSignal<ReaderDownloadInfo[]>([]);
     const [maxProgressPageNum, setMaxProgressPageNum] = createSignal(initialMaxProgressPageNumber(options));
     const [progressInputActive, setProgressInputActive] = createSignal(false);
     const [scrollBarVisible, setScrollBarVisible] = createSignal(false);
     const [scrollBarExpanded, setScrollBarExpanded] = createSignal(false);
     const [scrollViewportAdjusting, setScrollViewportAdjusting] = createSignal(false);
-    const [scrollViewportWidthScale, setScrollViewportWidthScale] = createSignal<ReaderScrollWidthScale>(null);
+    const [scrollViewportTtbScale, setScrollViewportTtbScale] = createSignal<ReaderScrollSizeScale>(
+      appState.reader.scrollTtbScale.value,
+    );
+    const [scrollViewportHorizontalScale, setScrollViewportHorizontalScale] = createSignal<ReaderScrollSizeScale>(
+      appState.reader.scrollHorizontalScale.value,
+    );
+    const [scrollFitImageSize, setScrollFitImageSize] = createSignal<ScrollFitImageSize | null>(null);
     const [readerViewportWidth, setReaderViewportWidth] = createSignal(Math.max(1, window.innerWidth));
+    const [readerViewportHeight, setReaderViewportHeight] = createSignal(Math.max(1, window.innerHeight));
+    const scrollViewportSizeScale = () => controls().direction === "ttb"
+      ? scrollViewportTtbScale()
+      : scrollViewportHorizontalScale();
+    const setScrollViewportSizeScale = (scale: ReaderScrollSizeScale) => {
+      if (controls().direction === "ttb") {
+        setScrollViewportTtbScale(scale);
+      } else {
+        setScrollViewportHorizontalScale(scale);
+      }
+    };
+    const scrollFitScale = () => {
+      const imageSize = scrollFitImageSize();
+      return imageSize
+        ? containFitScale(
+            imageSize.width,
+            imageSize.height,
+            readerViewportWidth(),
+            readerViewportHeight(),
+          )
+        : null;
+    };
 
     this.state = {
       navi: {
@@ -63,14 +99,14 @@ export class ReaderSession {
         setDirection,
         setViewportWindow,
         viewportWindow,
-        leftDragDelta: () => appState.reader.readDirection.value === "rtl" ? -1 : 1,
-        leftTapDelta: () => appState.reader.rightTapAction.value === "previous" ? 1 : -1,
-        rightDragDelta: () => appState.reader.readDirection.value === "rtl" ? 1 : -1,
-        rightTapDelta: () => appState.reader.rightTapAction.value === "previous" ? -1 : 1,
-        downloadInfo,
+        leftDragDelta: () => controls().direction === "rtl" ? -1 : 1,
+        leftTapDelta: () => controls().rightTapAction === "previous" ? 1 : -1,
+        rightDragDelta: () => controls().direction === "rtl" ? 1 : -1,
+        rightTapDelta: () => controls().rightTapAction === "previous" ? -1 : 1,
+        downloadInfos,
         maxProgressPageNum,
         progressInputActive,
-        setDownloadInfo,
+        setDownloadInfos,
         setMaxProgressPageNum,
         setProgressInputActive,
       },
@@ -87,26 +123,31 @@ export class ReaderSession {
       },
       scrollViewport: {
         adjusting: scrollViewportAdjusting,
-        scaleMode: () => scrollViewportWidthScale() === null
+        scaleMode: () => scrollViewportSizeScale() === null
           ? "fit" as const
-          : scrollViewportWidthScale() === "one-to-one"
+          : scrollViewportSizeScale() === "one-to-one"
             ? "one-to-one" as const
             : "custom" as const,
         scalePercent: () => {
-          const imageWidth = downloadInfo()?.imageWidth;
-          if (!imageWidth) {
-            return null;
+          const sizeScale = scrollViewportSizeScale();
+          if (sizeScale === "one-to-one") {
+            return 100;
           }
-          const widthScale = scrollViewportWidthScale();
-          return widthScale === "one-to-one"
-            ? 100
-            : (widthScale ?? 1) * readerViewportWidth() / imageWidth * 100;
+          const fitScale = scrollFitScale();
+          return fitScale
+            ? (sizeScale ?? 1) * fitScale * 100
+            : null;
         },
+        fitImageSize: scrollFitImageSize,
+        fitScale: scrollFitScale,
         setAdjusting: setScrollViewportAdjusting,
+        setFitImageSize: setScrollFitImageSize,
         setViewportWidth: setReaderViewportWidth,
-        setWidthScale: setScrollViewportWidthScale,
+        setSizeScale: setScrollViewportSizeScale,
+        setViewportHeight: setReaderViewportHeight,
         viewportWidth: readerViewportWidth,
-        widthScale: scrollViewportWidthScale,
+        viewportHeight: readerViewportHeight,
+        sizeScale: scrollViewportSizeScale,
       },
       overlay: { image: zoomImage, update: setZoomImage },
     };

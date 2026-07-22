@@ -1,7 +1,8 @@
-export type ViewMode = "scroll" | "paged" | "double-page";
-export type ReadDirection = "ltr" | "rtl";
+export type NavigationMode = "scroll" | "paged";
+export type ReadDirection = "ltr" | "rtl" | "ttb";
+export type PageLayout = "single" | "double";
 export type RightTapAction = "previous" | "next";
-export type ReaderScrollWidthScale = number | "one-to-one" | null;
+export type ReaderScrollSizeScale = number | "one-to-one" | null;
 export type GalleryTitlePreference = "main" | "sub";
 export type MyTagAppearance = {
   backgroundColor: string;
@@ -34,10 +35,13 @@ export const state = {
   reader: {
     enabled: persisted("ehpeek:reader:enabled", true),
     fullscreen: persisted("ehpeek:reader:fullscreen", prefersTouchFullscreen()),
-    viewMode: persisted<ViewMode>("ehpeek:reader:view-mode", "scroll"),
-    readDirection: persisted<ReadDirection>("ehpeek:reader:read-direction", "rtl"),
+    navigationMode: persisted<NavigationMode>("ehpeek:reader:navigation-mode", "scroll"),
+    scrollDirection: persisted<ReadDirection>("ehpeek:reader:scroll-direction", "ttb"),
+    pagedDirection: persisted<ReadDirection>("ehpeek:reader:paged-direction", "rtl"),
+    pageLayout: persisted<PageLayout>("ehpeek:reader:page-layout", "single"),
     rightTapAction: persisted<RightTapAction>("ehpeek:reader:right-tap-action", "previous"),
-    scrollWidthScale: persistedReaderScrollWidthScale(),
+    scrollTtbScale: persisted<ReaderScrollSizeScale>("ehpeek:reader:scroll-ttb-scale", null),
+    scrollHorizontalScale: persisted<ReaderScrollSizeScale>("ehpeek:reader:scroll-horizontal-scale", null),
   },
   gallery: {
     enhanceThumbs: persisted("ehpeek:enhance-thumbs:enabled", true),
@@ -108,37 +112,8 @@ function persisted<T>(key: string, defaultValue: T): StateValue<T> {
   return item;
 }
 
-function persistedReaderScrollWidthScale(): StateValue<ReaderScrollWidthScale> {
-  const key = "ehpeek:reader:scroll-width-scale";
-  const read = () => {
-    const value: unknown = GM_getValue(key, null);
-    return value === null
-      ? null
-      : value === "one-to-one"
-        ? value
-      : typeof value === "number" && Number.isFinite(value) && value > 0
-        ? normalizeReaderScrollViewportWidth(value)
-        : null;
-  };
-  const item: StateValue<ReaderScrollWidthScale> = {
-    defaultValue: null,
-    value: read(),
-    set(value) {
-      item.value = typeof value === "number"
-        ? normalizeReaderScrollViewportWidth(value)
-        : value;
-      GM_setValue(key, item.value);
-    },
-    reload() {
-      item.value = read();
-      return item.value;
-    },
-  };
-  return item;
-}
-
-export function normalizeReaderScrollViewportWidth(width: number): number {
-  return Number.isFinite(width) ? Math.min(100, Math.max(0.001, width)) : 1;
+export function normalizeReaderScrollSizeScale(scale: number): number {
+  return Number.isFinite(scale) ? Math.min(100, Math.max(0.001, scale)) : 1;
 }
 
 function localSelection(key: string, selectedValue: string): StateValue<boolean> {

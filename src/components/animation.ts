@@ -77,23 +77,28 @@ export class ScrollAnimator {
 
 export class ScrollFlingAnimator {
   private frame: number | null = null;
-  private velocityY = 0;
+  private velocity = 0;
   private lastFrameTime = 0;
 
   start(options: {
+    axis: ScrollAxis;
     scroller: HTMLElement;
-    initialVelocityY: number;
-    setScrollTop: (scrollTop: number) => void;
+    initialVelocity: number;
+    maxVelocity?: number;
+    setScrollPosition: (scrollPosition: number) => void;
     canRun: () => boolean;
     onStop: () => void;
   }): void {
     this.cancel();
 
-    if (Math.abs(options.initialVelocityY) < SCROLL_FLING_MIN_VELOCITY) {
+    const initialVelocity = options.maxVelocity
+      ? clamp(options.initialVelocity, -options.maxVelocity, options.maxVelocity)
+      : options.initialVelocity;
+    if (Math.abs(initialVelocity) < SCROLL_FLING_MIN_VELOCITY) {
       return;
     }
 
-    this.velocityY = options.initialVelocityY;
+    this.velocity = initialVelocity;
     this.lastFrameTime = performance.now();
 
     const step = (time: number): void => {
@@ -105,18 +110,23 @@ export class ScrollFlingAnimator {
       const elapsed = clamp(time - this.lastFrameTime, ANIMATION_FRAME_MIN_DELTA_MS, ANIMATION_FRAME_MAX_DELTA_MS);
       this.lastFrameTime = time;
 
-      const previousScrollTop = options.scroller.scrollTop;
-      options.setScrollTop(previousScrollTop + this.velocityY * elapsed);
+      const previousPosition = options.axis === "x"
+        ? options.scroller.scrollLeft
+        : options.scroller.scrollTop;
+      options.setScrollPosition(previousPosition + this.velocity * elapsed);
+      const nextPosition = options.axis === "x"
+        ? options.scroller.scrollLeft
+        : options.scroller.scrollTop;
 
-      if (options.scroller.scrollTop === previousScrollTop) {
+      if (nextPosition === previousPosition) {
         this.cancel();
         options.onStop();
         return;
       }
 
-      this.velocityY *= Math.exp(-SCROLL_FLING_DECAY * elapsed);
+      this.velocity *= Math.exp(-SCROLL_FLING_DECAY * elapsed);
 
-      if (Math.abs(this.velocityY) < SCROLL_FLING_STOP_VELOCITY) {
+      if (Math.abs(this.velocity) < SCROLL_FLING_STOP_VELOCITY) {
         this.cancel();
         options.onStop();
         return;
@@ -134,6 +144,6 @@ export class ScrollFlingAnimator {
       this.frame = null;
     }
 
-    this.velocityY = 0;
+    this.velocity = 0;
   }
 }

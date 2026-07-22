@@ -3,9 +3,11 @@ import { createMemo, For } from "solid-js";
 export type IconName =
   | "arrow-left"
   | "arrow-right"
+  | "arrow-down"
   | "arrow-up"
   | "arrows-horizontal"
   | "arrows-vertical"
+  | "book-open"
   | "check"
   | "chevron-left"
   | "chevron-right"
@@ -18,6 +20,7 @@ export type IconName =
   | "history"
   | "home"
   | "menu"
+  | "page"
   | "panda-peek"
   | "pages"
   | "refresh"
@@ -69,6 +72,9 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   "arrow-right": {
     paths: ["M5 12h14", "m12 5 7 7-7 7"],
   },
+  "arrow-down": {
+    paths: ["M12 5v14", "m5 12 7 7 7-7"],
+  },
   "arrow-up": {
     paths: ["m5 12 7-7 7 7", "M12 5v14"],
   },
@@ -77,6 +83,12 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   },
   "arrows-vertical": {
     paths: ["M12 3v18", "m8 7 4-4 4 4", "m8 17 4 4 4-4"],
+  },
+  "book-open": {
+    paths: [
+      "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z",
+      "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z",
+    ],
   },
   check: {
     paths: ["m5 12.5 4.25 4.25L19.5 6.5"],
@@ -117,6 +129,9 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
       "M12 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm0 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z",
     ],
     solid: true,
+  },
+  page: {
+    paths: ["M5 3h14v18H5z"],
   },
   "panda-peek": {
     filledPaths: [

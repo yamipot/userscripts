@@ -13,7 +13,7 @@
     "content": {
       "Reader": [
         "**Tap** the center to show or hide the toolbar.",
-        "**Swipe (scroll)**, tap either side or use the **Left and Right Arrow keys** to turn pages.",
+        "**Swipe or scroll** in the reading direction; tap either side or use the **Arrow keys** to turn pages.",
         "**Pinch** to zoom the image. Or **double-tap** to enter zoom mode and use the **mouse wheel** to adjust the scale."
       ],
       "Browse": [
@@ -26,18 +26,20 @@
     }
   },
   "reader": {
-    "more": "More",
-    "adjustScrollViewport": "Adjust Scroll viewport width",
+    "readingOptions": "Reading options",
+    "adjustScrollViewport": "Adjust Scroll viewport size",
     "resizeScrollViewport": "Resize Scroll viewport",
     "fit": "Fit",
     "applyGlobally": "Set Default",
     "pagedMode": "Paged mode",
-    "doublePageMode": "Double-page mode",
+    "singlePageMode": "Single-page layout",
+    "doublePageMode": "Double-page layout",
     "scrollMode": "Scroll mode",
     "rightTapPrevious": "Right side action:\nPrevious page",
     "rightTapNext": "Right side action:\nNext page",
     "directionRtl": "Reading direction:\n Right to left",
     "directionLtr": "Reading direction:\n Left to right",
+    "directionTtb": "Reading direction:\n Top to bottom",
     "download": "Download",
     "downloadDisplayedImage": "Displayed image",
     "downloadOriginalImage": "Original image",

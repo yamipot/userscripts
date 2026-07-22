@@ -9,6 +9,7 @@ type PointerDragStart = {
 type PointerDragMove = PointerDragStart & {
   dx: number;
   dy: number;
+  velocityX: number;
   velocityY: number;
 };
 
@@ -201,6 +202,7 @@ class PointerGesture {
       lastMoveTime: event.timeStamp,
       startTarget: event.target,
       tapCancelled: false,
+      velocityX: 0,
       velocityY: 0,
     };
 
@@ -293,6 +295,7 @@ class PointerGesture {
     }
 
     const elapsed = Math.max(1, event.timeStamp - drag.lastMoveTime);
+    drag.velocityX = (clientX - drag.lastClientX) / elapsed;
     drag.velocityY = (clientY - drag.lastClientY) / elapsed;
     drag.lastClientX = clientX;
     drag.lastClientY = clientY;
@@ -305,6 +308,7 @@ class PointerGesture {
         clientY,
         dx: clientX - drag.startClientX,
         dy: clientY - drag.startClientY,
+        velocityX: drag.velocityX,
         velocityY: drag.velocityY,
       },
       event,
@@ -332,6 +336,7 @@ class PointerGesture {
       clientY,
       dx: clientX - drag.startClientX,
       dy: clientY - drag.startClientY,
+      velocityX: drag.velocityX,
       velocityY: drag.velocityY,
     };
 
@@ -346,7 +351,7 @@ class PointerGesture {
 
     if (drag.active) {
       if (cancelled) {
-        this.callbacks().onEnd?.({ ...info, dx: 0, dy: 0, velocityY: 0 }, event);
+        this.callbacks().onEnd?.({ ...info, dx: 0, dy: 0, velocityX: 0, velocityY: 0 }, event);
         return;
       }
 
@@ -560,6 +565,7 @@ class PointerGesture {
 
   private updateLastMove(drag: GesturePointer, clientX: number, clientY: number, event: PointerEvent | MouseEvent): void {
     const elapsed = Math.max(1, event.timeStamp - drag.lastMoveTime);
+    drag.velocityX = (clientX - drag.lastClientX) / elapsed;
     drag.velocityY = (clientY - drag.lastClientY) / elapsed;
     drag.lastClientX = clientX;
     drag.lastClientY = clientY;
@@ -614,6 +620,7 @@ type GesturePointer = {
   lastMoveTime: number;
   startTarget: EventTarget | null;
   tapCancelled: boolean;
+  velocityX: number;
   velocityY: number;
 };
 
