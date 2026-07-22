@@ -125,6 +125,7 @@ async function openReader(
 
   const historySession = callbacks.readHistoryEnabled
     ? new ReadHistorySession({
+      gallery: eh.extractGalleryHistoryInfo(),
       galleryId: gallery.galleryId,
       token: gallery.token,
       totalPages,

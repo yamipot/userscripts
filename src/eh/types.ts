@@ -47,6 +47,27 @@ export type GalleryFavoriteOption = {
   value: string;
 };
 
+export type GalleryHistoryInfo = {
+  category?: string;
+  categoryClass?: string;
+  coverUrl?: string;
+  language?: string;
+  posted?: string;
+  rating?: number;
+  title?: string;
+  titleSub?: string;
+  uploader?: string;
+};
+
+export type ReadHistoryPageItem = {
+  currentPage: number;
+  galleryId: number;
+  info?: GalleryHistoryInfo;
+  token: string;
+  totalPages?: number;
+  updatedAt: number;
+};
+
 type TouchFavoritesCategory = {
   appearance: TouchFavoritesCategoryAppearance | null;
   count: number;

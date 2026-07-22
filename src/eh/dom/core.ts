@@ -401,6 +401,14 @@ export class ManagedDomNode<T extends HTMLElement = HTMLElement> {
     return this.#node === node;
   }
 
+  contains(node: Node): boolean {
+    return this.#node.contains(node);
+  }
+
+  matches(selector: string): boolean {
+    return this.#node.matches(selector);
+  }
+
   copyAttributesTo(target: ManagedDomNode): void {
     for (const attribute of Array.from(this.#node.attributes)) {
       target.#node.setAttribute(attribute.name, attribute.value);

@@ -4,8 +4,14 @@ import {
   ThumbsGrids,
   type ThumbsGridsActions,
 } from "../components/Enhance/EnhanceThumbsGrids";
-import { ReadButton } from "../components/Enhance/ReadHistory";
-import { loadReadHistory, ReadHistorySession } from "../state/readHistory";
+import { ReadButton, ReadHistoryPage } from "../components/Enhance/ReadHistory";
+import {
+  loadReadHistory,
+  loadReadHistoryRecords,
+  recordGalleryVisit,
+  ReadHistorySession,
+  updateReadHistoryGalleryInfo,
+} from "../state/readHistory";
 import { SearchHistory } from "../components/Enhance/SearchHistory";
 import { loadMyTagAppearances, refreshMyTags } from "../components/Enhance/MyTags";
 import { SettingsMenu } from "../components/SettingsMenu";
@@ -55,6 +61,7 @@ function settingsMenuState(defaults = false) {
     enhanceSearchGridsEnabled: read(state.search.enhance),
     myTagsEnabled: read(state.gallery.myTags),
     readHistoryEnabled: read(state.gallery.readHistory),
+    includeUnreadHistoryEnabled: read(state.gallery.includeUnreadHistory),
     searchHistoryEnabled: read(state.search.history),
     touchUiEnabled: read(state.touch.enabled),
   };
@@ -70,6 +77,7 @@ function applySettingsMenuState(
   state.search.enhance.set(next.enhanceSearchGridsEnabled);
   state.gallery.myTags.set(next.myTagsEnabled);
   state.gallery.readHistory.set(next.readHistoryEnabled);
+  state.gallery.includeUnreadHistory.set(next.includeUnreadHistoryEnabled);
   state.search.history.set(next.searchHistoryEnabled);
   state.touch.enabled.set(next.touchUiEnabled);
   window.location.reload();
@@ -181,6 +189,7 @@ function installSettingsMenu(): void {
   );
   mount.mount(() => (
     <SettingsMenu
+      historyHref={eh.readHistoryUrl()}
       open={gState.settingsMenuOpen()}
       defaultState={settingsMenuState(true)}
       initState={gState.settings}
@@ -200,7 +209,7 @@ function injectEnhanceUI(
   touchResultsDom: eh.TouchResultsPageDom | null,
 ): void {
   const galleryPage = page.type === "gallery";
-  const resultsPage = page.type === "search" || page.type === "favorites";
+  const searchPage = page.type === "search" || page.type === "favorites";
   const preview = previewCache?.current() ?? null;
   const previewMount = preview?.elems.mount ?? null;
   const updateSearchGridModeSelector = () => {
@@ -226,14 +235,14 @@ function injectEnhanceUI(
     });
   }
 
-  if (resultsPage) {
+  if (searchPage) {
     allowFeatureFailure("Search grid mode selector", () => {
       updateSearchGridModeSelector();
     });
   }
-  const searchGridEnabled = Boolean(resultsPage && state.search.grid.value);
+  const searchGridEnabled = Boolean(searchPage && state.search.grid.value);
   if (searchGridEnabled) {
-    allowFeatureFailure("Search grid", () => eh.mutateSearchGrid());
+    allowFeatureFailure("Search grid", () => eh.manageSearchGrids());
   }
 
   if (gState.settings.openGalleryInNewTab && searchResultsDom) {
@@ -318,7 +327,7 @@ function injectEnhanceUI(
               }
               touchResultsDom?.handle.updateTouchResultsLayout();
               if (searchGridEnabled) {
-                eh.mutateSearchGrid();
+                eh.manageSearchGrids();
               }
             });
           }}
@@ -340,7 +349,8 @@ function injectTouchUI(
   previewCache: GalleryPreviewCache | null,
 ): eh.TouchResultsPageDom | null {
   const galleryPage = page.type === "gallery";
-  const resultsPage = page.type === "search" || page.type === "favorites";
+  const searchPage = page.type === "search" || page.type === "favorites";
+  const resultsPage = searchPage || page.type === "readHistory";
   const preview = previewCache?.current() ?? null;
   const resultsDom = resultsPage
     ? allowFeatureFailure("Touch results layout", () =>
@@ -353,6 +363,7 @@ function injectTouchUI(
       topBarDom.handle.updateNavItemVisual(TOUCH_TOP_BAR_NAV_ITEM_CLASS);
       topBarDom.elems.mount.mount(() => (
         <TouchTopBar
+          historyHref={eh.readHistoryUrl()}
           source={topBarDom}
           onSettingsMenuOpen={() => {
             gState.setSettingsMenuOpen(true);
@@ -402,7 +413,7 @@ function injectTouchUI(
     });
   }
 
-  if (resultsPage) {
+  if (searchPage) {
     allowFeatureFailure("Touch Search panel", () => {
       const searchPanelDom = eh.manageSearchPanel();
       if (searchPanelDom) {
@@ -453,8 +464,45 @@ function injectTouchUI(
 
 async function injectPage(page: eh.PageType): Promise<void> {
   const galleryPage = page.type === "gallery";
-  const resultsPage =
-    page.type === "search" || page.type === "favorites";
+  const searchPage = page.type === "search" || page.type === "favorites";
+
+  if (page.type === "settings") {
+    const titlePreference = eh.extractGalleryTitlePreference();
+    if (titlePreference) {
+      state.gallery.titlePreference.set(titlePreference);
+    }
+  }
+
+  if (page.type === "readHistory") {
+    allowFeatureFailure("Read History page", () => {
+      const pageSize = 25;
+      const records = loadReadHistoryRecords();
+      const pageCount = Math.max(1, Math.ceil(records.length / pageSize));
+      const pageIndex = Math.min(page.pageIndex, pageCount - 1);
+      const items = records
+        .map((record) => ({
+          currentPage: record.pageNum,
+          galleryId: record.galleryId,
+          info: record.gallery,
+          token: record.token,
+          totalPages: record.totalPages,
+          updatedAt: record.updatedAt,
+        }));
+      const titlePreference = state.gallery.titlePreference.reload();
+      const historyDom = eh.manageReadHistoryPage(
+        items.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
+        titlePreference,
+      );
+      historyDom?.elems.navigationTopMount.mount(() => (
+        <ReadHistoryPage
+          initialPageIndex={pageIndex}
+          items={items}
+          pageSize={pageSize}
+          source={historyDom}
+        />
+      ));
+    });
+  }
 
   const galleryPreview = galleryPage
     ? allowFeatureFailure("Gallery Preview", () => eh.manageGalleryPreview())
@@ -465,18 +513,30 @@ async function injectPage(page: eh.PageType): Promise<void> {
     : null;
   if (page.type === "gallery" && galleryPreview) {
     allowFeatureFailure("Gallery Read History", () => {
-      const record = loadReadHistory(page.galleryId, page.token);
+      const existing = loadReadHistory(page.galleryId, page.token);
+      const galleryInfo = eh.extractGalleryHistoryInfo();
+      let record = existing;
+      if (gState.settings.readHistoryEnabled && gState.settings.includeUnreadHistoryEnabled) {
+        record = recordGalleryVisit(
+          page.galleryId,
+          page.token,
+          galleryPreview.data.totalImages,
+          galleryInfo,
+        );
+      } else if (gState.settings.readHistoryEnabled && existing) {
+        record = updateReadHistoryGalleryInfo(page.galleryId, page.token, galleryInfo);
+      }
       gState.setReadProgress({
         currentPage: record?.pageNum && record.pageNum > 0 ? record.pageNum : 1,
-        hasHistory: record !== null,
+        hasHistory: Boolean(record && record.pageNum > 0),
         totalPages: record?.totalPages ?? galleryPreview.data.totalImages,
       });
     });
   }
-  const searchTextInput = resultsPage
+  const searchTextInput = searchPage
     ? allowFeatureFailure("Search text input", () => eh.manageSearchTextInput())
     : null;
-  const searchResultsSource = resultsPage
+  const searchResultsSource = searchPage
     ? allowFeatureFailure("Search results", () => eh.manageSearchResults())
     : null;
 
@@ -509,6 +569,7 @@ async function injectPage(page: eh.PageType): Promise<void> {
       if (gallery?.galleryId === page.galleryId) {
         const previous = loadReadHistory(gallery.galleryId, gallery.token);
         const historySession = new ReadHistorySession({
+          gallery: previous?.gallery,
           galleryId: gallery.galleryId,
           token: gallery.token,
           totalPages: previous?.totalPages,
@@ -548,6 +609,15 @@ async function injectPage(page: eh.PageType): Promise<void> {
 }
 
 eh.EhSyringe.initialize();
+
+let historyRouteActive = eh.extractPageType().type === "readHistory";
+window.addEventListener("hashchange", () => {
+  const nextHistoryRouteActive = eh.extractPageType().type === "readHistory";
+  if (historyRouteActive !== nextHistoryRouteActive) {
+    window.location.reload();
+  }
+  historyRouteActive = nextHistoryRouteActive;
+});
 
 async function startApp(): Promise<void> {
   if (document.readyState === "loading") {

@@ -26,6 +26,15 @@ export type PageType =
       url: string;
     }
   | {
+      type: "readHistory";
+      url: string;
+      pageIndex: number;
+    }
+  | {
+      type: "settings";
+      url: string;
+    }
+  | {
       type: "other";
       url: string;
     };
@@ -83,6 +92,17 @@ export function isFullImageUrl(url: string): boolean {
 export function extractPageType(url = window.location.href): PageType {
   try {
     const parsed = new URL(url, window.location.href);
+    const hash = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+    if (parsed.pathname === "/popular" && hash.has("ehpeek_history")) {
+      const requestedPage = Number(hash.get("page") ?? "0");
+      return {
+        type: "readHistory",
+        url: parsed.href,
+        pageIndex: Number.isSafeInteger(requestedPage) && requestedPage >= 0
+          ? requestedPage
+          : 0,
+      };
+    }
     const galleryMatch = parsed.pathname.match(/^\/g\/(\d+)\/([^/]+)\/?$/i);
 
     if (galleryMatch) {
@@ -131,6 +151,13 @@ export function extractPageType(url = window.location.href): PageType {
       };
     }
 
+    if (parsed.pathname === "/uconfig.php") {
+      return {
+        type: "settings",
+        url: parsed.href,
+      };
+    }
+
     if (
       parsed.pathname === "/" ||
       parsed.pathname.startsWith("/tag/") ||
@@ -153,6 +180,14 @@ export function extractPageType(url = window.location.href): PageType {
       url,
     };
   }
+}
+
+export function readHistoryUrl(pageIndex = 0): string {
+  const url = new URL("/popular", window.location.href);
+  url.hash = pageIndex > 0
+    ? `ehpeek_history&page=${pageIndex}`
+    : "ehpeek_history";
+  return url.href;
 }
 
 export function galleryPageNumber(url: string): number | undefined {

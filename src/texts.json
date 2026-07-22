@@ -2,6 +2,7 @@
   "description": "A touch-optimized E-H/ExH viewer",
   "button": {
     "apply": "Apply",
+    "clearHistory": "Clear All History",
     "close": "Close",
     "confirm": "Confirm",
     "default": "Default"
@@ -22,6 +23,14 @@
   },
   "favorites": {
     "all": "All"
+  },
+  "history": {
+    "clearConfirm": "Clear all reading history?",
+    "empty": "No reading history",
+    "limit": "(max {limit})",
+    "range": "{start}-{end} in {total} histories",
+    "removeConfirm": "Remove this gallery from Read History?",
+    "unread": "Unread"
   },
   "gallery": {
     "favoriteTag": "Add My Tag",
@@ -53,6 +62,8 @@
     "myTagsHelp": "Highlights your saved tags with colors in gallery",
     "readHistoryLabel": "Read History",
     "readHistoryHelp": "Remembers reading progress",
+    "includeUnreadHistoryLabel": "Include Unread History",
+    "includeUnreadHistoryHelp": "Adds opened galleries to Read History before reading starts",
     "searchHistoryLabel": "Search History",
     "searchHistoryHelp": "Remembers previous searches",
     "touchUiLabel": "Touch UI",

@@ -10,6 +10,7 @@ type SettingsMenuState = {
   enhanceSearchGridsEnabled: boolean;
   myTagsEnabled: boolean;
   readHistoryEnabled: boolean;
+  includeUnreadHistoryEnabled: boolean;
   searchHistoryEnabled: boolean;
   touchUiEnabled: boolean;
 };
@@ -71,6 +72,7 @@ function SwitchButton(props: {
 }
 
 export function SettingsMenu(props: {
+  historyHref: string;
   open: boolean;
   defaultState: SettingsMenuState;
   initState: SettingsMenuState;
@@ -170,6 +172,12 @@ export function SettingsMenu(props: {
                 label={texts.settings.openGalleryInNewTabLabel}
                 onChange={(value) => setDraft("openGalleryInNewTab", value)}
               />
+              <SwitchButton
+                checked={draft.includeUnreadHistoryEnabled}
+                description={texts.settings.includeUnreadHistoryHelp}
+                label={texts.settings.includeUnreadHistoryLabel}
+                onChange={(value) => setDraft("includeUnreadHistoryEnabled", value)}
+              />
             </div>
           </Show>
         </div>
@@ -223,6 +231,12 @@ export function SettingsMenu(props: {
             </div>
           </Show>
         </div>
+        <a
+          class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md font-700 hover:bg-[var(--color-site-item-hover)]"
+          href={props.historyHref}
+        >
+          {texts.settings.readHistoryLabel}
+        </a>
         <a
           class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md font-700 hover:bg-[var(--color-site-item-hover)]"
           href="https://github.com/yamipot/ehpeek"

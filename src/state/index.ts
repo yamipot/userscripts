@@ -1,6 +1,7 @@
 export type ViewMode = "scroll" | "paged";
 export type ReadDirection = "ltr" | "rtl";
 export type RightTapAction = "previous" | "next";
+export type GalleryTitlePreference = "main" | "sub";
 export type MyTagAppearance = {
   backgroundColor: string;
   color: string;
@@ -42,7 +43,13 @@ export const state = {
     myTagAppearances: localJson("ehpeek:my-tags", [], isMyTagAppearance),
     myTagSets: localJson("ehpeek:my-tag-sets", [], isMyTagSetOption),
     readHistory: persisted("ehpeek:read-history:enabled", true),
+    includeUnreadHistory: persisted("ehpeek:read-history:include-unread", true),
     readHistoryCount: persisted("ehpeek:history-count", 0),
+    titlePreference: localEnum<GalleryTitlePreference>(
+      "ehpeek:gallery-title-preference",
+      "main",
+      ["main", "sub"],
+    ),
   },
   search: {
     enhance: persisted("ehpeek:enhance-search:enabled", true),
@@ -111,6 +118,30 @@ function localSelection(key: string, selectedValue: string): StateValue<boolean>
       } else {
         window.localStorage.removeItem(key);
       }
+    },
+    reload() {
+      item.value = read();
+      return item.value;
+    },
+  };
+  return item;
+}
+
+function localEnum<T extends string>(
+  key: string,
+  defaultValue: T,
+  values: readonly T[],
+): StateValue<T> {
+  const read = () => {
+    const value = window.localStorage.getItem(key);
+    return values.includes(value as T) ? value as T : defaultValue;
+  };
+  const item: StateValue<T> = {
+    defaultValue,
+    value: read(),
+    set(value) {
+      item.value = value;
+      window.localStorage.setItem(key, value);
     },
     reload() {
       item.value = read();

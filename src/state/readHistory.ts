@@ -1,16 +1,23 @@
 import { state } from "./index";
+import type { GalleryHistoryInfo } from "../eh/types";
 
 const HISTORY_KEY_PREFIX = "ehpeek:history:";
-const HISTORY_LIMIT = 2_000;
-const HISTORY_PRUNE_COUNT = 1_000;
+const HISTORY_QUEUE_KEY_PREFIX = "ehpeek:hist_q:";
+export const READ_HISTORY_LIMIT = 3_000;
+const HISTORY_COMPACT_THRESHOLD = 4_000;
 const SAVE_DELAY_MS = 10_000;
 
-type ReadHistoryRecord = {
+export type ReadHistoryRecord = {
   galleryId: number;
+  gallery?: GalleryHistoryInfo;
   token: string;
   pageNum: number;
   totalPages?: number;
   updatedAt: number;
+};
+
+type StoredReadHistoryRecord = ReadHistoryRecord & {
+  queueOrder: string;
 };
 
 export class ReadHistorySession {
@@ -94,39 +101,197 @@ export class ReadHistorySession {
 }
 
 export function loadReadHistory(galleryId: number, token: string): ReadHistoryRecord | null {
-  return GM_getValue<ReadHistoryRecord | null>(historyKey(galleryId, token), null);
+  return GM_getValue<StoredReadHistoryRecord | null>(historyKey(galleryId, token), null);
+}
+
+export function loadReadHistoryRecords(): ReadHistoryRecord[] {
+  return GM_listValues()
+    .filter((key) => key.startsWith(HISTORY_QUEUE_KEY_PREFIX))
+    .sort((left, right) => right.localeCompare(left))
+    .map((key) => {
+      const reference = GM_getValue<string | null>(key, null);
+      if (!reference) {
+        return null;
+      }
+
+      const record = GM_getValue<StoredReadHistoryRecord | null>(
+        `${HISTORY_KEY_PREFIX}${reference}`,
+        null,
+      );
+      return record?.queueOrder === queueOrderFromKey(key) ? record : null;
+    })
+    .filter((record): record is StoredReadHistoryRecord => record !== null);
+}
+
+export function clearReadHistory(): void {
+  for (const key of GM_listValues()) {
+    if (key.startsWith(HISTORY_KEY_PREFIX) || key.startsWith(HISTORY_QUEUE_KEY_PREFIX)) {
+      GM_deleteValue(key);
+    }
+  }
+  state.gallery.readHistoryCount.set(0);
+}
+
+export function removeReadHistory(galleryId: number, token: string): void {
+  const key = historyKey(galleryId, token);
+  const record = GM_getValue<StoredReadHistoryRecord | null>(key, null);
+  if (!record) {
+    return;
+  }
+
+  GM_deleteValue(key);
+  GM_deleteValue(queueKey(record.queueOrder));
+  state.gallery.readHistoryCount.set(
+    Math.max(0, state.gallery.readHistoryCount.reload() - 1),
+  );
+}
+
+export function updateReadHistoryGalleryInfo(
+  galleryId: number,
+  token: string,
+  gallery: GalleryHistoryInfo,
+): ReadHistoryRecord | null {
+  const record = loadReadHistory(galleryId, token);
+  if (!record) {
+    return null;
+  }
+  const updated = {
+    ...record,
+    gallery: mergeGalleryInfo(record.gallery, gallery),
+  };
+  GM_setValue(historyKey(galleryId, token), updated);
+  return updated;
+}
+
+export function recordGalleryVisit(
+  galleryId: number,
+  token: string,
+  totalPages: number,
+  gallery: GalleryHistoryInfo,
+): ReadHistoryRecord {
+  const existing = loadReadHistory(galleryId, token);
+  const record = existing
+    ? {
+      ...existing,
+      gallery: mergeGalleryInfo(existing.gallery, gallery),
+      totalPages,
+      updatedAt: Date.now(),
+    }
+    : {
+      gallery,
+      galleryId,
+      pageNum: -1,
+      token,
+      totalPages,
+      updatedAt: Date.now(),
+    };
+  saveReadHistory(record);
+  return record;
 }
 
 function saveReadHistory(record: ReadHistoryRecord): void {
   const key = historyKey(record.galleryId, record.token);
-  const exists = GM_getValue<ReadHistoryRecord | null>(key, null) !== null;
+  const previous = GM_getValue<StoredReadHistoryRecord | null>(key, null);
+  const exists = previous !== null;
+  const queueOrder = createQueueOrder();
 
-  GM_setValue(key, record);
+  GM_setValue(key, {
+    ...record,
+    gallery: mergeGalleryInfo(previous?.gallery, record.gallery),
+    queueOrder,
+  });
+  GM_setValue(queueKey(queueOrder), historyReference(record.galleryId, record.token));
 
   if (!exists) {
     const count = state.gallery.readHistoryCount.reload() + 1;
     state.gallery.readHistoryCount.set(count);
 
-    if (count > HISTORY_LIMIT) {
+    if (count >= HISTORY_COMPACT_THRESHOLD) {
       pruneReadHistory();
     }
   }
 }
 
+function mergeGalleryInfo(
+  previous: GalleryHistoryInfo | undefined,
+  current: GalleryHistoryInfo | undefined,
+): GalleryHistoryInfo | undefined {
+  const merged = {
+    category: current?.category ?? previous?.category,
+    categoryClass: current?.categoryClass ?? previous?.categoryClass,
+    coverUrl: current?.coverUrl ?? previous?.coverUrl,
+    language: current?.language ?? previous?.language,
+    posted: current?.posted ?? previous?.posted,
+    rating: current?.rating ?? (typeof previous?.rating === "number" ? previous.rating : undefined),
+    title: current?.title ?? previous?.title,
+    titleSub: current?.titleSub ?? previous?.titleSub,
+    uploader: current?.uploader ?? previous?.uploader,
+  };
+  const entries = Object.entries(merged).filter((entry) => entry[1] !== undefined);
+  return entries.length > 0 ? Object.fromEntries(entries) as GalleryHistoryInfo : undefined;
+}
+
 function historyKey(galleryId: number, token: string): string {
-  return `${HISTORY_KEY_PREFIX}${galleryId}:${token}`;
+  return `${HISTORY_KEY_PREFIX}${historyReference(galleryId, token)}`;
 }
 
 function pruneReadHistory(): void {
-  const records = GM_listValues()
+  const keys = GM_listValues();
+  const queueKeys = keys.filter((key) => key.startsWith(HISTORY_QUEUE_KEY_PREFIX));
+  const records = keys
     .filter((key) => key.startsWith(HISTORY_KEY_PREFIX))
-    .map((key) => ({ key, record: GM_getValue<ReadHistoryRecord | null>(key, null) }))
-    .filter((entry): entry is { key: string; record: ReadHistoryRecord } => entry.record !== null)
-    .sort((left, right) => left.record.updatedAt - right.record.updatedAt);
+    .map((key) => ({ key, record: GM_getValue<StoredReadHistoryRecord | null>(key, null) }))
+    .filter((entry): entry is { key: string; record: StoredReadHistoryRecord } =>
+      entry.record !== null,
+    )
+    .sort((left, right) => right.record.updatedAt - left.record.updatedAt);
+  const retained = records.slice(0, READ_HISTORY_LIMIT);
 
-  for (const entry of records.slice(0, HISTORY_PRUNE_COUNT)) {
+  for (const entry of records.slice(retained.length)) {
     GM_deleteValue(entry.key);
   }
 
-  state.gallery.readHistoryCount.set(Math.max(0, records.length - HISTORY_PRUNE_COUNT));
+  retained.reverse().forEach((entry, index) => {
+    const queueOrder = compactQueueOrder(index);
+    const record = { ...entry.record, queueOrder };
+    GM_setValue(entry.key, record);
+    GM_setValue(
+      queueKey(queueOrder),
+      historyReference(record.galleryId, record.token),
+    );
+  });
+
+  for (const key of queueKeys) {
+    const reference = GM_getValue<string | null>(key, null);
+    const record = reference
+      ? GM_getValue<StoredReadHistoryRecord | null>(`${HISTORY_KEY_PREFIX}${reference}`, null)
+      : null;
+    if (!record || queueKey(record.queueOrder) !== key) {
+      GM_deleteValue(key);
+    }
+  }
+
+  state.gallery.readHistoryCount.set(retained.length);
+}
+
+function historyReference(galleryId: number, token: string): string {
+  return `${galleryId}:${token}`;
+}
+
+function queueKey(order: string): string {
+  return `${HISTORY_QUEUE_KEY_PREFIX}${order}`;
+}
+
+function queueOrderFromKey(key: string): string {
+  return key.slice(HISTORY_QUEUE_KEY_PREFIX.length);
+}
+
+function createQueueOrder(): string {
+  const [randomValue = 0] = crypto.getRandomValues(new Uint32Array(1));
+  const random = randomValue.toString(36).padStart(7, "0");
+  return `${Date.now().toString().padStart(13, "0")}-${random}`;
+}
+
+function compactQueueOrder(index: number): string {
+  return index.toString().padStart(20, "0");
 }

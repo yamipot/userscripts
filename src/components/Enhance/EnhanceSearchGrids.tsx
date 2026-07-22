@@ -1,14 +1,8 @@
 import { createSignal, onCleanup, onMount, untrack } from "solid-js";
 import * as eh from "../../eh";
 import texts from "../../texts.json";
-import { createPointerGestureElement, type PointerDragEnd } from "../PointerGesture";
 import { LoadingOverlay } from "../Widgets/Loading";
-import { SwipeIndicator, type SwipeIndicatorState } from "../Widgets/SwipeIndicator";
-
-const SWIPE_MIN_DISTANCE = 96;
-const SWIPE_INTENT_DISTANCE = 28;
-const HORIZONTAL_INTENT_RATIO = 2.2;
-const SWIPE_MAX_VERTICAL_RATIO = 0.38;
+import { PageSwipe, type PageSwipeDirection } from "./PageSwipe";
 
 export function EnhanceSearchGrids(props: {
   onPageChange: (source: eh.SearchResultsDom) => void;
@@ -16,28 +10,11 @@ export function EnhanceSearchGrids(props: {
 }) {
   const [gestureTarget, setGestureTarget] = createSignal<HTMLElement | null>(null);
   const [loading, setLoading] = createSignal(false);
-  const [swipeIndicatorState, setSwipeIndicatorState] = createSignal<SwipeIndicatorState>({
-    blocked: false,
-    direction: "left",
-    progress: 0,
-  });
   let source = untrack(() => props.source);
   let navigationLoading = false;
 
-  const swipeUrlForDelta = (dx: number): string | null =>
-    dx < 0 ? source.data.nextUrl : source.data.previousUrl;
-
-  const hideSwipeIndicator = () => {
-    setSwipeIndicatorState((current) => ({ ...current, blocked: false, progress: 0 }));
-  };
-
-  const updateSwipeIndicator = (info: PointerDragEnd) => {
-    setSwipeIndicatorState({
-      blocked: !swipeUrlForDelta(info.dx),
-      direction: info.dx < 0 ? "left" : "right",
-      progress: Math.min(1, Math.max(0, (Math.abs(info.dx) - SWIPE_INTENT_DISTANCE) / (SWIPE_MIN_DISTANCE - SWIPE_INTENT_DISTANCE))),
-    });
-  };
+  const swipeUrl = (direction: PageSwipeDirection): string | null =>
+    direction === "next" ? source.data.nextUrl : source.data.previousUrl;
 
   const navigate = async (url: string): Promise<void> => {
     if (navigationLoading) {
@@ -67,18 +44,6 @@ export function EnhanceSearchGrids(props: {
     }
   };
 
-  const navigateBySwipe = (info: PointerDragEnd, event: Event) => {
-    const absX = Math.abs(info.dx);
-    const absY = Math.abs(info.dy);
-    if (absX < SWIPE_MIN_DISTANCE || absY > absX * SWIPE_MAX_VERTICAL_RATIO) {
-      return;
-    }
-    const url = swipeUrlForDelta(info.dx);
-    if (url) {
-      event.preventDefault();
-      void navigate(url);
-    }
-  };
   const onNavigation = (url: string) => {
     void navigate(url);
   };
@@ -89,26 +54,18 @@ export function EnhanceSearchGrids(props: {
     onCleanup(source.handle.interceptSearchNavigation(onNavigation));
   });
 
-  createPointerGestureElement(
-    gestureTarget,
-    () => ({
-      onStart: () => {
-        hideSwipeIndicator();
-      },
-      onMove: updateSwipeIndicator,
-      onEnd: (info, event) => {
-        navigateBySwipe(info, event);
-        hideSwipeIndicator();
-      },
-      dragAxis: "x",
-      dragIntentRatio: HORIZONTAL_INTENT_RATIO,
-      dragStartThreshold: SWIPE_INTENT_DISTANCE,
-    }),
-  );
-
   return (
     <>
-      <SwipeIndicator state={swipeIndicatorState()} />
+      <PageSwipe
+        canNavigate={(direction) => Boolean(swipeUrl(direction))}
+        onNavigate={(direction) => {
+          const url = swipeUrl(direction);
+          if (url) {
+            void navigate(url);
+          }
+        }}
+        target={gestureTarget}
+      />
       <LoadingOverlay label={texts.reader.loading} visible={loading()} />
     </>
   );

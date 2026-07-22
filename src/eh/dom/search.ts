@@ -1,8 +1,14 @@
 import texts from "../../texts.json";
 import { extractPageType, type PageType } from "../url";
 import { requestPage } from "../request";
-import type { TouchFavoritesCategorySelectInfo } from "../types";
+import type {
+  ReadHistoryPageItem,
+  TouchFavoritesCategorySelectInfo,
+} from "../types";
+import type { GalleryTitlePreference } from "../../state";
 import {
+  anyDomNode,
+  createAnchor,
   createManagedElement,
   documentBody,
   documentElement,
@@ -18,10 +24,202 @@ const TOUCH_FAVORITES_RESULTS_CLASS_NAME = "ehpeek-touch-favorites-results box-b
 const TOUCH_FAVORITES_RESULT_LIST_CLASS_NAME = "!min-w-0 !w-full !max-w-full";
 const TOUCH_FAVORITES_ALL_RESULTS_CLASS_NAME = "!overflow-x-hidden";
 const TOUCH_SEARCH_RESULTS_PAGE_CLASS_NAME = "!min-w-0 !max-w-full !overflow-x-hidden";
-const TOUCH_SEARCH_RESULTS_CONTENT_CLASS_NAME = "box-border !min-w-0 !w-full !max-w-full !overflow-x-hidden";
+const TOUCH_SEARCH_RESULTS_CONTENT_CLASS_NAME = "box-border !min-w-0 !w-full !max-w-full";
 const TOUCH_SEARCH_RESULTS_WRAPPER_CLASS_NAME =
-  "ehpeek-touch-search-results box-border !min-w-0 !w-full !max-w-full overflow-x-auto";
+  "ehpeek-touch-search-results box-border !min-w-0 !w-full !max-w-full";
 const TOUCH_SEARCH_RESULT_LIST_CLASS_NAME = "!min-w-0 !w-full !max-w-full";
+
+type EhPeekGridRow = {
+  contentCell: ManagedDomNode<HTMLElement>;
+  detail: ManagedDomNode<HTMLElement>;
+  galleryHref: string | null;
+  galleryLink: ManagedDomNode<HTMLElement> | null;
+  image: ManagedDomNode<HTMLImageElement> | null;
+  metadata: ManagedDomNode<HTMLElement>;
+  metadataItems: ManagedDomNode<HTMLElement>[];
+  row: ManagedDomNode<HTMLTableRowElement>;
+  selectionCell: ManagedDomNode<HTMLElement> | null;
+  tagCells: ManagedDomNode<HTMLElement>[];
+  tagElements: ManagedDomNode<HTMLElement>[];
+  tagTables: ManagedDomNode<HTMLElement>[];
+  tags: ManagedDomNode<HTMLElement>[];
+  thumbnail: ManagedDomNode<HTMLElement> | null;
+  thumbnailCell: ManagedDomNode<HTMLElement>;
+  title: ManagedDomNode<HTMLElement> | null;
+  titleText: string;
+  withoutCover: boolean;
+};
+
+type ReadHistoryGridsOptions = {
+  items: ReadHistoryPageItem[];
+  source: DomNode<HTMLElement>;
+  titlePreference: GalleryTitlePreference;
+};
+
+type ManagedReadHistoryGrids = {
+  elems: { resultList: ManagedDomNode<HTMLTableElement> };
+  handle: {
+    listenForItemLongPress: (callback: (item: ReadHistoryPageItem) => void) => () => void;
+    updateItems: (items: ReadHistoryPageItem[]) => void;
+  };
+};
+
+function createReadHistoryGridRow(
+  item: ReadHistoryPageItem,
+  titlePreference: GalleryTitlePreference,
+): EhPeekGridRow {
+  const info = item.info;
+  const metadataItems: ManagedDomNode<HTMLElement>[] = [];
+  const appendMetadata = (value?: string) => {
+    if (!value) {
+      return;
+    }
+    const element = createManagedElement("div");
+    element.setTextUnlessInput(value);
+    metadataItems.push(element);
+  };
+
+  if (info?.category && info.categoryClass) {
+    const category = createManagedElement("div")
+      .replaceClasses(`cn ${info.categoryClass}`);
+    category.setTextUnlessInput(info.category);
+    metadataItems.push(category);
+  }
+  appendMetadata(info?.posted);
+  if (info?.rating !== undefined) {
+    const rounded = Math.round(info.rating * 2) / 2;
+    const rating = createManagedElement("div").replaceClasses("ir").styles({
+      "background-position": `${-16 * (5 - Math.ceil(rounded))}px ${Number.isInteger(rounded) ? -1 : -21}px`,
+      opacity: "1",
+    });
+    metadataItems.push(rating);
+  }
+  appendMetadata(info?.uploader);
+
+  const progress = item.currentPage > 0
+    ? item.totalPages
+      ? `${item.currentPage}/${item.totalPages}`
+      : String(item.currentPage)
+    : texts.history.unread;
+  const updatedAt = new Date(item.updatedAt);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const historyStatus = createManagedElement("div")
+    .replaceClasses("textsize-sm font-600 leading-[1.3]");
+  historyStatus.setTextUnlessInput(
+    `${progress} · ${updatedAt.getFullYear()}-${pad(updatedAt.getMonth() + 1)}-${pad(updatedAt.getDate())} ${pad(updatedAt.getHours())}:${pad(updatedAt.getMinutes())}`,
+  );
+  const titleText = titlePreference === "sub"
+    ? info?.titleSub || info?.title
+    : info?.title || info?.titleSub;
+  const galleryHref = new URL(
+    `/g/${item.galleryId}/${item.token}/`,
+    window.location.href,
+  ).href;
+  const row = createManagedElement("tr");
+  const thumbnailCell = createManagedElement("td").replaceClasses("gl1e");
+  const thumbnail = createManagedElement("div");
+  const image = info?.coverUrl
+    ? createManagedElement("img").setAttributes({
+      alt: titleText ?? "",
+      loading: "lazy",
+      src: info.coverUrl,
+    })
+    : null;
+  if (image) {
+    thumbnail.append(
+      createManagedElement("a").attribute("href", galleryHref).append(image),
+    );
+  } else {
+    thumbnailCell.setHidden(true);
+  }
+  thumbnailCell.append(thumbnail);
+
+  const contentCell = createManagedElement("td").replaceClasses("gl2e");
+  const galleryLink = createManagedElement("a").attribute("href", galleryHref);
+  const detail = createManagedElement("div").replaceClasses("gl4e");
+  const title = createManagedElement("div").replaceClasses("glink");
+  title.setTextUnlessInput(titleText ?? "");
+  title.setHidden(!titleText);
+  const metadata = createManagedElement("div").replaceClasses("gl3e");
+  metadata.append(...metadataItems);
+  galleryLink.append(detail.append(title, historyStatus));
+  contentCell.append(createManagedElement("div").append(metadata, galleryLink));
+  row.append(thumbnailCell, contentCell);
+
+  return {
+    contentCell,
+    detail,
+    galleryHref,
+    galleryLink,
+    image,
+    metadata,
+    metadataItems,
+    row,
+    selectionCell: null,
+    tagCells: [],
+    tagElements: [],
+    tagTables: [],
+    tags: [historyStatus],
+    thumbnail,
+    thumbnailCell,
+    title,
+    titleText: titleText ?? "",
+    withoutCover: !image,
+  };
+}
+
+/** Replaces Popular results with locally stored History rows managed by the shared EhPeek grid. */
+export function manageReadHistoryPage(
+  items: ReadHistoryPageItem[],
+  titlePreference: GalleryTitlePreference,
+) {
+  const page = DomNode.from(document);
+  const resultList = page.one<HTMLElement>(".itg");
+  const navigationTopMount = createAnchor("read-history-navigation-top");
+  const navigationBottomMount = createAnchor("read-history-navigation-bottom");
+  if (!resultList || !navigationTopMount || !navigationBottomMount) {
+    return null;
+  }
+
+  const grids = manageReadHistoryGrids({
+    items,
+    source: resultList,
+    titlePreference,
+  });
+  grids.elems.resultList.before(navigationTopMount);
+  grids.elems.resultList.after(navigationBottomMount);
+  for (const control of page.all<HTMLElement>(
+    "#toppane, .searchtext, .searchwarn, .searchnav, .ptt, .ptb",
+    anyDomNode,
+  )) {
+    control.inplace().remove();
+  }
+
+  const handle = {
+    /** Replaces the visible History rows without navigating away from the current document. */
+    updateReadHistoryItems: grids.handle.updateItems,
+    /** Reports a stationary touch hold without exposing the managed History rows. */
+    listenForReadHistoryLongPress: grids.handle.listenForItemLongPress,
+    /** Keeps navigation anchored to the corresponding edge after an in-page page change. */
+    scrollReadHistoryPage(position: "bottom" | "top"): void {
+      const target = position === "bottom" ? navigationBottomMount : navigationTopMount;
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: position === "bottom" ? "end" : "start",
+      });
+    },
+  };
+  return {
+    elems: {
+      navigationBottomMount,
+      navigationTopMount,
+      resultList: grids.elems.resultList,
+    },
+    handle,
+  };
+}
+
+export type ReadHistoryPageDom = NonNullable<ReturnType<typeof manageReadHistoryPage>>;
 
 /** Owns Search results and pagination for the enhanced navigation lifecycle. */
 export function manageSearchResults() {
@@ -183,8 +381,84 @@ export function manageSearchTextInput() {
 
 export type SearchTextInputDom = NonNullable<ReturnType<typeof manageSearchTextInput>>;
 
-/** Rebuilds Search's extended table layout as the touch-readable EhPeek grid. */
-export function mutateSearchGrid(): void {
+function manageReadHistoryGrids(
+  options: ReadHistoryGridsOptions,
+): ManagedReadHistoryGrids {
+  const resultList = createManagedElement("table").replaceClasses("itg");
+  const body = createManagedElement("tbody");
+  let visibleRows: Array<{ item: ReadHistoryPageItem; row: EhPeekGridRow }> = [];
+  resultList.append(body).addClasses(
+    "overscroll-x-contain",
+    "touch-pan-y",
+    "[&[data-dragging=true]]:select-none",
+  );
+  options.source.inplace().replaceWith(resultList);
+
+  const updateItems = (items: ReadHistoryPageItem[]) => {
+    visibleRows = items.map((item) => ({
+      item,
+      row: createReadHistoryGridRow(item, options.titlePreference),
+    }));
+    body.replaceChildren(...visibleRows.map(({ row }) => row.row));
+    manageEhPeekGrid(resultList, body, visibleRows.map(({ row }) => row));
+  };
+  updateItems(options.items);
+
+  return {
+    elems: { resultList },
+    handle: {
+      updateItems,
+      listenForItemLongPress(callback): () => void {
+        let suppressClick = false;
+        let suppressClickTimer: number | null = null;
+        const itemForTarget = (target: EventTarget | null) => {
+          if (!(target instanceof Node)) {
+            return null;
+          }
+          return visibleRows.find(({ row }) => row.row.contains(target))?.item ?? null;
+        };
+        const onContextMenu = (event: PointerEvent) => {
+          const item = itemForTarget(event.target);
+          if (!event.pointerType || event.pointerType === "mouse" || item === null) {
+            return;
+          }
+          event.preventDefault();
+          suppressClick = true;
+          callback(item);
+          suppressClickTimer = window.setTimeout(() => {
+            suppressClick = false;
+            suppressClickTimer = null;
+          }, 1_000);
+        };
+        const onClick = (event: MouseEvent) => {
+          if (!suppressClick) {
+            return;
+          }
+          suppressClick = false;
+          if (suppressClickTimer !== null) {
+            window.clearTimeout(suppressClickTimer);
+            suppressClickTimer = null;
+          }
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        };
+        const cleanups = [
+          resultList.listen("contextmenu", onContextMenu),
+          resultList.listen("click", onClick, true),
+        ];
+        return () => {
+          if (suppressClickTimer !== null) {
+            window.clearTimeout(suppressClickTimer);
+          }
+          cleanups.forEach((cleanup) => cleanup());
+        };
+      },
+    },
+  };
+}
+
+/** Manages the original Search rows with the EhPeek result layout. */
+export function manageSearchGrids(): void {
   const page = DomNode.from(document);
   page.one<HTMLElement>(".ehpeek-search-grid-host")?.inplace().remove();
   const resultList = page.one<HTMLElement>(".itg");
@@ -195,26 +469,15 @@ export function mutateSearchGrid(): void {
 
   const rows = resultList
     .all<HTMLTableRowElement>("tbody > tr")
-    .map(resolveSearchGridRow)
-    .filter((row): row is SearchGridRow => row !== null);
-  const resultListElem = resultList.inplace();
-  const bodyElem = resultList.one<HTMLElement>("tbody")?.inplace() ?? null;
+    .map(manageSearchGridRow)
+    .filter((row): row is EhPeekGridRow => row !== null);
+  manageEhPeekGrid(
+    resultList.inplace(),
+    resultList.one<HTMLElement>("tbody")?.inplace() ?? null,
+    rows,
+  );
 
-  resultListElem.setHidden(false)
-    .styles({
-      display: "block",
-      width: "100%",
-      "table-layout": "auto",
-    }, "important");
-  bodyElem?.styles({ display: "block" }, "important");
-
-  for (const row of rows) {
-    applySearchGridRow(row);
-  }
-
-  type SearchGridRow = NonNullable<ReturnType<typeof resolveSearchGridRow>>;
-
-  function resolveSearchGridRow(row: DomNode<HTMLTableRowElement>) {
+  function manageSearchGridRow(row: DomNode<HTMLTableRowElement>): EhPeekGridRow | null {
     const thumbnailCell = row.one<HTMLElement>(":scope > .gl1e");
     const contentCell = row.one<HTMLElement>(":scope > .gl2e");
     const detail = contentCell?.one<HTMLElement>(".gl4e");
@@ -229,34 +492,54 @@ export function mutateSearchGrid(): void {
     const galleryLink = parent?.matches("a[href]") ? parent : null;
     const tags = detail.children().filter((element) => !title?.sameNode(element));
     const thumbnail = thumbnailCell.one<HTMLElement>(":scope > div");
-  
+
     return {
-      contentCell,
-      detail,
+      contentCell: contentCell.inplace(),
+      detail: detail.inplace(),
       galleryHref: galleryLink?.attribute("href") ?? null,
-      galleryLink,
-      image: thumbnail?.one<HTMLImageElement>("img") ?? null,
-      metadata,
-      metadataItems: metadata.children(),
-      row,
-      selectionCell: row.one<HTMLElement>(":scope > .glfe"),
-      tagCells: tags.flatMap((container) => container.all<HTMLElement>("td")),
-      tagElements: detail.all<HTMLElement>(".gt, .gtl, .gtw, td.tc"),
-      tagTables: tags.flatMap((container) => container.all<HTMLElement>("table, tbody, tr")),
-      tags,
-      thumbnail,
-      thumbnailCell,
-      title,
+      galleryLink: galleryLink?.inplace() ?? null,
+      image: thumbnail?.one<HTMLImageElement>("img")?.inplace() ?? null,
+      metadata: metadata.inplace(),
+      metadataItems: metadata.children().map((item) => item.inplace()),
+      row: row.inplace(),
+      selectionCell: row.one<HTMLElement>(":scope > .glfe")?.inplace() ?? null,
+      tagCells: tags.flatMap((container) =>
+        container.all<HTMLElement>("td").map((item) => item.inplace())),
+      tagElements: detail
+        .all<HTMLElement>(".gt, .gtl, .gtw, td.tc")
+        .map((item) => item.inplace()),
+      tagTables: tags.flatMap((container) =>
+        container.all<HTMLElement>("table, tbody, tr").map((item) => item.inplace())),
+      tags: tags.map((item) => item.inplace()),
+      thumbnail: thumbnail?.inplace() ?? null,
+      thumbnailCell: thumbnailCell.inplace(),
+      title: title?.inplace() ?? null,
       titleText: title?.text() ?? "",
+      withoutCover: false,
     };
   }
-  
-  function applySearchGridRow(source: SearchGridRow): void {
-    const row = source.row.inplace();
-    const thumbnailCell = source.thumbnailCell.inplace();
-    const contentCell = source.contentCell.inplace();
-    const detail = source.detail.inplace();
-    const metadata = source.metadata.inplace();
+}
+
+/** Applies the shared EhPeek result layout without depending on the rows' source. */
+function manageEhPeekGrid(
+  resultList: ManagedDomNode<HTMLElement>,
+  body: ManagedDomNode<HTMLElement> | null,
+  rows: EhPeekGridRow[],
+): void {
+  resultList.setHidden(false)
+    .styles({
+      display: "block",
+      width: "100%",
+      "table-layout": "auto",
+    }, "important");
+  body?.styles({ display: "block" }, "important");
+
+  for (const row of rows) {
+    manageEhPeekGridRow(row);
+  }
+
+  function manageEhPeekGridRow(source: EhPeekGridRow): void {
+    const { contentCell, row, thumbnailCell } = source;
 
     row.styles({
       display: "grid",
@@ -276,22 +559,18 @@ export function mutateSearchGrid(): void {
       "box-sizing": "border-box",
       "padding-left": "0",
     }, "important");
-    source.selectionCell?.inplace().styles({ width: "auto", "margin-left": "6px" }, "important");
-    source.thumbnail?.inplace().styles({ width: "100%", height: "auto" }, "important");
-    source.image?.inplace().styles({ width: "100%", height: "auto" }, "important");
-    applySearchGridContent(source, row, contentCell, detail, metadata);
+    source.selectionCell?.styles({ width: "auto", "margin-left": "6px" }, "important");
+    source.thumbnail?.styles({ width: "100%", height: "auto" }, "important");
+    source.image?.styles({ width: "100%", height: "auto" }, "important");
+    manageEhPeekGridContent(source);
+    if (source.withoutCover) {
+      row.styles({ "grid-template-columns": "minmax(0, 1fr)" }, "important");
+      contentCell.styles({ "grid-column": "1" }, "important");
+    }
   }
 
-  function applySearchGridContent(
-    source: SearchGridRow,
-    row: ManagedDomNode,
-    contentCell: ManagedDomNode,
-    detail: ManagedDomNode,
-    metadata: ManagedDomNode,
-  ): void {
-    const tags = source.tags.map((node) => node.inplace());
-    const title = source.title?.inplace() ?? null;
-    const galleryLink = source.galleryLink?.inplace() ?? null;
+  function manageEhPeekGridContent(source: EhPeekGridRow): void {
+    const { detail, galleryLink, metadata, row, tags, title } = source;
 
     if (galleryLink && title && source.galleryHref) {
       const titleLink = createManagedElement("a")
@@ -300,7 +579,7 @@ export function mutateSearchGrid(): void {
       galleryLink.before(detail);
       galleryLink.remove();
       detail.replaceChildren(titleLink, metadata, ...tags);
-      makeSearchGridContentClickable(
+      ensureEhPeekGridRowNavigation(
         row,
         titleLink,
         source.galleryHref,
@@ -364,17 +643,16 @@ export function mutateSearchGrid(): void {
       }, "important");
     }
     for (const table of source.tagTables) {
-      table.inplace().styles({ height: "auto", "min-height": "0", margin: "0" }, "important");
+      table.styles({ height: "auto", "min-height": "0", margin: "0" }, "important");
     }
     for (const cell of source.tagCells) {
-      cell.inplace().styles({ height: "auto", "min-height": "0", "vertical-align": "top" }, "important");
+      cell.styles({ height: "auto", "min-height": "0", "vertical-align": "top" }, "important");
     }
     for (const tag of source.tagElements) {
-      tag.inplace().styles({ "font-size": "var(--font-size-sm)", "line-height": "1.2" }, "important");
+      tag.styles({ "font-size": "var(--font-size-sm)", "line-height": "1.2" }, "important");
     }
     for (const itemSource of source.metadataItems) {
-      const item = itemSource.inplace();
-      item.styles({
+      itemSource.styles({
         float: "none",
         position: "static",
         flex: "0 0 auto",
@@ -384,14 +662,22 @@ export function mutateSearchGrid(): void {
         "font-weight": "600",
       }, "important");
 
-      if (itemSource.matches(".ir, .gldown")) {
-        item.removeStyles("width", "height");
+      if (itemSource.matches(".ir")) {
+        itemSource.styles({
+          width: "80px",
+          height: "16px",
+          "background-repeat": "no-repeat",
+        }, "important");
+        continue;
+      }
+      if (itemSource.matches(".gldown")) {
+        itemSource.removeStyles("width", "height");
         continue;
       }
   
-      item.styles({ width: "auto", height: "auto", padding: "0", "line-height": "1.3" }, "important");
+      itemSource.styles({ width: "auto", height: "auto", padding: "0", "line-height": "1.3" }, "important");
       if (itemSource.matches(".cn, .cs, [class*='ct']")) {
-        item.styles({
+        itemSource.styles({
           display: "inline-flex",
           "align-items": "center",
           "justify-content": "center",
@@ -404,7 +690,7 @@ export function mutateSearchGrid(): void {
     }
   }
   
-  function makeSearchGridContentClickable(
+  function ensureEhPeekGridRowNavigation(
     row: ManagedDomNode,
     galleryLink: ManagedDomNode<HTMLAnchorElement>,
     galleryHref: string,
@@ -749,7 +1035,7 @@ export function manageTouchResultsPage(page: PageType) {
     if (page.type === "favorites") {
       return favoritesPageTouch();
     }
-    if (page.type === "search") {
+    if (page.type === "search" || page.type === "readHistory") {
       searchResultsPageTouch();
     }
     return null;

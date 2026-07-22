@@ -46,4 +46,5 @@ export * from "./galleryInfo";
 export * from "./gallery";
 export * from "./search";
 export * from "./searchPanel";
+export * from "./settings";
 export * from "./topBar";

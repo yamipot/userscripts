@@ -10,6 +10,7 @@ import type {
   GalleryCategoryAppearance,
   GalleryFavoriteOption,
   GalleryFavoriteInfo,
+  GalleryHistoryInfo,
   GalleryRatingInfo,
   GalleryTagData,
 } from "../types";
@@ -22,6 +23,47 @@ import {
   type ManagedDomNode,
 } from "./core";
 import { extractMyTagsPageData, type GalleryPreviewData } from "./gallery";
+
+/** Extracts Gallery display fields persisted with local reading history. */
+export function extractGalleryHistoryInfo(): GalleryHistoryInfo {
+  const page = DomNode.from(document);
+  const category = page.one<HTMLElement>("#gdc");
+  const categoryClass = (
+    category?.one<HTMLElement>("[class*='ct']")?.attribute("class") ??
+    category?.attribute("class") ??
+    ""
+  ).split(/\s+/).find((className) => /^ct[1-9a]$/.test(className));
+  const rows = page
+    .all<HTMLTableRowElement>("#gdd tr")
+    .map((row) => row.all<HTMLTableCellElement>("td, th").slice(1).map((cell) => cell.text()).filter(Boolean).join(" "));
+  const ratingMatch = (
+    page.all<HTMLScriptElement>("script").map((script) => script.text())
+      .find((script) => script.includes("display_rating")) ?? ""
+  ).match(/\bdisplay_rating\s*=\s*(-?\d+(?:\.\d+)?)/);
+  const rating = Number(ratingMatch?.[1]);
+  const cover = page.one<HTMLElement>("#gd1");
+  let coverUrl = cover?.one<HTMLImageElement>("img")?.attribute("src") ?? "";
+  if (!coverUrl && cover) {
+    for (const node of [cover, ...cover.all<HTMLElement>("*")]) {
+      const match = node.computedStyle().backgroundImage.match(/url\(["']?(.+?)["']?\)/);
+      if (match?.[1]) {
+        coverUrl = match[1];
+        break;
+      }
+    }
+  }
+  return {
+    category: category?.text() || undefined,
+    categoryClass,
+    coverUrl: coverUrl || undefined,
+    language: rows[3] || undefined,
+    posted: rows[0] || undefined,
+    rating: ratingMatch && Number.isFinite(rating) ? rating : undefined,
+    title: page.one<HTMLElement>("#gn")?.text() || undefined,
+    titleSub: page.one<HTMLElement>("#gj")?.text() || undefined,
+    uploader: page.one<HTMLElement>("#gdn a, #gdn")?.text() || undefined,
+  };
+}
 
 /** Manages E-H's gallery header for GalleryInfoPanel. */
 export function manageGalleryInfo(
