@@ -22,6 +22,7 @@ export type ReaderCallbacks = {
   enhanceThumbsGridsEnabled: boolean;
   readHistoryEnabled: boolean;
   onGotoPreviewIndex: (previewIndex: number) => void;
+  onOpenScrollPreview: (previewIndex: number) => void;
   onReaderClosed: (currentPage: number, totalPages: number | null) => void;
 };
 
@@ -194,13 +195,19 @@ async function openReader(
       historySession?.dispose();
       window.location.assign(page.url);
     },
+    onOpenScrollPreview: (pageNum) => {
+      callbacks.onOpenScrollPreview(previewCache.previewIndexForPage(pageNum));
+    },
   }, viewport.lockScroll, fullscreen, onExit, host);
 }
 
 function mountReader(
   options: ReaderOptions,
   previewCache: GalleryPreviewCache,
-  callbacks: Pick<ReaderComponentCallbacks, "onActivePageChange" | "onOpenOriginalPage">,
+  callbacks: Pick<
+    ReaderComponentCallbacks,
+    "onActivePageChange" | "onOpenOriginalPage" | "onOpenScrollPreview"
+  >,
   lockPageScroll: () => () => void,
   fullscreen: ReaderFullscreenController,
   onExit: () => void,

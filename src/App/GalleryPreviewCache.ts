@@ -7,10 +7,13 @@ const PREVIEW_CACHE_LIMIT = 10;
 export type GalleryPreviewCache = {
   current: Accessor<eh.GalleryPreviewDom>;
   getPages: (pageNums: number[]) => Promise<ReaderPage[]>;
+  getPreviewItems: (pageNums: number[]) => Promise<eh.GalleryPreviewItem[]>;
   load: (previewIndex: number) => Promise<eh.GalleryPreviewDom>;
   loadImage: (page: ReaderPage) => Promise<LoadedReaderPage>;
   loading: Accessor<boolean>;
+  previewDataVersion: Accessor<number>;
   previewIndexForPage: (pageNum: number) => number;
+  previewItem: (pageNum: number) => eh.GalleryPreviewItem | null;
   select: (previewIndex: number) => Promise<eh.GalleryPreviewDom>;
 };
 
@@ -20,8 +23,10 @@ export function createGalleryPreviewCache(
 ): GalleryPreviewCache {
   const [current, setCurrent] = createSignal(initialPreview);
   const [loading, setLoading] = createSignal(false);
+  const [previewDataVersion, setPreviewDataVersion] = createSignal(0);
   const previews = new Map<number, eh.GalleryPreviewDom>();
   const pages = new Map<number, ReaderPage>();
+  const previewItems = new Map<number, eh.GalleryPreviewItem>();
   const pending = new Map<number, Promise<eh.GalleryPreviewDom>>();
   const pageSize = initialPreview.data.pageSize;
   const maxPreviewIndex = initialPreview.data.maxIndex;
@@ -37,6 +42,10 @@ export function createGalleryPreviewCache(
         pages.set(page.pageNum, page);
       }
     }
+    for (const item of preview.data.previewItems) {
+      previewItems.set(item.pageNum, item);
+    }
+    setPreviewDataVersion((version) => version + 1);
 
     while (previews.size > PREVIEW_CACHE_LIMIT) {
       let removable: number | undefined;
@@ -111,6 +120,15 @@ export function createGalleryPreviewCache(
     return requested.flatMap((pageNum) => pages.get(pageNum) ?? []);
   };
 
+  const getPreviewItems = async (pageNums: number[]): Promise<eh.GalleryPreviewItem[]> => {
+    const requested = Array.from(new Set(pageNums.filter((pageNum) => pageNum > 0)));
+    const previewIndexes = Array.from(new Set(requested
+      .filter((pageNum) => !previewItems.has(pageNum))
+      .map(previewIndexForPage)));
+    await Promise.all(previewIndexes.map(load));
+    return requested.flatMap((pageNum) => previewItems.get(pageNum) ?? []);
+  };
+
   const select = async (previewIndex: number): Promise<eh.GalleryPreviewDom> => {
     if (previewIndex === current().data.currentIndex) {
       return current();
@@ -134,10 +152,16 @@ export function createGalleryPreviewCache(
   return {
     current,
     getPages,
+    getPreviewItems,
     load,
     loadImage: eh.loadEhImagePage,
     loading,
+    previewDataVersion,
     previewIndexForPage,
+    previewItem: (pageNum) => {
+      previewDataVersion();
+      return previewItems.get(pageNum) ?? null;
+    },
     select,
   };
 }

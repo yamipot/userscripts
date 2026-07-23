@@ -4,6 +4,10 @@ import {
   ThumbsGrids,
   type ThumbsGridsActions,
 } from "../components/Enhance/EnhanceThumbsGrids";
+import {
+  ScrollPreview,
+  type ScrollPreviewActions,
+} from "../components/Enhance/ScrollPreview";
 import { ReadButton, ReadHistoryPage } from "../components/Enhance/ReadHistory";
 import {
   loadReadHistory,
@@ -103,6 +107,8 @@ const gState = (() => {
     setSettingsMenuOpen,
     readHistoryPage: null as eh.ReadHistoryPageDom | null,
     searchResults: null as eh.SearchResultsDom | null,
+    scrollPreviewActions: undefined as ScrollPreviewActions | undefined,
+    scrollPreviewOpen: false,
     thumbsGridsActions: undefined as ThumbsGridsActions | undefined,
     uiScale,
   };
@@ -161,10 +167,19 @@ registerGlobalStyle("ehpeek-theme-style", themeCss);
 registerGlobalStyle("ehpeek-dom-style", ehDomCss);
 
 const readerCallbacks: ReaderCallbacks = {
-  enhanceThumbsGridsEnabled: gState.settings.enhanceThumbsGridsEnabled,
+  get enhanceThumbsGridsEnabled() {
+    return gState.settings.enhanceThumbsGridsEnabled || gState.scrollPreviewOpen;
+  },
   readHistoryEnabled: gState.settings.readHistoryEnabled,
   onGotoPreviewIndex: (previewIndex) => {
-    gState.thumbsGridsActions?.gotoPreview(previewIndex);
+    if (gState.scrollPreviewOpen) {
+      gState.scrollPreviewActions?.gotoPreview(previewIndex);
+    } else {
+      gState.thumbsGridsActions?.gotoPreview(previewIndex);
+    }
+  },
+  onOpenScrollPreview: (previewIndex) => {
+    gState.scrollPreviewActions?.gotoPreview(previewIndex);
   },
   onReaderClosed: (currentPage, totalPages) => {
     gState.setReadProgress({ currentPage, hasHistory: true, totalPages });
@@ -353,19 +368,45 @@ function injectEnhanceUI(
 
   if (
     galleryPage &&
-    gState.settings.enhanceThumbsGridsEnabled &&
     previewCache &&
     previewMount
   ) {
-    allowFeatureFailure("Enhanced thumbnail grid", () => {
+    allowFeatureFailure("Gallery Preview enhancements", () => {
       previewMount.mount(() => (
-        <ThumbsGrids
-          actionsRef={(actions) => {
-            gState.thumbsGridsActions = actions;
-          }}
-          onLoadError={reportReaderOpenError}
-          previewCache={previewCache}
-        />
+        <>
+          <ScrollPreview
+            actionsRef={(actions) => {
+              gState.scrollPreviewActions = actions;
+            }}
+            onExitPreview={(previewIndex) => {
+              if (previewIndex === previewCache.current().data.currentIndex) {
+                return;
+              }
+              if (gState.settings.enhanceThumbsGridsEnabled) {
+                void previewCache.select(previewIndex).catch(reportReaderOpenError);
+              } else {
+                window.location.assign(
+                  eh.previewUrlForIndex(previewIndex, previewCache.current().data.currentUrl),
+                );
+              }
+            }}
+            onLoadError={reportReaderOpenError}
+            onOpenChange={(open) => {
+              gState.scrollPreviewOpen = open;
+            }}
+            onOpenPage={(pageUrl, pageNum) => openGalleryPage(previewCache, pageUrl, pageNum)}
+            previewCache={previewCache}
+          />
+          {gState.settings.enhanceThumbsGridsEnabled ? (
+            <ThumbsGrids
+              actionsRef={(actions) => {
+                gState.thumbsGridsActions = actions;
+              }}
+              onLoadError={reportReaderOpenError}
+              previewCache={previewCache}
+            />
+          ) : null}
+        </>
       ));
     });
   } else if (galleryPage && preview && previewCache) {

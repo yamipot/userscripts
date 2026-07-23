@@ -160,8 +160,26 @@ export type GalleryPreviewData = {
   maxIndex: number;
   pageSize: number;
   pages: ReaderPage[];
+  previewItems: GalleryPreviewItem[];
   startImage: number;
   totalImages: number;
+};
+
+export type GalleryPreviewItem = {
+  aspectRatio: number;
+  pageNum: number;
+  pageUrl: string;
+  thumbnail: GalleryPreviewThumbnail;
+};
+
+export type GalleryPreviewThumbnail = {
+  backgroundPosition: string;
+  backgroundRepeat: string;
+  backgroundSize: string;
+  height: number;
+  kind: "background" | "image";
+  url: string;
+  width: number;
 };
 
 /** Manages Gallery Preview pagination, thumbnails, and Reader-page data. */
@@ -205,23 +223,42 @@ export function manageGalleryPreview(
   const pageSize = inferredFullPageSize;
   const maxIndex = Math.max(currentIndex, Math.ceil(totalImages / pageSize) - 1);
   const seen = new Set<string>();
-  const pages = source.imageLinks
+  const previewItems = source.imageLinks
     .all()
-    .flatMap((link): ReaderPage[] => {
+    .flatMap((link): GalleryPreviewItem[] => {
       const url = normalizeUrl(link.attribute("href") || "", currentUrl);
       const imagePage = extractPageType(url);
       if (imagePage.type !== "image" || seen.has(url)) {
         return [];
       }
       seen.add(url);
-      const size = link.one(domClass.common.image)?.imageSize();
+      const image = link.one(domClass.common.image);
+      const size = image?.imageSize();
+      const backgroundHost = link.one<HTMLElement>("[style*='url(']") ??
+        link.closest<HTMLElement>("[style*='url(']");
+      const backgroundStyle = backgroundHost?.attribute("style") ?? "";
+      const backgroundUrl = cssBackgroundUrl(backgroundStyle);
+      const imageSrc = image?.attribute("src") || "";
+      const lazyImageSrc = image?.attribute("data-src") || "";
+      const imageSource = imageSrc && !/blank\.gif(?:$|\?)/i.test(imageSrc)
+        ? imageSrc
+        : lazyImageSrc || imageSrc;
+      const thumbnail = backgroundUrl
+        ? backgroundThumbnail(backgroundStyle, backgroundUrl, currentUrl, size)
+        : imageThumbnail(imageSource, currentUrl, size);
       return [{
-        aspectRatio: size && size.width > 0 && size.height > 0 ? size.height / size.width : 1.42,
+        aspectRatio: thumbnail.height / thumbnail.width,
         pageNum: imagePage.pageNum,
-        url,
+        pageUrl: url,
+        thumbnail,
       }];
     })
-    .sort((left, right) => (left.pageNum ?? Number.MAX_SAFE_INTEGER) - (right.pageNum ?? Number.MAX_SAFE_INTEGER));
+    .sort((left, right) => left.pageNum - right.pageNum);
+  const pages = previewItems.map((item): ReaderPage => ({
+    aspectRatio: item.aspectRatio,
+    pageNum: item.pageNum,
+    url: item.pageUrl,
+  }));
 
   const data: GalleryPreviewData = {
     currentIndex,
@@ -231,6 +268,7 @@ export function manageGalleryPreview(
     maxIndex,
     pageSize,
     pages,
+    previewItems,
     startImage,
     totalImages,
   };
@@ -326,6 +364,58 @@ export function manageGalleryPreview(
   };
 
   return { data, elems, handle };
+}
+
+function cssBackgroundUrl(style: string): string {
+  const match = style.match(/url\(\s*(['"]?)(.*?)\1\s*\)/i);
+  return match?.[2] ?? "";
+}
+
+function backgroundThumbnail(
+  style: string,
+  url: string,
+  baseUrl: string,
+  fallbackSize?: { height: number; width: number },
+): GalleryPreviewThumbnail {
+  const declaration = document.createElement("div").style;
+  declaration.cssText = style;
+  return {
+    backgroundPosition: declaration.backgroundPosition || "0 0",
+    backgroundRepeat: declaration.backgroundRepeat || "no-repeat",
+    backgroundSize: declaration.backgroundSize || "auto",
+    height: cssPixelSize(declaration.height) ?? validThumbnailSize(fallbackSize?.height),
+    kind: "background",
+    url: normalizeUrl(url, baseUrl),
+    width: cssPixelSize(declaration.width) ?? validThumbnailSize(fallbackSize?.width),
+  };
+}
+
+function imageThumbnail(
+  url: string,
+  baseUrl: string,
+  size?: { height: number; width: number },
+): GalleryPreviewThumbnail {
+  return {
+    backgroundPosition: "0 0",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "auto",
+    height: validThumbnailSize(size?.height),
+    kind: "image",
+    url: url ? normalizeUrl(url, baseUrl) : "",
+    width: validThumbnailSize(size?.width),
+  };
+}
+
+function cssPixelSize(value: string): number | null {
+  if (!value.endsWith("px")) {
+    return null;
+  }
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function validThumbnailSize(value: number | undefined): number {
+  return value && Number.isFinite(value) && value > 0 ? value : 100;
 }
 
 export type GalleryPreviewDom = ReturnType<typeof manageGalleryPreview>;

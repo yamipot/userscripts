@@ -60,6 +60,7 @@ export type ReaderCallbacks = {
   onClosed: () => void;
   onFullscreenToggle: () => void;
   onOpenOriginalPage: (page: ReaderPage) => void;
+  onOpenScrollPreview: (pageNum: number) => void;
 };
 
 export function Reader(props: {
@@ -783,6 +784,9 @@ function wireReaderCallbacks(
       if (page && isRealPageNum(state.navi.currentPageNum())) {
         callbacks.onOpenOriginalPage(page);
       }
+    };
+    toolbar.onOpenScrollPreviewClick = (): void => {
+      callbacks.onOpenScrollPreview(state.navi.currentPageNum());
     };
     toolbar.onViewportAdjustClick = scrollViewport.open;
     toolbar.onProgressPointerDown = (event: PointerEvent): void => {

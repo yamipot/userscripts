@@ -68,6 +68,7 @@
     "unread": "Unread"
   },
   "gallery": {
+    "scrollPreview": "Scroll Preview",
     "favoriteTag": "Add My Tag",
     "removeFavoriteTag": "Remove My Tag",
     "tagCollection": "Collection",

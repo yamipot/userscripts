@@ -50,6 +50,7 @@ export type ToolbarCallbacks = {
   onControlsChange: (controls: ReaderControls) => void;
   onFullscreenClick: () => void;
   onOpenOriginalPageClick: () => void;
+  onOpenScrollPreviewClick: () => void;
   onProgressCommit: (value: number) => void;
   onProgressInput: (value: number) => void;
   onProgressPointerDown: (event: PointerEvent) => void;
@@ -119,6 +120,29 @@ export function Toolbar(props: {
 
   return (
     <div class="contents">
+      <div
+        class={
+          "fixed z-2 flex justify-end transition-[opacity,transform] duration-160 ease-in-out " +
+          "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(68px+env(safe-area-inset-bottom,0px))] " +
+          "coarse:bottom-[calc(84px+env(safe-area-inset-bottom,0px))] " +
+          "[&[data-open=false]]:(opacity-0 translate-y-[calc(100%+16px)] pointer-events-none)"
+        }
+        data-open={String(props.open)}
+        onClick={stopEvent}
+        onPointerDown={stopEvent}
+        onWheel={stopEvent}
+      >
+        <button
+          type="button"
+          class={`${READER_BUTTON_CLASS} gap-sm`}
+          aria-label={texts.gallery.scrollPreview}
+          title={texts.gallery.scrollPreview}
+          onClick={() => props.callbacks.onOpenScrollPreviewClick()}
+        >
+          <Icon name="pages" size={READER_ICON_SIZE} />
+          <span>{texts.gallery.scrollPreview}</span>
+        </button>
+      </div>
       <div
         class={
           "ehpeek-reader-toolbar fixed z-3 flex justify-end pointer-events-none " +
