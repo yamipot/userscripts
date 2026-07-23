@@ -89,11 +89,11 @@ function createReadHistoryGridRow(
   const removeButton = createManagedElement("button")
     .setAttributes({ type: "button", "data-ehpeek-remove-history": "true" })
     .replaceClasses(
-      "relative z-2 self-end min-h-lg py-xs px-md mr-sm mb-sm rounded-md border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] ehp-color-site-text font-inherit textsize-md font-700 text-center cursor-pointer [touch-action:manipulation] hover:bg-[var(--color-site-item-hover)]",
+      "relative z-2 min-h-lg py-xs px-md rounded-md border border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] ehp-color-site-text font-inherit textsize-md font-700 text-center cursor-pointer [touch-action:manipulation] hover:bg-[var(--color-site-item-hover)]",
     );
   removeButton.setTextUnlessInput(texts.button.removeHistory);
   const historyActions = createManagedElement("div")
-    .replaceClasses("flex flex-col items-start gap-xs")
+    .replaceClasses("ehpeek-read-history-actions flex flex-col items-start gap-xs")
     .append(historyStatus, removeButton);
   const titleText = titlePreference === "sub"
     ? info?.titleSub || info?.title
@@ -184,6 +184,14 @@ export function manageReadHistoryPage(
         block: position === "bottom" ? "end" : "start",
       });
     },
+    /** Switches the History result list between one and two result columns. */
+    updateResultColumns(enabled: boolean): void {
+      if (enabled) {
+        grids.elems.resultList.addClasses(sharedApply.searchResultColumns);
+      } else {
+        grids.elems.resultList.removeClasses(sharedApply.searchResultColumns);
+      }
+    },
   };
   return {
     elems: {
@@ -255,6 +263,14 @@ export function manageSearchResults() {
         elems.resultList.setAttributes({ "aria-busy": "true" });
       } else {
         elems.resultList.removeAttributes("aria-busy");
+      }
+    },
+    /** Switches the EhPeek result list between one and two result columns. */
+    updateResultColumns(enabled: boolean): void {
+      if (enabled) {
+        elems.resultList.apply("columns");
+      } else {
+        elems.resultList.removeClasses(sharedApply.searchResultColumns);
       }
     },
     /** Prevents result content from stealing a horizontal swipe gesture. */

@@ -101,6 +101,8 @@ const gState = (() => {
     setUiScale,
     setColumnsEnabled,
     setSettingsMenuOpen,
+    readHistoryPage: null as eh.ReadHistoryPageDom | null,
+    searchResults: null as eh.SearchResultsDom | null,
     thumbsGridsActions: undefined as ThumbsGridsActions | undefined,
     uiScale,
   };
@@ -128,6 +130,8 @@ function updateColumnsLayout(): void {
   const enabled = currentColumnsEnabled();
   gState.setColumnsEnabled(enabled);
   gState.galleryWideLayout?.updateEnabled(enabled);
+  gState.readHistoryPage?.handle.updateResultColumns(enabled);
+  gState.searchResults?.handle.updateResultColumns(enabled);
 }
 
 function setCurrentColumnsEnabled(enabled: boolean): void {
@@ -137,6 +141,8 @@ function setCurrentColumnsEnabled(enabled: boolean): void {
   setting.set(enabled);
   gState.setColumnsEnabled(enabled);
   gState.galleryWideLayout?.updateEnabled(enabled);
+  gState.readHistoryPage?.handle.updateResultColumns(enabled);
+  gState.searchResults?.handle.updateResultColumns(enabled);
 }
 
 function setCurrentUiScale(scale: UiScale): void {
@@ -380,6 +386,8 @@ function injectEnhanceUI(
           source={searchResultsDom}
           onPageChange={(source) => {
             allowFeatureFailure("Changed Search page", () => {
+              gState.searchResults = source;
+              source.handle.updateResultColumns(gState.columnsEnabled());
               updateSearchGridModeSelector();
               if (gState.settings.openGalleryInNewTab) {
                 source.handle.ensureGalleryLinksOpenInNewTab();
@@ -412,6 +420,10 @@ function injectTouchUI(
   const searchPage = page.type === "search" || page.type === "favorites";
   const resultsPage = searchPage || page.type === "readHistory";
   const preview = previewCache?.current() ?? null;
+  const columnsAvailable =
+    galleryPage ||
+    page.type === "readHistory" ||
+    (searchPage && state.search.grid.value);
   const resultsDom = resultsPage
     ? allowFeatureFailure("Touch results layout", () =>
         eh.manageTouchResultsPage(page))
@@ -427,7 +439,7 @@ function injectTouchUI(
             value: gState.uiScale,
             onChange: setCurrentUiScale,
           }}
-          columns={galleryPage ? {
+          columns={columnsAvailable ? {
             enabled: gState.columnsEnabled,
             onChange: setCurrentColumnsEnabled,
           } : undefined}
@@ -559,6 +571,8 @@ async function injectPage(page: eh.PageType): Promise<void> {
         items.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize),
         titlePreference,
       );
+      gState.readHistoryPage = historyDom;
+      historyDom?.handle.updateResultColumns(gState.columnsEnabled());
       historyDom?.elems.navigationTopMount.mount(() => (
         <ReadHistoryPage
           initialPageIndex={pageIndex}
@@ -605,6 +619,8 @@ async function injectPage(page: eh.PageType): Promise<void> {
   const searchResultsSource = searchPage
     ? allowFeatureFailure("Search results", () => eh.manageSearchResults())
     : null;
+  gState.searchResults = searchResultsSource;
+  searchResultsSource?.handle.updateResultColumns(gState.columnsEnabled());
 
   if (gState.settings.myTagsEnabled) {
     if (page.type === "myTags") {

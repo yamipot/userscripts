@@ -60,22 +60,15 @@ body.ehpeek-constrain-results-to-viewport {
   overscroll-behavior-x: contain;
 }
 
-@media (orientation: landscape) and (pointer: fine) {
-  .ehpeek-constrain-results-to-viewport .ido,
-  .ehpeek-contain-search-results,
-  .ehpeek-contain-favorites-results {
-    max-width: 90dvh !important;
-    margin-inline: auto !important;
-  }
-}
-
 .ehpeek-enable-search-swipe-input {
   overscroll-behavior-x: contain;
   touch-action: pan-y;
 }
 
-.ehpeek-enable-search-swipe-input[data-dragging="true"] {
-  user-select: none;
+.ehpeek-enable-search-swipe-input,
+.ehpeek-enable-search-swipe-input * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 /* Compact wide Favorites columns while preserving the original table structure. */
@@ -165,6 +158,13 @@ body.ehpeek-constrain-results-to-viewport {
   display: block !important;
 }
 
+.ehpeek-layout-search-grid.ehpeek-search-result-columns > tbody {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px;
+}
+
 .ehpeek-layout-search-grid > tbody > tr {
   position: relative !important;
   display: grid !important;
@@ -222,6 +222,17 @@ body.ehpeek-constrain-results-to-viewport {
   min-height: 0 !important;
   width: 100% !important;
   padding-left: 6px !important;
+}
+
+.ehpeek-layout-search-grid .gl4e:has(> .ehpeek-read-history-actions) {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ehpeek-layout-search-grid .gl4e > .ehpeek-read-history-actions {
+  position: static !important;
+  justify-self: end;
+  width: auto !important;
 }
 
 .ehpeek-layout-search-grid .glink {
@@ -327,9 +338,6 @@ body.ehpeek-constrain-results-to-viewport {
   display: inline-flex;
   align-items: center;
   margin-right: 4px;
-  padding-inline: 4px;
-  border: 1px solid var(--color-site-accent);
-  border-radius: 3px;
   background: transparent;
   color: var(--color-site-accent);
   vertical-align: middle;

@@ -23,6 +23,7 @@ export const sharedApply = {
   galleryTagMenuItem: "ehpeek-layout-gallery-tag-menu-item",
   hideOriginalSearchAction: "ehpeek-hide-original-search-action",
   searchGrid: "ehpeek-layout-search-grid",
+  searchResultColumns: "ehpeek-search-result-columns",
   stackSearchGridTags: "ehpeek-stack-search-grid-tags",
 } as const;
 
@@ -306,6 +307,7 @@ const search = {
       compactFavorites: "ehpeek-compact-all-favorites-results",
       containFavorites: "ehpeek-contain-favorites-results",
       containSearch: "ehpeek-contain-search-results",
+      columns: sharedApply.searchResultColumns,
       grid: sharedApply.searchGrid,
       swipe: "ehpeek-enable-search-swipe-input",
     },
