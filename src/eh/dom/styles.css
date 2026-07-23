@@ -338,7 +338,12 @@ body.ehpeek-constrain-results-to-viewport {
   display: inline-flex;
   align-items: center;
   margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
   background: transparent;
+  box-shadow: none;
   color: var(--color-site-accent);
   vertical-align: middle;
   font-size: var(--ui-font-size-sm);

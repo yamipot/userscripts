@@ -134,6 +134,9 @@ function updateUiScale(): void {
 }
 
 function updateColumnsLayout(): void {
+  if (!gState.settings.touchUiEnabled) {
+    return;
+  }
   const enabled = currentColumnsEnabled();
   gState.setColumnsEnabled(enabled);
   gState.galleryWideLayout?.updateEnabled(enabled);
@@ -435,7 +438,9 @@ function injectEnhanceUI(
           onPageChange={(source) => {
             allowFeatureFailure("Changed Search page", () => {
               gState.searchResults = source;
-              source.handle.updateResultColumns(gState.columnsEnabled());
+              if (gState.settings.touchUiEnabled) {
+                source.handle.updateResultColumns(gState.columnsEnabled());
+              }
               updateSearchGridModeSelector();
               if (gState.settings.openGalleryInNewTab) {
                 source.handle.ensureGalleryLinksOpenInNewTab();
@@ -620,7 +625,9 @@ async function injectPage(page: eh.PageType): Promise<void> {
         titlePreference,
       );
       gState.readHistoryPage = historyDom;
-      historyDom?.handle.updateResultColumns(gState.columnsEnabled());
+      if (gState.settings.touchUiEnabled) {
+        historyDom?.handle.updateResultColumns(gState.columnsEnabled());
+      }
       historyDom?.elems.navigationTopMount.mount(() => (
         <ReadHistoryPage
           initialPageIndex={pageIndex}
@@ -668,7 +675,9 @@ async function injectPage(page: eh.PageType): Promise<void> {
     ? allowFeatureFailure("Search results", () => eh.manageSearchResults())
     : null;
   gState.searchResults = searchResultsSource;
-  searchResultsSource?.handle.updateResultColumns(gState.columnsEnabled());
+  if (gState.settings.touchUiEnabled) {
+    searchResultsSource?.handle.updateResultColumns(gState.columnsEnabled());
+  }
 
   if (gState.settings.myTagsEnabled) {
     if (page.type === "myTags") {
