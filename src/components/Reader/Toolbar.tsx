@@ -21,10 +21,10 @@ export type PageProgress = {
 };
 
 export const READER_BUTTON_CLASS = [
-  "inline-flex min-w-48px h-48px items-center justify-center px-md py-0 rounded-md coarse:(min-w-64px h-64px px-lg rounded-lg)",
+  "inline-flex min-w-[var(--ui-control-size-md)] h-[var(--ui-control-size-md)] items-center justify-center px-md py-0 rounded-md large:(px-lg rounded-lg)",
   "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:(opacity-40 cursor-default)",
 ].join(" ");
-const READER_ICON_SIZE = "1.4em";
+const READER_ICON_SIZE = "var(--ui-icon-size-md)";
 const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
@@ -134,12 +134,12 @@ export function Toolbar(props: {
       >
         <button
           type="button"
-          class={`${READER_BUTTON_CLASS} gap-sm`}
+          class={`ehpeek-reader-scroll-preview-button ${READER_BUTTON_CLASS} gap-sm`}
           aria-label={texts.gallery.scrollPreview}
           title={texts.gallery.scrollPreview}
           onClick={() => props.callbacks.onOpenScrollPreviewClick()}
         >
-          <Icon name="pages" size={READER_ICON_SIZE} />
+          <Icon name="grid" size={READER_ICON_SIZE} />
           <span>{texts.gallery.scrollPreview}</span>
         </button>
       </div>
@@ -299,7 +299,7 @@ export function Toolbar(props: {
           "left-1/2 right-auto -translate-x-1/2 landscape:(left-auto right-10px translate-x-0) coarse-landscape:right-8px " +
           "min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] " +
           "py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text " +
-          "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap " +
+          "font-sans textsize-md font-600 leading-[1.4] whitespace-nowrap " +
           "text-center landscape:text-right"
         }
         hidden={props.controls.navigationMode === "scroll" && !props.open && !props.fullscreenActive}
@@ -317,7 +317,7 @@ export function Toolbar(props: {
             "ehpeek-reader-fullscreen-status fixed z-3 flex items-center gap-sm pointer-events-none " +
             "top-[calc(10px+env(safe-area-inset-top,0px))] left-[max(10px,env(safe-area-inset-left,0px))] " +
             "py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text " +
-            "font-sans textsize-sm font-600 leading-[1.4] whitespace-nowrap"
+            "font-sans textsize-md font-600 leading-[1.4] whitespace-nowrap"
           }
           role="status"
         >

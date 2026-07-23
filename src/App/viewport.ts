@@ -8,6 +8,7 @@ export type ReaderViewportSnapshot = {
 };
 
 const FULLSCREEN_UI_SCALE_PROPERTY = "--ehpeek-reader-fullscreen-ui-scale";
+const FULLSCREEN_UI_SCALE_INVERSE_PROPERTY = "--ehpeek-reader-fullscreen-ui-scale-inverse";
 const FULLSCREEN_PROGRESS_SIZE_PROPERTY = "--ehpeek-reader-fullscreen-progress-size";
 
 export type ReaderFullscreenController = ReturnType<typeof createReaderFullscreen>;
@@ -88,6 +89,7 @@ function createReaderFullscreen(
 
   const restore = async (): Promise<void> => {
     target.style.removeProperty(FULLSCREEN_UI_SCALE_PROPERTY);
+    target.style.removeProperty(FULLSCREEN_UI_SCALE_INVERSE_PROPERTY);
     target.style.removeProperty(FULLSCREEN_PROGRESS_SIZE_PROPERTY);
     if (!snapshot) {
       return;
@@ -114,6 +116,7 @@ function createReaderFullscreen(
         const uiScale = Math.min(1, Math.max(0.25, scaleBefore / Math.max(scaleAfter, 0.01)));
         const progressSize = Number.parseFloat(getComputedStyle(target).getPropertyValue("--ui-font-size-lg")) || 28;
         target.style.setProperty(FULLSCREEN_UI_SCALE_PROPERTY, String(uiScale));
+        target.style.setProperty(FULLSCREEN_UI_SCALE_INVERSE_PROPERTY, String(1 / uiScale));
         target.style.setProperty(FULLSCREEN_PROGRESS_SIZE_PROPERTY, `${progressSize * uiScale}px`);
       } catch (error) {
         await restore();
@@ -128,6 +131,7 @@ function createReaderFullscreen(
         await waitForViewportSettled();
       }
       target.style.removeProperty(FULLSCREEN_UI_SCALE_PROPERTY);
+      target.style.removeProperty(FULLSCREEN_UI_SCALE_INVERSE_PROPERTY);
       target.style.removeProperty(FULLSCREEN_PROGRESS_SIZE_PROPERTY);
     },
     restore,
@@ -136,6 +140,7 @@ function createReaderFullscreen(
         const active = document.fullscreenElement === target;
         if (!active) {
           target.style.removeProperty(FULLSCREEN_UI_SCALE_PROPERTY);
+          target.style.removeProperty(FULLSCREEN_UI_SCALE_INVERSE_PROPERTY);
           target.style.removeProperty(FULLSCREEN_PROGRESS_SIZE_PROPERTY);
         }
         callback(active);

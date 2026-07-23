@@ -24,11 +24,11 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
   site: {
     collapsedFillWidth: "w-10px coarse:w-14px",
     collapsedInteractionWidth: "w-14px coarse:w-24px",
-    expandedFillWidth: "w-14px coarse:w-24px",
-    expandedInteractionWidth: "w-14px coarse:w-24px",
-    fill: "bg-[var(--color-site-text)] opacity-70",
+    expandedFillWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
+    expandedInteractionWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
+    fill: "bg-[var(--color-text)] opacity-70",
     thumbHeight: "h-120px",
-    track: "bg-[var(--color-site-border)]",
+    track: "bg-[var(--color-border)]",
   },
 };
 

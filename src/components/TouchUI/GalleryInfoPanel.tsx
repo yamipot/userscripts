@@ -852,7 +852,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
       <Show when={open()}>
         <Portal>
           <div
-            class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65"
+            class="fixed inset-0 z-overlay flex items-center justify-center p-lg bg-black/65 font-sans textsize-md"
             role="dialog"
             aria-modal="true"
             aria-label={favorite().label}
@@ -869,12 +869,12 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
                 </span>
                 <button
                   type="button"
-                  class="inline-flex w-40px h-40px coarse:w-48px coarse:h-48px flex-none items-center justify-center p-0 rounded-md border ehp-color-site-border bg-[var(--color-site-surface)] ehp-color-site-text cursor-pointer hover:bg-[var(--color-site-item-hover)] active:scale-96"
+                  class="inline-flex w-[var(--ui-control-size-md)] h-[var(--ui-control-size-md)] flex-none items-center justify-center p-0 rounded-md border ehp-color-site-border bg-[var(--color-site-surface)] ehp-color-site-text cursor-pointer hover:bg-[var(--color-site-item-hover)] active:scale-96"
                   aria-label={texts.button.close}
                   title={texts.button.close}
                   onClick={() => setOpen(false)}
                 >
-                  <Icon name="close" size="1.2em" />
+                  <Icon name="close" size="var(--ui-icon-size-md)" />
                 </button>
               </div>
               <div class="min-h-0 overflow-y-auto overscroll-contain">
@@ -904,7 +904,7 @@ function TouchGalleryFavoriteButton(props: { source: GalleryInfoDom }) {
 
 function TouchGalleryFavoriteStatus(props: { text: string }) {
   return (
-    <div class="ehpeek-touch-gallery-favorite-loading flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left">
+    <div class="ehpeek-touch-gallery-favorite-loading flex min-h-[var(--ui-control-size-lg)] items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left">
       {props.text}
     </div>
   );
@@ -917,7 +917,7 @@ function TouchGalleryFavoriteOption(props: {
   return (
     <button
       type="button"
-      class={`ehpeek-touch-gallery-favorite-option flex min-h-lg items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`}
+      class={`ehpeek-touch-gallery-favorite-option flex min-h-[var(--ui-control-size-lg)] items-center gap-md py-md px-lg border-0 border-b ehp-color-site-border-subtle-b bg-transparent ehp-color-site-text font-inherit textsize-md leading-[1.2] text-left ${props.option.value === "favdel" ? "ehpeek-touch-gallery-favorite-option-remove" : ""}`}
       aria-pressed={props.option.selected}
       onClick={(event: MouseEvent) => {
         event.stopPropagation();

@@ -37,6 +37,18 @@
   transform-origin: top right;
 }
 
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-scroll-preview-button {
+  transform: scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: bottom right;
+}
+
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-scroll-preview {
+  width: calc(100% * var(--ehpeek-reader-fullscreen-ui-scale-inverse, 1));
+  height: calc(100dvh * var(--ehpeek-reader-fullscreen-ui-scale-inverse, 1));
+  transform: scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: top left;
+}
+
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-download-dialog-panel,
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-help-panel,
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-page-reload {

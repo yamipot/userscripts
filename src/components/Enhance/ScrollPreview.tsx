@@ -15,6 +15,7 @@ import texts from "../../texts.json";
 import { clamp } from "../../utils";
 import { ScrollFlingAnimator } from "../animation";
 import { createPointerGestureElement } from "../PointerGesture";
+import { READER_BUTTON_CLASS } from "../Reader/Toolbar";
 import { Icon } from "../Widgets/Icon";
 import { PriorityLoadQueue } from "../Widgets/PriorityLoadQueue";
 import { VerticalPositionBar } from "../Widgets/VerticalPositionBar";
@@ -98,7 +99,7 @@ export function ScrollPreview(props: {
       <div class="flex w-full justify-center my-sm">
         <button
           type="button"
-          class="inline-flex min-h-md coarse:min-h-56px items-center justify-center gap-sm px-lg py-sm rounded-md border border-[var(--color-site-border)] bg-[var(--color-site-surface)] ehp-color-site-text font-sans textsize-md font-700 cursor-pointer hover:bg-[var(--color-site-item-hover)] active:scale-98"
+          class="inline-flex min-h-[var(--ui-control-size-xs)] items-center justify-center gap-sm px-md rounded-xl border-0 bg-[var(--color-site-surface)] ehp-color-site-text font-sans textsize-sm font-700 cursor-pointer transition-[background-color,transform] duration-120 hover:bg-[var(--color-site-item-hover)] active:scale-98"
           onClick={() => {
             setHighlightedPageNum(props.continuePageNum);
             setTargetPageNum(null);
@@ -106,7 +107,7 @@ export function ScrollPreview(props: {
             updateOpen(true);
           }}
         >
-          <Icon name="pages" size="1.2em" />
+          <Icon name="grid" size="var(--ui-icon-size-sm)" />
           {texts.gallery.scrollPreview}
         </button>
       </div>
@@ -415,11 +416,11 @@ function ScrollPreviewOverlay(props: {
   });
 
   return (
-    <section class="fixed inset-0 z-[1300] box-border flex w-full h-[100dvh] flex-col overflow-hidden bg-[var(--color-site-page)] ehp-color-site-text">
-      <div class="flex flex-none items-center justify-between gap-md bg-[var(--color-site-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b ehp-color-site-border-subtle-b font-sans textsize-sm">
+    <section class="ehpeek-scroll-preview fixed inset-0 z-[1300] box-border flex w-full h-[100dvh] flex-col overflow-hidden bg-[var(--color-background)] text-[var(--color-text)] font-sans textsize-md leading-[1.4]">
+      <div class="flex flex-none items-center justify-between gap-md bg-[var(--color-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b border-[var(--color-border)] textsize-sm">
         <button
           type="button"
-          class="inline-flex min-h-40px coarse:min-h-48px flex-none items-center justify-center px-md py-xs rounded-md border ehp-color-site-border bg-[var(--color-site-surface)] ehp-color-site-text font-sans textsize-sm font-700 cursor-pointer hover:bg-[var(--color-site-item-hover)] active:scale-96 disabled:(opacity-40 cursor-default)"
+          class={`${READER_BUTTON_CLASS} flex-none`}
           disabled={props.highlightedPageNum === null}
           onClick={() => {
             if (props.highlightedPageNum !== null) {
@@ -432,24 +433,24 @@ function ScrollPreviewOverlay(props: {
         </button>
         <span class="flex items-center gap-sm opacity-75">
           <Show when={loadingCount() > 0}>
-            <span class="block w-16px h-16px box-border animate-spin rounded-full border-2px border-solid ehp-color-site-border border-t-[var(--color-site-accent)]" />
+            <span class="block w-[var(--ui-icon-size-sm)] h-[var(--ui-icon-size-sm)] box-border animate-spin rounded-full border-2px border-solid ehp-color-spinner" />
           </Show>
           {`${Math.min(totalImages, screenStartPageNum())}–${screenEndPageNum()} / ${totalImages}`}
         </span>
         <button
           type="button"
-          class="inline-flex w-40px h-40px coarse:w-48px coarse:h-48px flex-none items-center justify-center p-0 rounded-md border ehp-color-site-border bg-[var(--color-site-surface)] ehp-color-site-text cursor-pointer hover:bg-[var(--color-site-item-hover)] active:scale-96"
+          class={`${READER_BUTTON_CLASS} flex-none`}
           aria-label={texts.button.close}
           title={texts.button.close}
           onClick={() => props.onClose(centeredPreviewIndex())}
         >
-          <Icon name="close" size="1.25em" />
+          <Icon name="close" size="var(--ui-icon-size-md)" />
         </button>
       </div>
       <div class="relative min-h-0 w-full flex-1">
         <div
           ref={scroller}
-          class="absolute inset-0 box-border overflow-y-auto overflow-x-hidden overscroll-contain ehp-color-site-surface cursor-grab [touch-action:pan-x_pan-y] [&[data-dragging=true]]:(cursor-grabbing select-none) [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
+          class="absolute inset-0 box-border overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--color-surface)] cursor-grab [touch-action:pan-x_pan-y] [&[data-dragging=true]]:(cursor-grabbing select-none) [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
           onScroll={() => {
             if (scrollFrame !== null) {
               return;
@@ -493,6 +494,7 @@ function ScrollPreviewOverlay(props: {
         <VerticalPositionBar
           ariaLabel={texts.gallery.scrollPreview}
           currentValue={scrollPositionPage()}
+          expanded
           maxValue={totalImages}
           onInput={scrollToPositionPage}
           position="absolute"
@@ -525,7 +527,7 @@ function PreviewTile(props: {
 
   return (
     <div
-      class="relative flex min-w-0 items-center justify-center overflow-hidden rounded-sm bg-[var(--color-site-page)]"
+      class="relative flex min-w-0 items-center justify-center overflow-hidden rounded-sm bg-[var(--color-background)]"
       style={{ height: `${props.height}px` }}
     >
       <Show
@@ -534,13 +536,13 @@ function PreviewTile(props: {
         fallback={
           <button
             type="button"
-            class="flex w-full h-full flex-col items-center justify-center gap-sm border-0 !bg-transparent ehp-color-site-text font-inherit textsize-sm cursor-default"
+            class="flex w-full h-full flex-col items-center justify-center gap-sm border-0 !bg-transparent text-[var(--color-text)] font-inherit textsize-sm cursor-default"
             classList={{ "cursor-pointer": props.failed }}
             disabled={!props.failed}
             onClick={() => props.onRetry()}
           >
             <Show when={props.failed}>
-              <Icon name="refresh" size="1.5em" />
+              <Icon name="refresh" size="var(--ui-icon-size-lg)" />
             </Show>
             <span>{props.pageNum}</span>
           </button>
@@ -577,7 +579,7 @@ function PreviewTile(props: {
               />
             </Show>
             <a
-              class="absolute inset-0 ehp-color-site-text no-underline hover:no-underline active:no-underline"
+              class="absolute inset-0 text-[var(--color-text)] no-underline hover:no-underline active:no-underline"
               href={item.pageUrl}
               draggable={false}
               aria-label={`Page ${item.pageNum}`}

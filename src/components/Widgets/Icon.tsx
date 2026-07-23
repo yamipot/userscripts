@@ -16,6 +16,7 @@ export type IconName =
   | "external-link"
   | "fullscreen"
   | "fullscreen-exit"
+  | "grid"
   | "heart"
   | "history"
   | "home"
@@ -114,6 +115,9 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   },
   "fullscreen-exit": {
     paths: ["M8 3v5H3", "M16 3v5h5", "M3 16h5v5", "M21 16h-5v5"],
+  },
+  grid: {
+    paths: ["M3 3h8v8H3z", "M13 3h8v8h-8z", "M3 13h8v8H3z", "M13 13h8v8h-8z"],
   },
   heart: {
     fillable: true,
