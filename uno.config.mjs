@@ -4,6 +4,7 @@ export default defineConfig({
   presets: [presetWind3()],
   transformers: [transformerVariantGroup()],
   variants: [
+    uiScaleVariant("large"),
     mediaVariant("coarse", "(pointer: coarse)"),
     mediaVariant("desktop", "(min-width: 760px)"),
     mediaVariant("landscape", "(orientation: landscape)"),
@@ -30,11 +31,11 @@ export default defineConfig({
     ),
     ...pixelShortcuts(["rounded"], { xs: 3, sm: 4, md: 6, lg: 8, xl: 10 }),
     "scrollbar-hidden": "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
-    "textsize-xl": "text-[length:var(--font-size-xl)]",
-    "textsize-lg": "text-[length:var(--font-size-lg)]",
-    "textsize-md": "text-[length:var(--font-size-md)]",
-    "textsize-sm": "text-[length:var(--font-size-sm)]",
-    "textsize-xs": "text-[length:var(--font-size-xs)]",
+    "textsize-xl": "text-[length:var(--ui-font-size-xl)]",
+    "textsize-lg": "text-[length:var(--ui-font-size-lg)]",
+    "textsize-md": "text-[length:var(--ui-font-size-md)]",
+    "textsize-sm": "text-[length:var(--ui-font-size-sm)]",
+    "textsize-xs": "text-[length:var(--ui-font-size-xs)]",
   },
 });
 
@@ -57,6 +58,22 @@ function mediaVariant(prefix, media) {
     return {
       matcher: matcher.slice(marker.length),
       parent: `@media ${media}`,
+    };
+  };
+}
+
+function uiScaleVariant(scale) {
+  return (matcher) => {
+    const marker = `${scale}:`;
+
+    if (!matcher.startsWith(marker)) {
+      return matcher;
+    }
+
+    return {
+      matcher: matcher.slice(marker.length),
+      selector: (selector) =>
+        `:root[data-ehpeek-ui-scale="${scale}"] ${selector}`,
     };
   };
 }

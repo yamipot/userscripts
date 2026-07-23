@@ -16,6 +16,7 @@ const debugBuild = process.env.EHPEEK_DEBUG === "true";
 const installUrl = userscriptInstallUrl();
 const version = userscriptVersion();
 const unoCss = await generateUnoCss();
+const spectrumUiScales = readSpectrumUiScales();
 const projectIconUrl = "https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg";
 
 const metadata = [
@@ -68,6 +69,7 @@ await build({
       },
     }),
     unoCssPlugin(unoCss),
+    spectrumUiScalePlugin(spectrumUiScales),
   ],
   minifySyntax: !debugBuild,
   sourcemap: releaseBuild ? false : "linked",
@@ -170,6 +172,150 @@ function unoCssPlugin(css) {
         contents: css,
         loader: "text",
       }));
+    },
+  };
+}
+
+function readSpectrumUiScales() {
+  // Only selected upstream values enter the userscript; the token package remains a build dependency.
+  const layout = readSpectrumTokenFile("layout.json");
+  const layoutComponent = readSpectrumTokenFile("layout-component.json");
+  const typography = readSpectrumTokenFile("typography.json");
+  const table = {
+    small: {
+      set: "desktop",
+      control: {
+        xs: "component-height-75",
+        sm: "component-height-100",
+        md: "component-height-200",
+        lg: "component-height-300",
+        xl: "component-height-400",
+      },
+      font: {
+        xs: "font-size-25",
+        sm: "font-size-100",
+        md: "font-size-200",
+        prominent: "font-size-300",
+        title: "font-size-400",
+        lg: "font-size-500",
+        xl: "font-size-700",
+      },
+      icon: {
+        sm: "workflow-icon-size-75",
+        md: "workflow-icon-size-100",
+        lg: "workflow-icon-size-200",
+        xl: "workflow-icon-size-300",
+      },
+      statusDot: {
+        md: "status-light-dot-size-medium",
+        lg: "status-light-dot-size-large",
+      },
+    },
+    medium: {
+      set: "desktop",
+      control: {
+        xs: "component-height-100",
+        sm: "component-height-200",
+        md: "component-height-300",
+        lg: "component-height-400",
+        xl: "component-height-500",
+      },
+      font: {
+        xs: "font-size-50",
+        sm: "font-size-200",
+        md: "font-size-400",
+        prominent: "font-size-500",
+        title: "font-size-600",
+        lg: "font-size-700",
+        xl: "font-size-900",
+      },
+      icon: {
+        sm: "workflow-icon-size-100",
+        md: "workflow-icon-size-200",
+        lg: "workflow-icon-size-300",
+        xl: "workflow-icon-size-300",
+      },
+      statusDot: {
+        md: "status-light-dot-size-large",
+        lg: "status-light-dot-size-extra-large",
+      },
+    },
+    large: {
+      set: "mobile",
+      control: {
+        xs: "component-height-100",
+        sm: "component-height-200",
+        md: "component-height-300",
+        lg: "component-height-400",
+        xl: "component-height-500",
+      },
+      font: {
+        xs: "font-size-50",
+        sm: "font-size-200",
+        md: "font-size-400",
+        prominent: "font-size-500",
+        title: "font-size-600",
+        lg: "font-size-700",
+        xl: "font-size-900",
+      },
+      icon: {
+        sm: "workflow-icon-size-100",
+        md: "workflow-icon-size-200",
+        lg: "workflow-icon-size-300",
+        xl: "workflow-icon-size-300",
+      },
+      statusDot: {
+        md: "status-light-dot-size-large",
+        lg: "status-light-dot-size-extra-large",
+      },
+    },
+  };
+  const resolve = (tokens, keys, set) => Object.fromEntries(
+    Object.entries(keys).map(([name, key]) => [
+      name,
+      tokens[key].sets[set].value,
+    ]),
+  );
+
+  return Object.fromEntries(
+    Object.entries(table).map(([name, definition]) => [
+      name,
+      {
+        control: resolve(layout, definition.control, definition.set),
+        font: resolve(typography, definition.font, definition.set),
+        icon: resolve(layout, definition.icon, definition.set),
+        statusDot: resolve(
+          layoutComponent,
+          definition.statusDot,
+          definition.set,
+        ),
+      },
+    ]),
+  );
+}
+
+function readSpectrumTokenFile(fileName) {
+  const file = fileURLToPath(
+    import.meta.resolve(`@adobe/spectrum-tokens/src/${fileName}`),
+  );
+  return JSON.parse(readFileSync(file, "utf-8"));
+}
+
+function spectrumUiScalePlugin(scales) {
+  return {
+    name: "ehpeek-spectrum-ui-scales",
+    setup(build) {
+      build.onResolve({ filter: /^ehpeek:spectrum-ui-scales$/ }, (args) => ({
+        namespace: "ehpeek-spectrum-ui-scales",
+        path: args.path,
+      }));
+      build.onLoad(
+        { filter: /.*/, namespace: "ehpeek-spectrum-ui-scales" },
+        () => ({
+          contents: JSON.stringify(scales),
+          loader: "json",
+        }),
+      );
     },
   };
 }

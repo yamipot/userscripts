@@ -12,6 +12,9 @@ importers:
         specifier: ^1.9.14
         version: 1.9.14
     devDependencies:
+      '@adobe/spectrum-tokens':
+        specifier: 14.15.0
+        version: 14.15.0
       '@eslint/js':
         specifier: ^9.39.5
         version: 9.39.5
@@ -41,6 +44,9 @@ importers:
         version: 66.7.5(vite@8.1.4(esbuild@0.28.1)(jiti@2.7.0))
 
 packages:
+
+  '@adobe/spectrum-tokens@14.15.0':
+    resolution: {integrity: sha512-8wemjSLsengtme+7Mz7fZw5zqmdfEJLKpginXKiofMzgDEuUG/CDbxQ0T2ykVQCo3O1eCClcbdD2VoKHyF0qvw==}
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
@@ -1583,6 +1589,8 @@ packages:
     engines: {node: '>=10'}
 
 snapshots:
+
+  '@adobe/spectrum-tokens@14.15.0': {}
 
   '@antfu/install-pkg@1.1.0':
     dependencies:

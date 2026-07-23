@@ -26,7 +26,7 @@ import {
   TouchTopBar,
 } from "../components/TouchUI";
 import * as eh from "../eh";
-import { state } from "../state";
+import { state, type UiScale } from "../state";
 import texts from "../texts.json";
 import { registerGlobalStyle } from "../utils";
 import ehDomCss from "../eh/dom/styles.css";
@@ -44,6 +44,7 @@ import {
   type GalleryPreviewCache,
 } from "./GalleryPreviewCache";
 import { createAppMount } from "./host";
+import { applyUiScale } from "./uiScale";
 import { readerViewport } from "./viewport";
 
 function settingsMenuState(defaults = false) {
@@ -59,7 +60,6 @@ function settingsMenuState(defaults = false) {
     myTagsEnabled: read(state.gallery.myTags),
     readHistoryEnabled: read(state.gallery.readHistory),
     includeUnreadHistoryEnabled: read(state.gallery.includeUnreadHistory),
-    landscapeColumnsEnabled: read(state.touch.landscapeColumns),
     searchHistoryEnabled: read(state.search.history),
     touchUiEnabled: read(state.touch.enabled),
   };
@@ -76,7 +76,6 @@ function applySettingsMenuState(
   state.gallery.myTags.set(next.myTagsEnabled);
   state.gallery.readHistory.set(next.readHistoryEnabled);
   state.gallery.includeUnreadHistory.set(next.includeUnreadHistoryEnabled);
-  state.touch.landscapeColumns.set(next.landscapeColumnsEnabled);
   state.search.history.set(next.searchHistoryEnabled);
   state.touch.enabled.set(next.touchUiEnabled);
   window.location.reload();
@@ -84,10 +83,9 @@ function applySettingsMenuState(
 
 const gState = (() => {
   const settings = settingsMenuState();
-  const [landscapeColumnsEnabled, setLandscapeColumnsEnabled] = createSignal(
-    settings.landscapeColumnsEnabled,
-  );
+  const [columnsEnabled, setColumnsEnabled] = createSignal(currentColumnsEnabled());
   const [settingsMenuOpen, setSettingsMenuOpen] = createSignal(false);
+  const [uiScale, setUiScale] = createSignal(currentUiScale());
   const [readProgress, setReadProgress] = createSignal({
     currentPage: 1,
     hasHistory: false,
@@ -95,18 +93,63 @@ const gState = (() => {
   });
   return {
     galleryWideLayout: null as eh.GalleryWideLayoutHandle | null,
-    landscapeColumnsEnabled,
+    columnsEnabled,
     readProgress,
     setReadProgress,
     settings,
     settingsMenuOpen,
-    setLandscapeColumnsEnabled,
+    setUiScale,
+    setColumnsEnabled,
     setSettingsMenuOpen,
     thumbsGridsActions: undefined as ThumbsGridsActions | undefined,
+    uiScale,
   };
 })();
 
+function currentUiScale(): UiScale {
+  return window.matchMedia("(orientation: landscape)").matches
+    ? state.app.landscapeUiScale.value
+    : state.app.portraitUiScale.value;
+}
+
+function currentColumnsEnabled(): boolean {
+  return window.matchMedia("(orientation: landscape)").matches
+    ? state.touch.landscapeColumns.value
+    : state.touch.portraitColumns.value;
+}
+
+function updateUiScale(): void {
+  const scale = currentUiScale();
+  gState.setUiScale(scale);
+  applyUiScale(scale);
+}
+
+function updateColumnsLayout(): void {
+  const enabled = currentColumnsEnabled();
+  gState.setColumnsEnabled(enabled);
+  gState.galleryWideLayout?.updateEnabled(enabled);
+}
+
+function setCurrentColumnsEnabled(enabled: boolean): void {
+  const setting = window.matchMedia("(orientation: landscape)").matches
+    ? state.touch.landscapeColumns
+    : state.touch.portraitColumns;
+  setting.set(enabled);
+  gState.setColumnsEnabled(enabled);
+  gState.galleryWideLayout?.updateEnabled(enabled);
+}
+
+function setCurrentUiScale(scale: UiScale): void {
+  const setting = window.matchMedia("(orientation: landscape)").matches
+    ? state.app.landscapeUiScale
+    : state.app.portraitUiScale;
+  setting.set(scale);
+  gState.setUiScale(scale);
+  applyUiScale(scale);
+}
+
 document.documentElement.setAttribute("data-ehpeek-site", eh.ehSiteTheme());
+updateUiScale();
 registerGlobalStyle("ehpeek-uno-style", unoCss);
 registerGlobalStyle("ehpeek-theme-style", themeCss);
 registerGlobalStyle("ehpeek-dom-style", ehDomCss);
@@ -380,14 +423,13 @@ function injectTouchUI(
       topBarDom.elems.mount.mount(() => (
         <TouchTopBar
           historyHref={eh.readHistoryUrl()}
-          landscapeColumns={galleryPage ? {
-            enabled: gState.landscapeColumnsEnabled,
-            onChange: (enabled) => {
-              state.touch.landscapeColumns.set(enabled);
-              gState.settings.landscapeColumnsEnabled = enabled;
-              gState.setLandscapeColumnsEnabled(enabled);
-              gState.galleryWideLayout?.updateEnabled(enabled);
-            },
+          uiScale={{
+            value: gState.uiScale,
+            onChange: setCurrentUiScale,
+          }}
+          columns={galleryPage ? {
+            enabled: gState.columnsEnabled,
+            onChange: setCurrentColumnsEnabled,
           } : undefined}
           source={topBarDom}
           onSettingsMenuOpen={() => {
@@ -428,7 +470,7 @@ function injectTouchUI(
           gState.galleryWideLayout = eh.mutateGalleryWideLayout(
             galleryInfoDom,
             preview,
-            gState.landscapeColumnsEnabled(),
+            gState.columnsEnabled(),
           );
         }
       }
@@ -486,6 +528,7 @@ function injectTouchUI(
 }
 
 async function injectPage(page: eh.PageType): Promise<void> {
+  updateUiScale();
   const galleryPage = page.type === "gallery";
   const searchPage = page.type === "search" || page.type === "favorites";
 
@@ -649,8 +692,15 @@ async function startApp(): Promise<void> {
     });
   }
 
+  const page = eh.extractPageType();
+  const onViewportResize = () => {
+    updateUiScale();
+    updateColumnsLayout();
+  };
+  window.addEventListener("resize", onViewportResize, { passive: true });
+
   installSettingsMenu();
-  await injectPage(eh.extractPageType());
+  await injectPage(page);
 }
 
 void startApp().catch((error) => {

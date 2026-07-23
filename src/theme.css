@@ -1,10 +1,4 @@
 :root {
-  --font-size-xs: 10px;
-  --font-size-sm: 13px;
-  --font-size-md: 16px;
-  --font-size-lg: 24px;
-  --font-size-xl: 32px;
-
   /* --color-background: #070707;
   --color-surface: #151515;
   --color-elevated: #232323;
@@ -55,16 +49,6 @@
   );
   --color-site-swipe-background: color-mix(in srgb, var(--color-site-elevated) 94%, transparent);
   --color-site-swipe-border: color-mix(in srgb, var(--color-site-border) 38%, transparent);
-}
-
-@media (pointer: coarse) {
-  :root {
-    --font-size-xs: 12px;
-    --font-size-sm: 18px;
-    --font-size-md: 26px;
-    --font-size-lg: 32px;
-    --font-size-xl: 42px;
-  }
 }
 
 :root[data-ehpeek-site="e-hentai"] {

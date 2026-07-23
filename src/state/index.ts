@@ -4,6 +4,7 @@ export type PageLayout = "single" | "double";
 export type RightTapAction = "previous" | "next";
 export type ReaderScrollSizeScale = number | "one-to-one" | null;
 export type GalleryTitlePreference = "main" | "sub";
+export type UiScale = "small" | "medium" | "large";
 export type MyTagAppearance = {
   backgroundColor: string;
   color: string;
@@ -26,11 +27,18 @@ type StateValue<T> = {
 };
 
 const touchUiDefault = window.matchMedia("(pointer: coarse)").matches;
+const portraitUiScaleDefault: UiScale = touchUiDefault ? "large" : "small";
+const landscapeUiScaleDefault: UiScale = touchUiDefault &&
+    Math.min(window.screen.width, window.screen.height) >= 600
+  ? "medium"
+  : portraitUiScaleDefault;
 
 export const state = {
   app: {
     ehSyringeDetected: persisted("ehpeek:ehsyringe:detected", false),
     openGalleryInNewTab: persisted("ehpeek:open-gallery-in-new-tab", false),
+    portraitUiScale: persisted<UiScale>("ehpeek:ui-scale:portrait", portraitUiScaleDefault),
+    landscapeUiScale: persisted<UiScale>("ehpeek:ui-scale:landscape", landscapeUiScaleDefault),
   },
   reader: {
     enabled: persisted("ehpeek:reader:enabled", true),
@@ -65,6 +73,7 @@ export const state = {
   },
   touch: {
     enabled: persisted("ehpeek:touch-ui:enabled", touchUiDefault),
+    portraitColumns: persisted("ehpeek:touch-ui:portrait-columns", false),
     landscapeColumns: persisted("ehpeek:touch-ui:landscape-columns", true),
   },
 } as const;

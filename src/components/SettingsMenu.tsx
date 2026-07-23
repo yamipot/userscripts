@@ -12,7 +12,6 @@ type SettingsMenuState = {
   myTagsEnabled: boolean;
   readHistoryEnabled: boolean;
   includeUnreadHistoryEnabled: boolean;
-  landscapeColumnsEnabled: boolean;
   searchHistoryEnabled: boolean;
   touchUiEnabled: boolean;
 };
@@ -27,13 +26,13 @@ const SETTINGS_SECTIONS: ReadonlyArray<readonly [SettingsTab, string]> = [
 ];
 
 const SETTINGS_ACTION_BUTTON_CLASS =
-  "block w-full min-h-md coarse:min-h-64px py-xs coarse:py-md px-md coarse:px-lg rounded-md border cursor-pointer font-inherit text-center textsize-md font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98";
+  "block w-full min-h-[var(--ui-control-size-md)] py-xs px-md rounded-md border cursor-pointer font-inherit text-center [font-size:var(--ui-font-size-md)] font-700 leading-[1.1] transition-[filter,transform,box-shadow] duration-120 active:scale-98";
 const SETTINGS_APPLY_BUTTON_COLOR =
   "border-[var(--color-site-accent)] bg-[var(--color-site-accent)] text-[var(--color-site-surface)] shadow-[0_2px_8px_var(--color-shadow-panel)] hover:brightness-108";
 const SETTINGS_CLOSE_BUTTON_COLOR =
   "border-[var(--color-site-border-subtle)] bg-[var(--color-site-surface)] text-[var(--color-site-text)] hover:bg-[var(--color-site-item-hover)]";
 const SETTINGS_DOT_CLASS =
-  "block flex-none w-10px h-10px coarse:w-18px coarse:h-18px rounded-full";
+  "block flex-none w-[var(--ui-status-dot-size-md)] h-[var(--ui-status-dot-size-md)] rounded-full";
 
 function SwitchButton(props: {
   checked: boolean;
@@ -48,7 +47,7 @@ function SwitchButton(props: {
       <div class="flex items-stretch">
         <button
           type="button"
-          class="flex min-w-0 flex-1 min-h-md coarse:min-h-88px items-center justify-between gap-md coarse:gap-xl py-sm coarse:py-lg pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text font-inherit text-left textsize-md cursor-pointer [-webkit-tap-highlight-color:transparent]"
+          class="flex min-w-0 flex-1 min-h-[var(--ui-control-size-lg)] items-center justify-between gap-md py-sm pl-md pr-sm rounded-xs border-0 !bg-transparent hover:!bg-transparent active:!bg-transparent ehp-color-site-text font-inherit text-left [font-size:var(--ui-font-size-md)] cursor-pointer [-webkit-tap-highlight-color:transparent]"
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
             props.onChange(!props.checked);
@@ -56,24 +55,24 @@ function SwitchButton(props: {
         >
           <span>{props.label}</span>
           <span class="flex flex-none items-center gap-sm">
-            <span class="textsize-sm opacity-70">{props.checked ? texts.settings.on : texts.settings.off}</span>
+            <span class="[font-size:var(--ui-font-size-sm)] opacity-70">{props.checked ? texts.settings.on : texts.settings.off}</span>
             <span class={`${SETTINGS_DOT_CLASS} ${props.checked ? "bg-[var(--color-state-on)]" : "bg-[var(--color-state-off)]"}`} />
           </span>
         </button>
         <button
           type="button"
-          class="flex flex-none w-32px coarse:w-48px min-h-md coarse:min-h-88px items-center justify-center p-0 rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit textsize-md font-700 [-webkit-tap-highlight-color:transparent]"
+          class="flex flex-none w-[var(--ui-control-size-sm)] min-h-[var(--ui-control-size-lg)] items-center justify-center p-0 rounded-xs border-0 !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text cursor-pointer font-inherit [font-size:var(--ui-font-size-md)] font-700 [-webkit-tap-highlight-color:transparent]"
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
             setHelpOpen((open) => !open);
           }}
         >
-          <span class="flex w-20px h-20px items-center justify-center rounded-full border border-[var(--color-site-border-subtle)] leading-none">?</span>
+          <span class="flex w-[var(--ui-icon-size-md)] h-[var(--ui-icon-size-md)] items-center justify-center rounded-full border border-[var(--color-site-border-subtle)] leading-none">?</span>
         </button>
       </div>
       <Show when={helpOpen()}>
         <p
-          class="box-border w-full m-0 px-md pb-md text-left whitespace-normal [overflow-wrap:anywhere] [contain:inline-size] textsize-sm leading-[1.35] opacity-75"
+          class="box-border w-full m-0 px-md pb-md text-left whitespace-normal [overflow-wrap:anywhere] [contain:inline-size] [font-size:var(--ui-font-size-sm)] leading-[1.35] opacity-75"
         >
           {props.description}
         </p>
@@ -167,11 +166,11 @@ export function SettingsMenu(props: {
 
   return (
     <Show when={props.open}>
-      <div ref={menu} class="ehpeek-settings-menu pointer-events-auto fixed top-24px right-24px coarse:top-8px coarse:right-8px z-overlay box-border flex w-320px coarse:w-[calc(100vw-16px)] max-w-[calc(100vw-48px)] coarse:max-w-480px max-h-[calc(100vh-48px)] coarse:max-h-[calc(100dvh-16px)] flex-col overflow-hidden p-sm coarse:p-md border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text textsize-md leading-[1.2]">
+      <div ref={menu} class="ehpeek-settings-menu pointer-events-auto fixed top-24px right-24px coarse:top-8px coarse:right-8px z-overlay box-border flex w-[calc(var(--ui-control-size-xl)*6)] max-w-[calc(100vw-48px)] coarse:max-w-[calc(100vw-16px)] max-h-[calc(100vh-48px)] coarse:max-h-[calc(100dvh-16px)] flex-col overflow-hidden p-md border ehp-color-site-border rounded-sm ehp-color-site-elevated ehp-color-site-text [font-size:var(--ui-font-size-md)] leading-[1.2]">
         <div class="relative flex flex-none justify-end mb-sm">
           <button
             type="button"
-            class="flex w-160px coarse:w-180px min-h-md coarse:min-h-64px items-center justify-between gap-md px-md rounded-md border ehp-color-site-border !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text font-inherit text-left textsize-md font-700 cursor-pointer [-webkit-tap-highlight-color:transparent]"
+            class="flex w-[calc(var(--ui-control-size-xl)*3)] min-h-[var(--ui-control-size-md)] items-center justify-between gap-md px-md rounded-md border ehp-color-site-border !bg-transparent hover:!bg-[var(--color-site-item-hover)] active:!bg-[var(--color-site-item-hover)] ehp-color-site-text font-inherit text-left [font-size:var(--ui-font-size-md)] font-700 cursor-pointer [-webkit-tap-highlight-color:transparent]"
             aria-haspopup="menu"
             aria-expanded={categoryOpen()}
             onClick={() => setCategoryOpen((open) => !open)}
@@ -180,11 +179,11 @@ export function SettingsMenu(props: {
             <span aria-hidden="true">{categoryOpen() ? "▴" : "▾"}</span>
           </button>
           <Show when={categoryOpen()}>
-            <div class="absolute top-full right-0 z-2 mt-xs w-160px coarse:w-180px overflow-hidden rounded-md border ehp-color-site-border ehp-color-site-elevated shadow-xl" role="menu">
+            <div class="absolute top-full right-0 z-2 mt-xs w-[calc(var(--ui-control-size-xl)*3)] overflow-hidden rounded-md border ehp-color-site-border ehp-color-site-elevated shadow-xl" role="menu">
               <For each={SETTINGS_SECTIONS}>{([tab, label]) => (
                 <button
                   type="button"
-                  class={`flex w-full min-h-md coarse:min-h-64px items-center px-md border-0 border-b last:border-b-0 ehp-color-site-border-subtle-b ehp-color-site-text font-inherit text-left textsize-md cursor-pointer [-webkit-tap-highlight-color:transparent] ${activeTab() === tab ? "bg-[var(--color-site-item-hover)] font-700" : "!bg-transparent hover:!bg-[var(--color-site-item-hover)]"}`}
+                  class={`flex w-full min-h-[var(--ui-control-size-md)] items-center px-md border-0 border-b last:border-b-0 ehp-color-site-border-subtle-b ehp-color-site-text font-inherit text-left [font-size:var(--ui-font-size-md)] cursor-pointer [-webkit-tap-highlight-color:transparent] ${activeTab() === tab ? "bg-[var(--color-site-item-hover)] font-700" : "!bg-transparent hover:!bg-[var(--color-site-item-hover)]"}`}
                   role="menuitemradio"
                   aria-checked={activeTab() === tab}
                   onClick={() => {
@@ -213,14 +212,14 @@ export function SettingsMenu(props: {
               onChange={(value) => updateDraft("touchUiEnabled", value)}
             />
             <a
-              class="flex w-full min-h-md coarse:min-h-64px items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text no-underline text-left textsize-md cursor-pointer"
+              class="flex w-full min-h-[var(--ui-control-size-lg)] items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text no-underline text-left [font-size:var(--ui-font-size-md)] cursor-pointer"
               href={props.historyHref}
             >
               {texts.settings.historyLabel}
             </a>
             <button
               type="button"
-              class="flex w-full min-h-md coarse:min-h-64px items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text font-inherit text-left textsize-md cursor-pointer"
+              class="flex w-full min-h-[var(--ui-control-size-lg)] items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text font-inherit text-left [font-size:var(--ui-font-size-md)] cursor-pointer"
               onClick={() => setHelpOpen(true)}
             >
               <span>{texts.help.title}</span>
@@ -272,12 +271,6 @@ export function SettingsMenu(props: {
               onChange={(value) => updateDraft("openGalleryInNewTab", value)}
             />
             <SwitchButton
-              checked={draft.landscapeColumnsEnabled}
-              description={texts.settings.landscapeColumnsHelp}
-              label={texts.settings.landscapeColumnsLabel}
-              onChange={(value) => updateDraft("landscapeColumnsEnabled", value)}
-            />
-            <SwitchButton
               checked={draft.includeUnreadHistoryEnabled}
               description={texts.settings.includeUnreadHistoryHelp}
               label={texts.settings.includeUnreadHistoryLabel}
@@ -285,11 +278,11 @@ export function SettingsMenu(props: {
             />
           </Show>
           <Show when={activeTab() === "about"}>
-            <div class="flex w-full min-h-md coarse:min-h-64px items-center px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text textsize-md font-700">
+            <div class="flex w-full min-h-[var(--ui-control-size-lg)] items-center px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text [font-size:var(--ui-font-size-md)] font-700">
               Ehpeek
             </div>
             <a
-              class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md font-700 hover:bg-[var(--color-site-item-hover)]"
+              class="flex w-full min-h-[var(--ui-control-size-lg)] items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline [font-size:var(--ui-font-size-md)] font-700 hover:bg-[var(--color-site-item-hover)]"
               href="https://github.com/yamipot/ehpeek"
               target="_blank"
               rel="noopener noreferrer"

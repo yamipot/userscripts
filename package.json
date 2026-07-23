@@ -9,6 +9,7 @@
     "lint": "eslint . --max-warnings=0"
   },
   "devDependencies": {
+    "@adobe/spectrum-tokens": "14.15.0",
     "@eslint/js": "^9.39.5",
     "esbuild": "^0.28.1",
     "esbuild-plugin-solid": "^0.6.0",

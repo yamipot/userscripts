@@ -494,7 +494,6 @@ export function mutateGalleryWideLayout(
     return null;
   }
 
-  const media = window.matchMedia("(orientation: landscape)");
   const leftNodes = [info.elems.host, commentsAnchor, comments]
     .filter((node) => node !== null);
   const rightNodes = [pageBarTopHost, previewMount, thumbs, pageBarBottomHost]
@@ -507,7 +506,7 @@ export function mutateGalleryWideLayout(
   let enabled = initiallyEnabled;
 
   const update = () => {
-    if (enabled && media.matches && !layout) {
+    if (enabled && !layout) {
       layout = createAnchor("gallery-wide-layout")
         ?.replaceClasses("ehpeek-touch-gallery-layout") ?? null;
       if (!layout) {
@@ -536,7 +535,7 @@ export function mutateGalleryWideLayout(
       return;
     }
 
-    if ((!enabled || !media.matches) && layout) {
+    if (!enabled && layout) {
       for (const { marker, node } of positions) {
         marker.after(node);
         marker.remove();
@@ -549,7 +548,6 @@ export function mutateGalleryWideLayout(
     }
   };
 
-  media.addEventListener("change", update);
   update();
 
   return {

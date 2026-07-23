@@ -70,7 +70,7 @@
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-progress {
-  font-size: var(--ehpeek-reader-fullscreen-progress-size, var(--font-size-lg));
+  font-size: var(--ehpeek-reader-fullscreen-progress-size, var(--ui-font-size-lg));
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-fullscreen-status {

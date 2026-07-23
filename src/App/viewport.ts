@@ -112,7 +112,7 @@ function createReaderFullscreen(
         await nextAnimationFrame();
         const scaleAfter = window.visualViewport?.scale ?? 1;
         const uiScale = Math.min(1, Math.max(0.25, scaleBefore / Math.max(scaleAfter, 0.01)));
-        const progressSize = Number.parseFloat(getComputedStyle(target).getPropertyValue("--font-size-lg")) || 24;
+        const progressSize = Number.parseFloat(getComputedStyle(target).getPropertyValue("--ui-font-size-lg")) || 28;
         target.style.setProperty(FULLSCREEN_UI_SCALE_PROPERTY, String(uiScale));
         target.style.setProperty(FULLSCREEN_PROGRESS_SIZE_PROPERTY, `${progressSize * uiScale}px`);
       } catch (error) {
