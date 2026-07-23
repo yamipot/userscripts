@@ -15,7 +15,9 @@ import texts from "../../texts.json";
 import { clamp } from "../../utils";
 import { ScrollFlingAnimator } from "../animation";
 import { createPointerGestureElement } from "../PointerGesture";
-import { READER_BUTTON_CLASS } from "../Reader/Toolbar";
+import {
+  READER_FLOATING_ACTION_CLASS,
+} from "../Reader/Toolbar";
 import { Icon } from "../Widgets/Icon";
 import { PriorityLoadQueue } from "../Widgets/PriorityLoadQueue";
 import { VerticalPositionBar } from "../Widgets/VerticalPositionBar";
@@ -57,6 +59,8 @@ export function ScrollPreview(props: {
   previewCache: GalleryPreviewCache;
 }) {
   const previewCache = untrack(() => props.previewCache);
+  const onExitPreview = untrack(() => props.onExitPreview);
+  const onOpenPage = untrack(() => props.onOpenPage);
   const [open, setOpen] = createSignal(false);
   const [portalMount, setPortalMount] = createSignal<HTMLElement>(document.body);
   const [targetPreviewIndex, setTargetPreviewIndex] = createSignal(
@@ -64,16 +68,51 @@ export function ScrollPreview(props: {
   );
   const [highlightedPageNum, setHighlightedPageNum] = createSignal<number | null>(null);
   const [targetPageNum, setTargetPageNum] = createSignal<number | null>(null);
-  const updateOpen = (next: boolean): void => {
-    if (next) {
+  let historyEntry = false;
+  let closeRequested = false;
+  let pendingClose: (() => void) | null = null;
+  const finishClose = (afterClose?: () => void): void => {
+    historyEntry = false;
+    closeRequested = false;
+    pendingClose = null;
+    setOpen(false);
+    props.onOpenChange(false);
+    afterClose?.();
+  };
+  const requestClose = (afterClose: () => void): void => {
+    if (closeRequested) {
+      return;
+    }
+    if (historyEntry) {
+      closeRequested = true;
+      pendingClose = afterClose;
+      window.history.back();
+      return;
+    }
+    finishClose(afterClose);
+  };
+  const openPreview = (): void => {
+    if (!open()) {
       setPortalMount(
         document.fullscreenElement instanceof HTMLElement
           ? document.fullscreenElement
           : document.body,
       );
+      const currentState = window.history.state;
+      window.history.pushState({
+        ...(currentState !== null && typeof currentState === "object" ? currentState : {}),
+        ehpeekScrollPreview: true,
+      }, "", window.location.href);
+      historyEntry = true;
+      setOpen(true);
+      props.onOpenChange(true);
     }
-    setOpen(next);
-    props.onOpenChange(next);
+  };
+  const onPopState = (): void => {
+    if (!open() || !historyEntry) {
+      return;
+    }
+    finishClose(pendingClose ?? undefined);
   };
 
   createEffect(() => {
@@ -82,17 +121,25 @@ export function ScrollPreview(props: {
         setHighlightedPageNum(null);
         setTargetPageNum(null);
         setTargetPreviewIndex(previewIndex);
-        updateOpen(true);
+        openPreview();
       },
       gotoPage: (pageNum) => {
         setHighlightedPageNum(pageNum);
         setTargetPageNum(pageNum);
         setTargetPreviewIndex(previewCache.previewIndexForPage(pageNum));
-        updateOpen(true);
+        openPreview();
       },
     });
   });
-  onCleanup(() => props.onOpenChange(false));
+  onMount(() => {
+    window.addEventListener("popstate", onPopState);
+    onCleanup(() => window.removeEventListener("popstate", onPopState));
+  });
+  onCleanup(() => {
+    if (open()) {
+      props.onOpenChange(false);
+    }
+  });
 
   return (
     <>
@@ -104,7 +151,7 @@ export function ScrollPreview(props: {
             setHighlightedPageNum(props.continuePageNum);
             setTargetPageNum(null);
             setTargetPreviewIndex(previewCache.current().data.currentIndex);
-            updateOpen(true);
+            openPreview();
           }}
         >
           <Icon name="grid" size="var(--ui-icon-size-sm)" />
@@ -116,13 +163,11 @@ export function ScrollPreview(props: {
           <ScrollPreviewOverlay
             highlightedPageNum={highlightedPageNum()}
             onClose={(previewIndex) => {
-              updateOpen(false);
-              props.onExitPreview(previewIndex);
+              requestClose(() => onExitPreview(previewIndex));
             }}
             onLoadError={props.onLoadError}
             onOpenPage={(pageUrl, pageNum) => {
-              updateOpen(false);
-              props.onOpenPage(pageUrl, pageNum);
+              requestClose(() => onOpenPage(pageUrl, pageNum));
             }}
             previewCache={previewCache}
             targetPageNum={targetPageNum()}
@@ -479,35 +524,37 @@ function ScrollPreviewOverlay(props: {
         transform: `translate3d(${horizontalDragOffset()}px, 0, 0) scale(${1 - Math.min(0.03, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.03)})`,
       }}
     >
-      <div class="flex flex-none items-center justify-between gap-md bg-[var(--color-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b border-[var(--color-border)] textsize-sm">
-        <button
-          type="button"
-          class={`${READER_BUTTON_CLASS} flex-none`}
-          disabled={props.highlightedPageNum === null}
-          onClick={() => {
-            if (props.highlightedPageNum !== null) {
-              flingAnimator.cancel();
-              scrollToPage(props.highlightedPageNum);
-            }
-          }}
-        >
-          {texts.button.current}
-        </button>
+      <div class="flex min-h-[var(--ui-control-size-md)] flex-none items-center justify-between gap-md bg-[var(--color-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b border-[var(--color-border)] textsize-sm">
         <span class="flex items-center gap-sm opacity-75">
           <Show when={loadingCount() > 0}>
             <span class="block w-[var(--ui-icon-size-sm)] h-[var(--ui-icon-size-sm)] box-border animate-spin rounded-full border-2px border-solid ehp-color-spinner" />
           </Show>
           {`${Math.min(totalImages, screenStartPageNum())}–${screenEndPageNum()} / ${totalImages}`}
         </span>
-        <button
-          type="button"
-          class={`${READER_BUTTON_CLASS} flex-none`}
-          aria-label={texts.button.close}
-          title={texts.button.close}
-          onClick={() => onClose(centeredPreviewIndex())}
-        >
-          <Icon name="close" size="var(--ui-icon-size-md)" />
-        </button>
+        <div class="flex flex-none gap-sm">
+          <button
+            type="button"
+            class={READER_FLOATING_ACTION_CLASS}
+            disabled={props.highlightedPageNum === null}
+            onClick={() => {
+              if (props.highlightedPageNum !== null) {
+                flingAnimator.cancel();
+                scrollToPage(props.highlightedPageNum);
+              }
+            }}
+          >
+            {texts.button.current}
+          </button>
+          <button
+            type="button"
+            class={READER_FLOATING_ACTION_CLASS}
+            aria-label={texts.button.close}
+            title={texts.button.close}
+            onClick={() => onClose(centeredPreviewIndex())}
+          >
+            <span aria-hidden="true">X</span>
+          </button>
+        </div>
       </div>
       <div class="relative min-h-0 w-full flex-1">
         <div
@@ -560,7 +607,8 @@ function ScrollPreviewOverlay(props: {
           maxValue={totalImages}
           onInput={scrollToPositionPage}
           position="absolute"
-          variant="site"
+          variant="reader"
+          visibleValueCount={screenEndPageNum() - screenStartPageNum() + 1}
         />
       </div>
     </section>

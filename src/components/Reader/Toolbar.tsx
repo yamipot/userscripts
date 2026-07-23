@@ -24,6 +24,11 @@ export const READER_BUTTON_CLASS = [
   "inline-flex min-w-[var(--ui-control-size-md)] h-[var(--ui-control-size-md)] items-center justify-center px-md py-0 rounded-md large:(px-lg rounded-lg)",
   "border border-[var(--color-border)] bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-md font-700 leading-1 disabled:(opacity-40 cursor-default)",
 ].join(" ");
+export const READER_FLOATING_ACTION_CLASS = [
+  READER_BUTTON_CLASS,
+  "!min-w-[var(--ui-control-size-lg)] !h-[var(--ui-control-size-lg)] opacity-85 hover:opacity-100 focus-visible:opacity-100 transition-opacity duration-160",
+].join(" ");
+const READER_FLOATING_ICON_ACTION_CLASS = `${READER_FLOATING_ACTION_CLASS} !w-[var(--ui-control-size-lg)] px-0`;
 const READER_ICON_SIZE = "var(--ui-icon-size-md)";
 const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -123,8 +128,7 @@ export function Toolbar(props: {
       <div
         class={
           "fixed z-2 flex justify-end transition-[opacity,transform] duration-160 ease-in-out " +
-          "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(68px+env(safe-area-inset-bottom,0px))] " +
-          "coarse:bottom-[calc(84px+env(safe-area-inset-bottom,0px))] " +
+          "right-[max(12px,env(safe-area-inset-right,0px))] bottom-[calc(var(--ui-control-size-lg)*2+44px+env(safe-area-inset-bottom,0px))] " +
           "[&[data-open=false]]:(opacity-0 translate-y-[calc(100%+16px)] pointer-events-none)"
         }
         data-open={String(props.open)}
@@ -132,16 +136,45 @@ export function Toolbar(props: {
         onPointerDown={stopEvent}
         onWheel={stopEvent}
       >
-        <button
-          type="button"
-          class={`ehpeek-reader-scroll-preview-button ${READER_BUTTON_CLASS} gap-sm`}
-          aria-label={texts.gallery.scrollPreview}
-          title={texts.gallery.scrollPreview}
-          onClick={() => props.callbacks.onOpenScrollPreviewClick()}
-        >
-          <Icon name="grid" size={READER_ICON_SIZE} />
-          <span>{texts.gallery.scrollPreview}</span>
-        </button>
+        <div class="ehpeek-reader-floating-actions grid grid-cols-2 gap-sm">
+          <button
+            type="button"
+            class={READER_FLOATING_ICON_ACTION_CLASS}
+            aria-label={props.fullscreenActive ? texts.reader.exitFullscreen : texts.reader.fullscreen}
+            title={props.fullscreenActive ? texts.reader.exitFullscreen : texts.reader.fullscreen}
+            onClick={() => props.callbacks.onFullscreenClick()}
+          >
+            <Icon name={props.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            class={READER_FLOATING_ICON_ACTION_CLASS}
+            aria-label={texts.button.close}
+            title={texts.button.close}
+            onClick={() => props.callbacks.onCloseClick()}
+          >
+            <Icon name="close" size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            class={READER_FLOATING_ICON_ACTION_CLASS}
+            aria-label={texts.gallery.scrollPreview}
+            title={texts.gallery.scrollPreview}
+            onClick={() => props.callbacks.onOpenScrollPreviewClick()}
+          >
+            <Icon name="grid" size={READER_ICON_SIZE} />
+          </button>
+          <button
+            type="button"
+            class={READER_FLOATING_ICON_ACTION_CLASS}
+            disabled={props.downloadInfos.length === 0}
+            aria-label={texts.reader.download}
+            title={texts.reader.download}
+            onClick={() => setDownloadDialogPageNum(props.progress.pageNum)}
+          >
+            <Icon name="download" size={READER_ICON_SIZE} />
+          </button>
+        </div>
       </div>
       <div
         class={
@@ -181,24 +214,6 @@ export function Toolbar(props: {
           >
             <Icon name="book-open" size={READER_ICON_SIZE} />
           </button>
-          <button
-            type="button"
-            class={READER_BUTTON_CLASS}
-            disabled={props.downloadInfos.length === 0}
-            onClick={() => setDownloadDialogPageNum(props.progress.pageNum)}
-          >
-            <Icon name="download" size={READER_ICON_SIZE} />
-          </button>
-          <button
-            type="button"
-            class={READER_BUTTON_CLASS}
-            onClick={() => props.callbacks.onFullscreenClick()}
-          >
-            <Icon name={props.fullscreenActive ? "fullscreen-exit" : "fullscreen"} size={READER_ICON_SIZE} />
-          </button>
-          <button type="button" class={READER_BUTTON_CLASS} onClick={() => props.callbacks.onCloseClick()}>
-            <Icon name="close" size={READER_ICON_SIZE} />
-          </button>
           </div>
           <Show when={moreOpen()}>
             <div class="flex flex-row gap-md coarse:gap-lg">
@@ -214,7 +229,7 @@ export function Toolbar(props: {
                 }}
               >
                 <Icon
-                  name={props.controls.navigationMode === "paged" ? "page" : "pages"}
+                  name={props.controls.navigationMode === "paged" ? "page" : "scroll-continuous"}
                   size={READER_ICON_SIZE}
                 />
               </button>
@@ -293,14 +308,11 @@ export function Toolbar(props: {
       <div
         class={
           "ehpeek-reader-page-number fixed z-3 pointer-events-none " +
-          (moreOpen()
-            ? "top-[calc(130px+env(safe-area-inset-top,0px))] coarse:top-[calc(160px+env(safe-area-inset-top,0px))] landscape:top-[calc(122px+env(safe-area-inset-top,0px))] coarse-landscape:top-[calc(150px+env(safe-area-inset-top,0px))] "
-            : "top-[calc(70px+env(safe-area-inset-top,0px))] coarse:top-[calc(80px+env(safe-area-inset-top,0px))] landscape:top-[calc(62px+env(safe-area-inset-top,0px))] coarse-landscape:top-[calc(74px+env(safe-area-inset-top,0px))] ") +
-          "left-1/2 right-auto -translate-x-1/2 landscape:(left-auto right-10px translate-x-0) coarse-landscape:right-8px " +
-          "min-w-64px landscape:min-w-0 max-w-none landscape:max-w-[calc(100vw-20px)] coarse-landscape:max-w-[calc(100vw-16px)] " +
+          "top-[calc(10px+env(safe-area-inset-top,0px))] left-[max(10px,env(safe-area-inset-left,0px))] right-auto " +
+          "min-w-0 max-w-[calc(100vw-20px)] " +
           "py-xs px-md rounded-md bg-[var(--color-badge)] ehp-color-text " +
           "font-sans textsize-md font-600 leading-[1.4] whitespace-nowrap " +
-          "text-center landscape:text-right"
+          "text-left"
         }
         hidden={props.controls.navigationMode === "scroll" && !props.open && !props.fullscreenActive}
       >

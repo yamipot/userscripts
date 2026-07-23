@@ -9,7 +9,6 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
   expandedFillWidth: string;
   expandedInteractionWidth: string;
   fill: string;
-  thumbHeight: string;
   track: string;
 }> = {
   reader: {
@@ -17,9 +16,8 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
     collapsedInteractionWidth: "w-10px coarse:w-12px",
     expandedFillWidth: "w-18px coarse:w-24px",
     expandedInteractionWidth: "w-18px coarse:w-24px",
-    fill: "bg-[var(--color-reader-scrollbar)]",
-    thumbHeight: "h-[120px] coarse:h-[200px]",
-    track: "bg-[var(--color-reader-border)]",
+    fill: "bg-[var(--color-reader-scrollbar,var(--color-muted))]",
+    track: "bg-[var(--color-reader-border,var(--color-border))]",
   },
   site: {
     collapsedFillWidth: "w-10px coarse:w-14px",
@@ -27,13 +25,13 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
     expandedFillWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
     expandedInteractionWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
     fill: "bg-[var(--color-text)] opacity-70",
-    thumbHeight: "h-120px",
     track: "bg-[var(--color-border)]",
   },
 };
 
 export function VerticalPositionBar(props: {
   ariaLabel: string;
+  class?: string;
   currentValue: number;
   expanded?: boolean;
   maxValue: number;
@@ -44,6 +42,7 @@ export function VerticalPositionBar(props: {
   position?: "absolute" | "fixed";
   variant: VerticalPositionBarVariant;
   visible?: boolean;
+  visibleValueCount?: number;
 }) {
   const [dragging, setDragging] = createSignal(false);
   let track!: HTMLDivElement;
@@ -63,6 +62,8 @@ export function VerticalPositionBar(props: {
   const position = () => valueRange() === 0
     ? 0
     : ((props.currentValue - minValue()) / valueRange()) * 100;
+  const visibleRatio = () =>
+    clamp((props.visibleValueCount ?? 1) / Math.max(1, valueRange() + 1), 0, 1);
   const valueAt = (clientY: number): number => {
     const trackRect = track.getBoundingClientRect();
     const travel = Math.max(1, trackRect.height - thumb.offsetHeight);
@@ -82,7 +83,7 @@ export function VerticalPositionBar(props: {
   return (
     <div
       ref={track}
-      class={`${props.position === "fixed" ? "fixed" : "absolute"} inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out ${
+      class={`ehpeek-position-bar ${props.class ?? ""} ${props.position === "fixed" ? "fixed" : "absolute"} inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out [--ehpeek-position-bar-thumb-min:calc(var(--ui-control-size-md)*1.5)] [--ehpeek-position-bar-thumb-max:calc(var(--ui-control-size-xl)*4)] ${
         visible() ? "opacity-100" : "opacity-0 pointer-events-none"
       }`}
       aria-label={props.ariaLabel}
@@ -134,8 +135,9 @@ export function VerticalPositionBar(props: {
       <div class={`absolute inset-y-0 right-2px w-3px ${classes().track}`} />
       <div
         ref={thumb}
-        class={`absolute right-0 flex ${interactionWidth()} ${classes().thumbHeight} items-center justify-end cursor-grab active:cursor-grabbing transition-[width] duration-160`}
+        class={`ehpeek-position-bar-thumb absolute right-0 flex ${interactionWidth()} items-center justify-end cursor-grab active:cursor-grabbing transition-[width,height] duration-160`}
         style={{
+          height: `clamp(var(--ehpeek-position-bar-thumb-min), ${visibleRatio() * 100}%, var(--ehpeek-position-bar-thumb-max))`,
           top: `${position()}%`,
           transform: `translateY(-${position()}%)`,
         }}

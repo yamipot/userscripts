@@ -28,6 +28,8 @@
   },
   "reader": {
     "readingOptions": "Reading options",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
     "adjustScrollViewport": "Adjust Scroll viewport size",
     "resizeScrollViewport": "Resize Scroll viewport",
     "fit": "Fit",

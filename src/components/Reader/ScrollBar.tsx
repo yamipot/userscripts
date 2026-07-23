@@ -14,6 +14,7 @@ export function ReaderScrollBar(props: {
   return (
     <VerticalPositionBar
       ariaLabel="Reader position"
+      class="ehpeek-reader-scrollbar"
       currentValue={props.currentPage}
       expanded={props.expanded}
       maxValue={props.totalPages}
@@ -23,6 +24,7 @@ export function ReaderScrollBar(props: {
       position="fixed"
       variant="reader"
       visible={props.visible}
+      visibleValueCount={1}
     />
   );
 }

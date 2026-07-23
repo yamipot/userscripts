@@ -27,6 +27,7 @@ export type IconName =
   | "refresh"
   | "search"
   | "settings"
+  | "scroll-continuous"
   | "star"
   | "viewport";
 
@@ -162,6 +163,9 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   },
   search: {
     paths: ["M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Z", "m16.2 16.2 4.3 4.3"],
+  },
+  "scroll-continuous": {
+    paths: ["M5 3h14v5H5z", "M5 9.5h14v5H5z", "M5 16h14v5H5z"],
   },
   settings: {
     paths: [

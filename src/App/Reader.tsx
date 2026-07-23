@@ -229,26 +229,26 @@ function mountReader(
   let unlockPageScroll = lockPageScroll();
   let setFullscreenActive = (_active: boolean): void => undefined;
   let keepReaderOpen = false;
-  let historyEntry = true;
-  let closeRequested = false;
   let closing = false;
   let mountedReaderActions: ReaderComponentActions | undefined;
   const close = () => requestClose();
 
   function requestClose(): void {
-    if (closing || closeRequested) {
+    if (closing) {
       return;
     }
-    if (historyEntry) {
-      closeRequested = true;
-      window.history.back();
-      return;
-    }
+    eh.clearPeekLocation();
     void onClosed();
   }
 
-  const onPopState = (): void => {
-    historyEntry = false;
+  const onPopState = (event: PopStateEvent): void => {
+    if (
+      event.state !== null &&
+      typeof event.state === "object" &&
+      (event.state as { ehpeekReader?: unknown }).ehpeekReader === true
+    ) {
+      return;
+    }
     void onClosed();
   };
 
