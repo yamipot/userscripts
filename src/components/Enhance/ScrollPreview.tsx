@@ -339,10 +339,14 @@ function ScrollPreviewOverlay(props: {
                 },
                 {
                   opacity: 0.7,
-                  transform: `translate3d(${direction * 100}vw, 0, 0) scale(0.97)`,
+                  transform: `translate3d(${direction * 100}vw, 0, 0) scale(var(--ehpeek-reader-fullscreen-ui-scale, 1)) scale(0.97)`,
                 },
               ],
-              { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+              {
+                duration: 180,
+                easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+                fill: "forwards",
+              },
             ).finished.then(() => onClose(previewIndex));
             return;
           }
@@ -354,7 +358,7 @@ function ScrollPreviewOverlay(props: {
               },
               {
                 opacity: 1,
-                transform: "translate3d(0, 0, 0) scale(1)",
+                transform: "translate3d(0, 0, 0) scale(var(--ehpeek-reader-fullscreen-ui-scale, 1))",
               },
             ],
             { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
@@ -521,7 +525,7 @@ function ScrollPreviewOverlay(props: {
       class="ehpeek-scroll-preview fixed inset-0 z-[1300] box-border flex w-full h-[100dvh] flex-col overflow-hidden bg-[var(--color-background)] text-[var(--color-text)] font-sans textsize-md leading-[1.4]"
       style={{
         opacity: `${1 - Math.min(0.15, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.15)}`,
-        transform: `translate3d(${horizontalDragOffset()}px, 0, 0) scale(${1 - Math.min(0.03, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.03)})`,
+        transform: `translate3d(${horizontalDragOffset()}px, 0, 0) scale(var(--ehpeek-reader-fullscreen-ui-scale, 1)) scale(${1 - Math.min(0.03, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.03)})`,
       }}
     >
       <div class="flex min-h-[var(--ui-control-size-md)] flex-none items-center justify-between gap-md bg-[var(--color-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b border-[var(--color-border)] textsize-sm">

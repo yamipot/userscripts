@@ -62,7 +62,7 @@ function TouchTopBarUiMenu(props: {
           setOpen((value) => !value);
         }}
       >
-        <Icon name="viewport" size={TOUCH_TOP_BAR_ICON_SIZE} />
+        <Icon name="palette" size={TOUCH_TOP_BAR_ICON_SIZE} strokeWidth={1.75} />
       </button>
       <Show when={open()}>
         <div
@@ -179,7 +179,7 @@ export function TouchTopBar(props: {
           class={`ehpeek-touch-top-bar-home ${TOUCH_ICON_BUTTON_CLASS}`}
           href={props.source.data.homeHref}
         >
-          <Icon name="home" size={TOUCH_TOP_BAR_ICON_SIZE} />
+          <Icon name="search" size={TOUCH_TOP_BAR_ICON_SIZE} />
         </a>
         <a
           class={`ehpeek-touch-top-bar-favorites ${TOUCH_ICON_BUTTON_CLASS}`}

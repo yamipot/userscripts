@@ -22,6 +22,7 @@ export type IconName =
   | "home"
   | "menu"
   | "page"
+  | "palette"
   | "panda-peek"
   | "pages"
   | "refresh"
@@ -138,6 +139,15 @@ const ICON_DEFINITIONS: Record<IconName, IconDefinition> = {
   },
   page: {
     paths: ["M5 3h14v18H5z"],
+  },
+  palette: {
+    paths: [
+      "M12 22a10 10 0 1 1 10-10c0 2.76-2.24 5-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8Z",
+      "M7.5 10.5h.01",
+      "M10.5 7.5h.01",
+      "M14.5 7.5h.01",
+      "M16.5 10.5h.01",
+    ],
   },
   "panda-peek": {
     filledPaths: [

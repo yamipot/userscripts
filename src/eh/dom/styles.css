@@ -757,33 +757,33 @@ tr[data-ehpeek-read-history] > td,
   }
 
   .ehpeek-overlay-search-actions {
-    grid-template-columns: minmax(0, 1fr) 32px !important;
+    grid-template-columns: minmax(0, 1fr) 40px !important;
   }
 
   .ehpeek-overlay-search-actions[data-ehpeek-has-clear="true"] {
-    grid-template-columns: minmax(0, 1fr) 32px 32px !important;
+    grid-template-columns: minmax(0, 1fr) 40px 40px !important;
   }
 
   .ehpeek-expand-search-input {
-    height: 32px !important;
-    padding: 0 40px 0 8px !important;
-    border-radius: 3px !important;
-    font-size: var(--ui-font-size-sm) !important;
+    height: 40px !important;
+    padding: 0 48px 0 10px !important;
+    border-radius: 4px !important;
+    font-size: var(--ui-font-size-md) !important;
   }
 
   .ehpeek-overlay-search-actions[data-ehpeek-has-clear="true"] .ehpeek-expand-search-input {
-    padding-right: 72px !important;
+    padding-right: 88px !important;
   }
 
   .ehpeek-layout-search-categories > tbody {
-    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)) !important;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)) !important;
   }
 
   .ehpeek-layout-search-categories [id^="cat_"] {
-    height: 26px !important;
-    padding-inline: 6px !important;
-    border-radius: 3px !important;
-    font-size: var(--ui-font-size-sm) !important;
+    height: 32px !important;
+    padding-inline: 8px !important;
+    border-radius: 4px !important;
+    font-size: var(--ui-font-size-md) !important;
   }
 
   .ehpeek-wrap-search-options {
@@ -791,15 +791,15 @@ tr[data-ehpeek-read-history] > td,
   }
 
   .ehpeek-wrap-search-options > a {
-    min-height: 24px !important;
-    padding-inline: 8px !important;
-    border-radius: 3px !important;
-    font-size: var(--ui-font-size-sm) !important;
+    min-height: 32px !important;
+    padding-inline: 10px !important;
+    border-radius: 4px !important;
+    font-size: var(--ui-font-size-md) !important;
   }
 
   .ehpeek-reset-search-box-layout .searchadv {
     padding-top: 8px !important;
-    font-size: var(--ui-font-size-sm) !important;
+    font-size: var(--ui-font-size-md) !important;
   }
 
   .ehpeek-reset-search-box-layout .searchadv > div,
