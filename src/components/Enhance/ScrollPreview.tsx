@@ -144,6 +144,7 @@ function ScrollPreviewOverlay(props: {
   targetPreviewIndex: number;
 }) {
   const previewCache = untrack(() => props.previewCache);
+  const onClose = untrack(() => props.onClose);
   const onLoadError = untrack(() => props.onLoadError);
   const initialPreview = untrack(() => previewCache.current());
   const totalImages = initialPreview.data.totalImages;
@@ -155,6 +156,7 @@ function ScrollPreviewOverlay(props: {
   );
   const requestedPreviewIndexes = new Set<number>();
   const [failedPreviewIndexes, setFailedPreviewIndexes] = createSignal<Set<number>>(new Set());
+  const [horizontalDragOffset, setHorizontalDragOffset] = createSignal(0);
   const [loadingCount, setLoadingCount] = createSignal(0);
   const [previewLoadReady, setPreviewLoadReady] = createSignal(false);
   const [scrollTop, setScrollTop] = createSignal(0);
@@ -166,6 +168,8 @@ function ScrollPreviewOverlay(props: {
     width: 1,
   });
   let scroller!: HTMLDivElement;
+  let overlay!: HTMLElement;
+  let dragDirection: "horizontal" | "vertical" | null = null;
   let dragStartScrollTop: number | null = null;
   let scrollFrame: number | null = null;
   let loadToken = 0;
@@ -249,12 +253,22 @@ function ScrollPreviewOverlay(props: {
   createPointerGestureElement(
     () => scroller ?? null,
     () => ({
-      dragAxis: "y",
+      dragAxis: "any",
       onStart: () => {
         flingAnimator.cancel();
+        dragDirection = null;
         dragStartScrollTop = scroller.scrollTop;
       },
       onMove: (info) => {
+        if (dragDirection === null) {
+          dragDirection = Math.abs(info.dx) > Math.abs(info.dy)
+            ? "horizontal"
+            : "vertical";
+        }
+        if (dragDirection === "horizontal") {
+          setHorizontalDragOffset(info.dx);
+          return;
+        }
         if (dragStartScrollTop === null) {
           return;
         }
@@ -262,6 +276,47 @@ function ScrollPreviewOverlay(props: {
       },
       onEnd: (info) => {
         dragStartScrollTop = null;
+        if (dragDirection === "horizontal") {
+          const offset = horizontalDragOffset();
+          const exit = Math.abs(offset) >= overlay.clientWidth * 0.2 ||
+            Math.abs(info.velocityX) >= 0.6;
+          dragDirection = null;
+          if (exit) {
+            const direction = offset === 0
+              ? Math.sign(info.velocityX) || 1
+              : Math.sign(offset);
+            const previewIndex = centeredPreviewIndex();
+            void overlay.animate(
+              [
+                {
+                  opacity: overlay.style.opacity,
+                  transform: overlay.style.transform,
+                },
+                {
+                  opacity: 0.7,
+                  transform: `translate3d(${direction * 100}vw, 0, 0) scale(0.97)`,
+                },
+              ],
+              { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+            ).finished.then(() => onClose(previewIndex));
+            return;
+          }
+          void overlay.animate(
+            [
+              {
+                opacity: overlay.style.opacity,
+                transform: overlay.style.transform,
+              },
+              {
+                opacity: 1,
+                transform: "translate3d(0, 0, 0) scale(1)",
+              },
+            ],
+            { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+          ).finished.then(() => setHorizontalDragOffset(0));
+          return;
+        }
+        dragDirection = null;
         flingAnimator.start({
           axis: "y",
           scroller,
@@ -416,7 +471,14 @@ function ScrollPreviewOverlay(props: {
   });
 
   return (
-    <section class="ehpeek-scroll-preview fixed inset-0 z-[1300] box-border flex w-full h-[100dvh] flex-col overflow-hidden bg-[var(--color-background)] text-[var(--color-text)] font-sans textsize-md leading-[1.4]">
+    <section
+      ref={overlay}
+      class="ehpeek-scroll-preview fixed inset-0 z-[1300] box-border flex w-full h-[100dvh] flex-col overflow-hidden bg-[var(--color-background)] text-[var(--color-text)] font-sans textsize-md leading-[1.4]"
+      style={{
+        opacity: `${1 - Math.min(0.15, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.15)}`,
+        transform: `translate3d(${horizontalDragOffset()}px, 0, 0) scale(${1 - Math.min(0.03, Math.abs(horizontalDragOffset()) / Math.max(1, window.innerWidth) * 0.03)})`,
+      }}
+    >
       <div class="flex flex-none items-center justify-between gap-md bg-[var(--color-elevated)] pt-[max(8px,env(safe-area-inset-top,0px))] pr-[max(8px,env(safe-area-inset-right,0px))] pb-sm pl-[max(8px,env(safe-area-inset-left,0px))] border-0 border-b border-[var(--color-border)] textsize-sm">
         <button
           type="button"
@@ -442,7 +504,7 @@ function ScrollPreviewOverlay(props: {
           class={`${READER_BUTTON_CLASS} flex-none`}
           aria-label={texts.button.close}
           title={texts.button.close}
-          onClick={() => props.onClose(centeredPreviewIndex())}
+          onClick={() => onClose(centeredPreviewIndex())}
         >
           <Icon name="close" size="var(--ui-icon-size-md)" />
         </button>
@@ -450,7 +512,7 @@ function ScrollPreviewOverlay(props: {
       <div class="relative min-h-0 w-full flex-1">
         <div
           ref={scroller}
-          class="absolute inset-0 box-border overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--color-surface)] cursor-grab [touch-action:pan-x_pan-y] [&[data-dragging=true]]:(cursor-grabbing select-none) [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
+          class="absolute inset-0 box-border overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--color-surface)] cursor-grab [touch-action:none] [&[data-dragging=true]]:(cursor-grabbing select-none) [scrollbar-gutter:stable] [-webkit-overflow-scrolling:touch]"
           onScroll={() => {
             if (scrollFrame !== null) {
               return;
