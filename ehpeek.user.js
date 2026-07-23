@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260723.1415
+// @version      260723.1434
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -4743,12 +4743,13 @@ Next page`,
   // src/components/Widgets/VerticalPositionBar.tsx
   var _tmpl$11 = /* @__PURE__ */ template("<div role=scrollbar><div></div><div><span>"), VARIANT_CLASS = {
     reader: {
-      collapsedFillWidth: "w-10px coarse:w-12px",
-      collapsedInteractionWidth: "w-10px coarse:w-12px",
-      expandedFillWidth: "w-18px coarse:w-24px",
-      expandedInteractionWidth: "w-18px coarse:w-24px",
+      collapsedFillWidth: "w-20px coarse:w-24px",
+      collapsedInteractionWidth: "w-20px coarse:w-24px",
+      expandedFillWidth: "w-36px coarse:w-48px",
+      expandedInteractionWidth: "w-36px coarse:w-48px",
       fill: "bg-[var(--color-reader-scrollbar,var(--color-muted))]",
-      track: "bg-[var(--color-reader-border,var(--color-border))]"
+      track: "bg-[var(--color-reader-border,var(--color-border))]",
+      trackWidth: "right-4px w-6px"
     },
     site: {
       collapsedFillWidth: "w-10px coarse:w-14px",
@@ -4756,7 +4757,8 @@ Next page`,
       expandedFillWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
       expandedInteractionWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
       fill: "bg-[var(--color-text)] opacity-70",
-      track: "bg-[var(--color-border)]"
+      track: "bg-[var(--color-border)]",
+      trackWidth: "right-2px w-3px"
     }
   };
   function VerticalPositionBar(props) {
@@ -4790,7 +4792,7 @@ Next page`,
       typeof _ref$ == "function" ? use(_ref$, _el$) : track = _el$;
       var _ref$2 = thumb;
       return typeof _ref$2 == "function" ? use(_ref$2, _el$3) : thumb = _el$3, createRenderEffect((_p$) => {
-        var _v$ = `ehpeek-position-bar ${props.class ?? ""} ${props.position === "fixed" ? "fixed" : "absolute"} inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out [--ehpeek-position-bar-thumb-min:calc(var(--ui-control-size-md)*1.5)] [--ehpeek-position-bar-thumb-max:calc(var(--ui-control-size-xl)*4)] ${visible() ? "opacity-100" : "opacity-0 pointer-events-none"}`, _v$2 = props.ariaLabel, _v$3 = minValue(), _v$4 = props.maxValue, _v$5 = props.currentValue, _v$6 = `absolute inset-y-0 right-2px w-3px ${classes().track}`, _v$7 = `ehpeek-position-bar-thumb absolute right-0 flex ${interactionWidth()} items-center justify-end cursor-grab active:cursor-grabbing transition-[width,height] duration-160`, _v$8 = `clamp(var(--ehpeek-position-bar-thumb-min), ${visibleRatio() * 100}%, var(--ehpeek-position-bar-thumb-max))`, _v$9 = `${position()}%`, _v$0 = `translateY(-${position()}%)`, _v$1 = `block h-full rounded-l-md ${classes().fill} ${fillWidth()} shadow-[0_2px_10px_var(--color-shadow-control)] transition-[width,opacity] duration-160`;
+        var _v$ = `ehpeek-position-bar ${props.class ?? ""} ${props.position === "fixed" ? "fixed" : "absolute"} inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out [--ehpeek-position-bar-thumb-min:calc(var(--ui-control-size-md)*1.5)] [--ehpeek-position-bar-thumb-max:calc(var(--ui-control-size-xl)*4)] ${visible() ? "opacity-100" : "opacity-0 pointer-events-none"}`, _v$2 = props.ariaLabel, _v$3 = minValue(), _v$4 = props.maxValue, _v$5 = props.currentValue, _v$6 = `absolute inset-y-0 ${classes().trackWidth} ${classes().track}`, _v$7 = `ehpeek-position-bar-thumb absolute right-0 flex ${interactionWidth()} items-center justify-end cursor-grab active:cursor-grabbing transition-[width,height] duration-160`, _v$8 = `clamp(var(--ehpeek-position-bar-thumb-min), ${visibleRatio() * 100}%, var(--ehpeek-position-bar-thumb-max))`, _v$9 = `${position()}%`, _v$0 = `translateY(-${position()}%)`, _v$1 = `block h-full rounded-l-md ${classes().fill} ${fillWidth()} shadow-[0_2px_10px_var(--color-shadow-control)] transition-[width,opacity] duration-160`;
         return _v$ !== _p$.e && className(_el$, _p$.e = _v$), _v$2 !== _p$.t && setAttribute(_el$, "aria-label", _p$.t = _v$2), _v$3 !== _p$.a && setAttribute(_el$, "aria-valuemin", _p$.a = _v$3), _v$4 !== _p$.o && setAttribute(_el$, "aria-valuemax", _p$.o = _v$4), _v$5 !== _p$.i && setAttribute(_el$, "aria-valuenow", _p$.i = _v$5), _v$6 !== _p$.n && className(_el$2, _p$.n = _v$6), _v$7 !== _p$.s && className(_el$3, _p$.s = _v$7), _v$8 !== _p$.h && setStyleProperty(_el$3, "height", _p$.h = _v$8), _v$9 !== _p$.r && setStyleProperty(_el$3, "top", _p$.r = _v$9), _v$0 !== _p$.d && setStyleProperty(_el$3, "transform", _p$.d = _v$0), _v$1 !== _p$.l && className(_el$4, _p$.l = _v$1), _p$;
       }, {
         e: void 0,
@@ -6003,7 +6005,7 @@ Next page`,
           get children() {
             return [_tmpl$66(), (() => {
               var _el$19 = _tmpl$73(), _el$20 = _el$19.firstChild;
-              return insert(_el$19, "260723.1415", null), _el$19;
+              return insert(_el$19, "260723.1434", null), _el$19;
             })()];
           }
         }), null), _el$22.$$click = (event) => {
@@ -8307,6 +8309,7 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
 .right-10px{right:10px;}
 .right-24px{right:24px;}
 .right-2px{right:2px;}
+.right-4px{right:4px;}
 .right-auto{right:auto;}
 .top-\\[calc\\(100\\%\\+4px\\)\\]{top:calc(100% + 4px);}
 .top-\\[calc\\(10px\\+env\\(safe-area-inset-top\\,0px\\)\\)\\]{top:calc(10px + env(safe-area-inset-top,0px));}
@@ -8450,13 +8453,14 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
 .w-14px{width:14px;}
 .w-15px{width:15px;}
 .w-180px{width:180px;}
-.w-18px{width:18px;}
 .w-20px{width:20px;}
+.w-36px{width:36px;}
 .w-3px{width:3px;}
 .w-40px{width:40px;}
 .w-42px{width:42px;}
 .w-60px{width:60px;}
 .w-64px{width:64px;}
+.w-6px{width:6px;}
 .w-auto{width:auto;}
 .w-fit{width:fit-content;}
 .w-full{width:100%;}
@@ -8737,9 +8741,9 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
 .coarse\\:max-w-\\[calc\\(100vw-16px\\)\\]{max-width:calc(100vw - 16px);}
 .coarse\\:max-w-360px{max-width:360px;}
 .coarse\\:w-\\[calc\\(100vw-32px\\)\\]{width:calc(100vw - 32px);}
-.coarse\\:w-12px{width:12px;}
 .coarse\\:w-14px{width:14px;}
 .coarse\\:w-24px{width:24px;}
+.coarse\\:w-48px{width:48px;}
 .coarse\\:w-full{width:100%;}
 .coarse\\:border-spacing-6px{--un-border-spacing-x:6px;--un-border-spacing-y:6px;border-spacing:var(--un-border-spacing-x) var(--un-border-spacing-y);}
 .coarse\\:border-8{border-width:8px;}
@@ -8819,7 +8823,7 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
 `;
 
   // src/components/Reader/Viewport.tsx
-  var _tmpl$41 = /* @__PURE__ */ template("<div tabindex=-1><main>"), _tmpl$213 = /* @__PURE__ */ template('<section><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden">'), _tmpl$312 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload appearance-none inline-flex w-64px h-64px items-center justify-center border border-[var(--color-border)] rounded-md bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-lg font-700 leading-1 hover:bg-[var(--color-badge)] active:scale-96 [touch-action:manipulation]">'), _tmpl$412 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$59 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] opacity-80 break-anywhere textsize-sm font-500 leading-[1.4] [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$69 = /* @__PURE__ */ template("<div>"), _tmpl$76 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid border-[var(--color-reader-border)] border-t-[var(--color-reader-accent)]">'), FALLBACK_ASPECT_RATIO = 1.42, PAGE_SLOT_SPACING = 8, DEFAULT_DECODED_IMAGE_CACHE_LIMIT = 24, DECODED_IMAGE_CACHE_BYTES = 96 * 1024 * 1024, HORIZONTAL_FLING_VELOCITY_MULTIPLIER = 1.2, HORIZONTAL_FLING_MAX_VELOCITY = 1.6;
+  var _tmpl$41 = /* @__PURE__ */ template("<div tabindex=-1><main>"), _tmpl$213 = /* @__PURE__ */ template('<section><div class="flex w-[var(--reader-frame-width)] h-[var(--reader-frame-height)] items-center justify-center overflow-hidden">'), _tmpl$312 = /* @__PURE__ */ template('<button type=button class="ehpeek-reader-page-reload appearance-none inline-flex w-64px h-64px items-center justify-center border border-[var(--color-border)] rounded-md bg-[var(--color-control)] text-[var(--color-text)] cursor-pointer font-sans textsize-lg font-700 leading-1 hover:bg-[var(--color-badge)] active:scale-96 [touch-action:manipulation]">'), _tmpl$412 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] break-anywhere [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$59 = /* @__PURE__ */ template('<div class="max-w-[min(86vw,760px)] opacity-80 break-anywhere textsize-sm font-500 leading-[1.4] [direction:ltr] [unicode-bidi:plaintext]">'), _tmpl$69 = /* @__PURE__ */ template("<div>"), _tmpl$76 = /* @__PURE__ */ template('<span class="flex w-full h-full flex-col items-center justify-center gap-xl overflow-hidden"aria-hidden=true><span class="block max-w-full flex-none m-0 p-0 text-center leading-[1] whitespace-nowrap [direction:ltr] [unicode-bidi:plaintext]"></span><span class="block w-md h-md flex-none box-border animate-spin rounded-full border-4px border-solid border-[var(--color-reader-border)] border-t-[var(--color-reader-accent)]">'), FALLBACK_ASPECT_RATIO = 1.42, PAGE_SLOT_SPACING = 8, DEFAULT_DECODED_IMAGE_CACHE_LIMIT = 24, DECODED_IMAGE_CACHE_BYTES = 96 * 1024 * 1024, HORIZONTAL_FLING_VELOCITY_MULTIPLIER = 1.4, HORIZONTAL_FLING_MAX_VELOCITY = 1.8;
   function pageWindowNumbers(currentPageNum, windowSize) {
     let numbers = [];
     for (let offset = -windowSize; offset <= windowSize; offset += 1)
@@ -8844,12 +8848,12 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
           slot.frameWidth = availableWidth, slot.frameHeight = viewportHeight();
           return;
         }
-        let frameSize2 = containFitFrame(aspectRatio, availableWidth, viewportHeight());
-        slot.frameWidth = frameSize2.width, slot.frameHeight = frameSize2.height;
+        let frameSize = containFitFrame(aspectRatio, availableWidth, viewportHeight());
+        slot.frameWidth = frameSize.width, slot.frameHeight = frameSize.height;
         return;
       }
-      let sizeScale = renderedScrollSizeScale(), reference = props.scrollFitImageSize, referenceAspectRatio = reference ? reference.height / reference.width : props.window.pages.get(props.scrollFitPageNum)?.aspectRatio ?? FALLBACK_ASPECT_RATIO, scaleMultiplier = sizeScale === "one-to-one" && reference ? 1 / containFitScale(reference.width, reference.height, viewportWidth(), viewportHeight()) : typeof sizeScale == "number" ? sizeScale : 1, frameSize = containFitFrame(referenceAspectRatio, viewportWidth(), viewportHeight(), scaleMultiplier);
-      slot.frameWidth = frameSize.width, slot.frameHeight = frameSize.height;
+      let sizeScale = renderedScrollSizeScale(), reference = props.scrollFitImageSize, referenceAspectRatio = reference ? reference.height / reference.width : props.window.pages.get(props.scrollFitPageNum)?.aspectRatio ?? FALLBACK_ASPECT_RATIO, scaleMultiplier = sizeScale === "one-to-one" && reference ? 1 / containFitScale(reference.width, reference.height, viewportWidth(), viewportHeight()) : typeof sizeScale == "number" ? sizeScale : 1, referenceFrame = containFitFrame(referenceAspectRatio, viewportWidth(), viewportHeight(), scaleMultiplier);
+      horizontalAxis() ? (slot.frameHeight = referenceFrame.height, slot.frameWidth = referenceFrame.height / aspectRatio) : (slot.frameWidth = referenceFrame.width, slot.frameHeight = referenceFrame.width * aspectRatio);
     }, renderSlots = () => {
       for (let slot of pageSlots2)
         applySlotSize(slot);
@@ -10112,7 +10116,7 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
       viewportCanvas: scrollViewport.callbacks
     };
     function wireScrollViewport() {
-      let adjustmentStartSizeScale = state2.scrollViewport.sizeScale(), updateImageScale = (scale) => {
+      let adjustmentStartSizeScale = state2.scrollViewport.sizeScale(), pinchStartScale = null, updateImageScale = (scale) => {
         if (scale === null) {
           state2.scrollViewport.setSizeScale(null);
           return;
@@ -10121,6 +10125,17 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
         fitScale && state2.scrollViewport.setSizeScale(normalizeReaderScrollSizeScale(scale / fitScale));
       };
       return {
+        startPinch: () => {
+          let scalePercent = state2.scrollViewport.scalePercent();
+          return scalePercent === null ? !1 : (pinchStartScale = scalePercent / 100, !0);
+        },
+        movePinch: (scale) => {
+          pinchStartScale !== null && updateImageScale(clamp(pinchStartScale * scale, 0.1, 5));
+        },
+        endPinch: () => {
+          pinchStartScale = null;
+        },
+        pinching: () => pinchStartScale !== null,
         open: () => {
           adjustmentStartSizeScale = state2.scrollViewport.sizeScale(), state2.scrollViewport.setAdjusting(!0);
         },
@@ -10352,7 +10367,9 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
           info.dx >= PAGED_SWIPE_THRESHOLD ? turnPageBy(state2.navi.rightDragDelta()) : info.dx <= -PAGED_SWIPE_THRESHOLD ? turnPageBy(state2.navi.leftDragDelta()) : scrollToCurrentPage("animated");
         }
       }, gesture2.onPinchStart = (info) => {
-        if (cancelPendingTap(), viewportActions.stopMotion(), viewportActions.cancelDrag(), state2.overlay.image() !== null)
+        if (cancelPendingTap(), viewportActions.stopMotion(), viewportActions.cancelDrag(), !pagedMode() && state2.overlay.image() === null)
+          return scrollViewport.startPinch();
+        if (state2.overlay.image() !== null)
           return zoomOverlay.startPinch({
             centerX: info.clientX,
             centerY: info.clientY
@@ -10366,11 +10383,23 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
           centerY: info.clientY,
           scale: zoomScale
         }), !0;
-      }, gesture2.onPinchMove = (info) => zoomOverlay.movePinch({
-        centerX: info.clientX,
-        centerY: info.clientY,
-        scale: info.scale
-      }), gesture2.onPinchEnd = () => zoomOverlay.endPinch(), gesture2.shouldCaptureDrag = (event) => isPageReloadButtonTarget(event) || !(event instanceof PointerEvent) || event.pointerType === "mouse" && event.button !== 0 ? !1 : shouldStartDrag(event), gesture2.shouldObserveTap = (event) => event instanceof PointerEvent && !isPageReloadButtonTarget(event) && event.pointerType !== "mouse" && !shouldStartDrag(event), gesture2.dragStartThreshold = TAP_CANCEL_DISTANCE, gesture2.tapMoveThreshold = TAP_CANCEL_DISTANCE, gesture2;
+      }, gesture2.onPinchMove = (info) => {
+        if (scrollViewport.pinching()) {
+          scrollViewport.movePinch(info.scale);
+          return;
+        }
+        zoomOverlay.movePinch({
+          centerX: info.clientX,
+          centerY: info.clientY,
+          scale: info.scale
+        });
+      }, gesture2.onPinchEnd = () => {
+        if (scrollViewport.pinching()) {
+          scrollViewport.endPinch();
+          return;
+        }
+        zoomOverlay.endPinch();
+      }, gesture2.shouldCaptureDrag = (event) => isPageReloadButtonTarget(event) || !(event instanceof PointerEvent) || event.pointerType === "mouse" && event.button !== 0 ? !1 : shouldStartDrag(event), gesture2.shouldObserveTap = (event) => event instanceof PointerEvent && !isPageReloadButtonTarget(event) && event.pointerType !== "mouse" && !shouldStartDrag(event), gesture2.dragStartThreshold = TAP_CANCEL_DISTANCE, gesture2.tapMoveThreshold = TAP_CANCEL_DISTANCE, gesture2;
     }
   }
   function wheelDeltaPixels(delta, mode) {
