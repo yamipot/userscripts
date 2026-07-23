@@ -15,8 +15,8 @@ const FALLBACK_ASPECT_RATIO = 1.42;
 const PAGE_SLOT_SPACING = 8;
 const DEFAULT_DECODED_IMAGE_CACHE_LIMIT = 24;
 const DECODED_IMAGE_CACHE_BYTES = 96 * 1024 * 1024;
-const HORIZONTAL_FLING_VELOCITY_MULTIPLIER = 1.2;
-const HORIZONTAL_FLING_MAX_VELOCITY = 1.6;
+const HORIZONTAL_FLING_VELOCITY_MULTIPLIER = 1.4;
+const HORIZONTAL_FLING_MAX_VELOCITY = 1.8;
 
 type PageMeta = {
   aspectRatio: number;
@@ -226,9 +226,19 @@ export function PagesViewport(props: {
       : typeof sizeScale === "number"
         ? sizeScale
         : 1;
-    const frameSize = containFitFrame(referenceAspectRatio, viewportWidth(), viewportHeight(), scaleMultiplier);
-    slot.frameWidth = frameSize.width;
-    slot.frameHeight = frameSize.height;
+    const referenceFrame = containFitFrame(
+      referenceAspectRatio,
+      viewportWidth(),
+      viewportHeight(),
+      scaleMultiplier,
+    );
+    if (horizontalAxis()) {
+      slot.frameHeight = referenceFrame.height;
+      slot.frameWidth = referenceFrame.height / aspectRatio;
+    } else {
+      slot.frameWidth = referenceFrame.width;
+      slot.frameHeight = referenceFrame.width * aspectRatio;
+    }
   };
   const renderSlots = () => {
     for (const slot of pageSlots) {

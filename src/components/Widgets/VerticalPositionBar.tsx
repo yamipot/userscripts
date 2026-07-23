@@ -10,14 +10,16 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
   expandedInteractionWidth: string;
   fill: string;
   track: string;
+  trackWidth: string;
 }> = {
   reader: {
-    collapsedFillWidth: "w-10px coarse:w-12px",
-    collapsedInteractionWidth: "w-10px coarse:w-12px",
-    expandedFillWidth: "w-18px coarse:w-24px",
-    expandedInteractionWidth: "w-18px coarse:w-24px",
+    collapsedFillWidth: "w-20px coarse:w-24px",
+    collapsedInteractionWidth: "w-20px coarse:w-24px",
+    expandedFillWidth: "w-36px coarse:w-48px",
+    expandedInteractionWidth: "w-36px coarse:w-48px",
     fill: "bg-[var(--color-reader-scrollbar,var(--color-muted))]",
     track: "bg-[var(--color-reader-border,var(--color-border))]",
+    trackWidth: "right-4px w-6px",
   },
   site: {
     collapsedFillWidth: "w-10px coarse:w-14px",
@@ -26,6 +28,7 @@ const VARIANT_CLASS: Record<VerticalPositionBarVariant, {
     expandedInteractionWidth: "w-[calc(var(--ui-control-size-sm)/2)]",
     fill: "bg-[var(--color-text)] opacity-70",
     track: "bg-[var(--color-border)]",
+    trackWidth: "right-2px w-3px",
   },
 };
 
@@ -132,7 +135,7 @@ export function VerticalPositionBar(props: {
       }}
       onWheel={(event) => event.stopPropagation()}
     >
-      <div class={`absolute inset-y-0 right-2px w-3px ${classes().track}`} />
+      <div class={`absolute inset-y-0 ${classes().trackWidth} ${classes().track}`} />
       <div
         ref={thumb}
         class={`ehpeek-position-bar-thumb absolute right-0 flex ${interactionWidth()} items-center justify-end cursor-grab active:cursor-grabbing transition-[width,height] duration-160`}
