@@ -43,7 +43,7 @@ export function ReaderScrollBar(props: {
     <div
       ref={track}
       class={
-        `fixed inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out ` +
+        `ehpeek-reader-scrollbar fixed inset-y-0 right-0 z-2 ${interactionWidth()} touch-none select-none transition-[width,opacity] duration-160 ease-in-out ` +
         (props.visible || dragging()
           ? "opacity-100"
           : "opacity-0 pointer-events-none")
@@ -92,7 +92,7 @@ export function ReaderScrollBar(props: {
       <div class="absolute inset-y-0 right-2px w-3px bg-[var(--color-reader-border)]" />
       <div
         ref={thumb}
-        class={`absolute right-0 flex ${interactionWidth()} h-[120px] coarse:h-[200px] items-center justify-end cursor-grab active:cursor-grabbing transition-[width] duration-160`}
+        class={`ehpeek-reader-scrollbar-thumb absolute right-0 flex ${interactionWidth()} h-[120px] coarse:h-[200px] items-center justify-end cursor-grab active:cursor-grabbing transition-[width] duration-160`}
         style={{
           top: `${position()}%`,
           transform: `translateY(-${position()}%)`,

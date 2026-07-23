@@ -99,6 +99,7 @@
     "enhanceThumbsHelp": "Adds swipe navigation and scrollable pages bar for gallery preview",
     "myTagsLabel": "My Tag in Gallery",
     "myTagsHelp": "Highlights your saved tags with colors in gallery",
+    "historyLabel": "History",
     "readHistoryLabel": "Read History",
     "readHistoryHelp": "Remembers reading progress",
     "includeUnreadHistoryLabel": "Include Unread History",

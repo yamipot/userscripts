@@ -38,9 +38,35 @@
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-download-dialog-panel,
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-help-panel,
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-page-reload {
   transform: scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
   transform-origin: center;
+}
+
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-control-change {
+  transform: translate(-50%, -50%) scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: center;
+}
+
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-viewport-toolbar {
+  transform: translateX(-50%) scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: bottom center;
+}
+
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-scrollbar {
+  transform: scaleX(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: right center;
+}
+
+[data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-scrollbar-thumb {
+  height: calc(120px * var(--ehpeek-reader-fullscreen-ui-scale, 1));
+}
+
+@media (pointer: coarse) {
+  [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-scrollbar-thumb {
+    height: calc(200px * var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  }
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-progress {
@@ -51,6 +77,8 @@
   top: calc(10px + env(safe-area-inset-top, 0px));
   right: max(10px, env(safe-area-inset-right, 0px));
   left: auto;
+  transform: scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: top right;
 }
 
 [data-ehpeek-reader-container="true"]:fullscreen .ehpeek-reader-page-number {
@@ -58,7 +86,8 @@
   right: auto;
   left: max(10px, env(safe-area-inset-left, 0px));
   min-width: 0;
-  transform: none;
+  transform: scale(var(--ehpeek-reader-fullscreen-ui-scale, 1));
+  transform-origin: top left;
   text-align: left;
 }
 

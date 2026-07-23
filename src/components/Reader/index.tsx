@@ -145,6 +145,7 @@ export function Reader(props: {
           scrollFitPageNum={scrollFitPageNum}
           scrollSizeScale={readerState.scrollViewport.sizeScale()}
           window={readerState.navi.viewportWindow()}
+          zoomActive={readerState.overlay.image() !== null}
         />
       </ViewportCanvas>
       <Show when={
@@ -843,7 +844,9 @@ function wireReaderCallbacks(
       event.pointerType === "mouse";
     const imageAtPoint = (point: { clientX: number; clientY: number }): ZoomOverlayImage | null => {
       const pageNum = viewportActions.pageNumAtPoint(point);
-      return pageNum === null ? null : loadedImages.get(pageNum) ?? null;
+      return pageNum === null || !viewportActions.pageImageReady(pageNum)
+        ? null
+        : loadedImages.get(pageNum) ?? null;
     };
     const cancelPendingTap = (): void => {
       if (tapTimer !== null) {

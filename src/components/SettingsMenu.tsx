@@ -211,6 +211,12 @@ export function SettingsMenu(props: {
               label={texts.settings.touchUiLabel}
               onChange={(value) => updateDraft("touchUiEnabled", value)}
             />
+            <a
+              class="flex w-full min-h-md coarse:min-h-64px items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text no-underline text-left textsize-md cursor-pointer"
+              href={props.historyHref}
+            >
+              {texts.settings.historyLabel}
+            </a>
             <button
               type="button"
               class="flex w-full min-h-md coarse:min-h-64px items-center gap-md px-md border-0 border-b ehp-color-site-border-subtle-b !bg-transparent hover:!bg-[var(--color-site-item-hover)] ehp-color-site-text font-inherit text-left textsize-md cursor-pointer"
@@ -285,12 +291,6 @@ export function SettingsMenu(props: {
             </a>
           </Show>
         </div>
-        <a
-          class="flex w-full min-h-md coarse:min-h-88px items-center overflow-hidden text-ellipsis whitespace-nowrap px-md border-0 border-b ehp-color-site-border-subtle-b ehp-color-site-text no-underline textsize-md hover:bg-[var(--color-site-item-hover)]"
-          href={props.historyHref}
-        >
-          {texts.settings.readHistoryLabel}
-        </a>
         <div class="ehpeek-settings-actions grid grid-cols-3 flex-none gap-sm mt-md pt-md border-0 border-t border-t-[var(--color-site-border-subtle)]">
           <button
             type="button"

@@ -119,6 +119,7 @@ export type PagesViewportActions = {
   moveDrag: (delta: { dx: number; dy: number }) => boolean;
   moveToLeft: (scrollLeft: number) => void;
   pageImageHeight: (pageNum: number) => number | null;
+  pageImageReady: (pageNum: number) => boolean;
   pageImageWidth: (pageNum: number) => number | null;
   pageZoomScale: (pageNum: number) => number;
   pageNumAtPoint: (point: { clientX: number; clientY: number }) => number | null;
@@ -146,6 +147,7 @@ export function PagesViewport(props: {
   scrollFitPageNum: number;
   scrollSizeScale: ReaderScrollSizeScale;
   window: PagesViewportWindowOptions;
+  zoomActive: boolean;
 }) {
   const [slots, setSlots] = createSignal<PageSlot[]>([]);
   const [revision, setRevision] = createSignal(0);
@@ -595,6 +597,10 @@ export function PagesViewport(props: {
       const slot = slotFor(pageNum);
       return slot?.image?.naturalHeight || slot?.height || null;
     },
+    pageImageReady(pageNum): boolean {
+      const slot = slotFor(pageNum);
+      return slot?.state === "ready" && slot.image !== null;
+    },
     pageImageWidth(pageNum): number | null {
       const slot = slotFor(pageNum);
       return slot?.image?.naturalWidth || slot?.width || null;
@@ -734,7 +740,9 @@ export function PagesViewport(props: {
       }}
       class={
         "w-full h-full overflow-auto overscroll-contain scroll-auto cursor-grab scrollbar-hidden " +
-        (props.navigationMode === "scroll" && props.direction === "ttb" ? "[touch-action:pan-x_pan-y] " : "touch-none ") +
+        (!props.zoomActive && props.navigationMode === "scroll" && props.direction === "ttb"
+          ? "[touch-action:pan-x_pan-y] "
+          : "touch-none ") +
         "[&[data-dragging=true]]:(cursor-grabbing select-none) " +
         "[#ehpeek-reader[data-navigation-mode=paged]_&]:(overflow-hidden touch-none select-none)"
       }

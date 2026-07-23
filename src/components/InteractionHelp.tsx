@@ -37,7 +37,7 @@ export function InteractionHelp(props: {
       onPointerDown={(event: PointerEvent) => event.stopPropagation()}
       onWheel={(event: WheelEvent) => event.stopPropagation()}
     >
-      <div class={`box-border w-full max-w-520px max-h-[min(720px,calc(100dvh-32px))] overflow-y-auto overscroll-contain p-xl coarse:p-lg rounded-lg border shadow-xl ${reader ? "border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)]" : "ehp-color-site-border ehp-color-site-elevated ehp-color-site-text"}`}>
+      <div class={`box-border w-full max-w-520px max-h-[min(720px,calc(100dvh-32px))] overflow-y-auto overscroll-contain p-xl coarse:p-lg rounded-lg border shadow-xl ${reader ? "ehpeek-reader-help-panel border-[var(--color-border)] bg-[var(--color-background)] text-[var(--color-text)]" : "ehp-color-site-border ehp-color-site-elevated ehp-color-site-text"}`}>
         <div class="flex items-center justify-between gap-md mb-lg">
           <h2 class="m-0 font-sans textsize-lg font-700">{texts.help.title}</h2>
           <button
