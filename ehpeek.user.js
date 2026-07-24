@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EhPeek
-// @version      260723.1506
+// @version      260724.0553
 // @description  A touch-optimized E-H/ExH viewer
 // @icon         https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
 // @icon64       https://raw.githubusercontent.com/yamipot/ehpeek/master/icon.svg
@@ -5597,9 +5597,11 @@ Next page`,
     return extractMyTagsPageData(response.document, tagSet);
   }
   function loadMyTagAppearances() {
-    return state.gallery.myTagAppearances.stored() ? state.gallery.myTagAppearances.reload() : null;
+    return state.gallery.myTags.value && state.gallery.myTagAppearances.stored() ? state.gallery.myTagAppearances.reload() : null;
   }
   async function refreshMyTags(initialPage) {
+    if (!state.gallery.myTags.value)
+      return null;
     try {
       let initialData = initialPage ?? await loadMyTagsPage(), options = initialData.options;
       state.gallery.myTagSets.set(options);
@@ -6005,7 +6007,7 @@ Next page`,
           get children() {
             return [_tmpl$66(), (() => {
               var _el$19 = _tmpl$73(), _el$20 = _el$19.firstChild;
-              return insert(_el$19, "260723.1506", null), _el$19;
+              return insert(_el$19, "260724.0553", null), _el$19;
             })()];
           }
         }), null), _el$22.$$click = (event) => {
@@ -6450,32 +6452,39 @@ Next page`,
             }
           }), createComponent(Show, {
             get when() {
-              return props.tag;
+              return state.gallery.myTags.value;
             },
-            children: (tag2) => createComponent(Show, {
-              get when() {
-                return !tag2().myTag;
-              },
-              get fallback() {
-                return (() => {
-                  var _el$63 = _tmpl$172(), _el$64 = _el$63.firstChild;
-                  return _el$63.$$click = (event) => {
-                    event.stopPropagation(), updateFavoriteTag(tag2());
-                  }, insert(_el$63, createComponent(Icon, {
-                    name: "heart",
-                    filled: !0
-                  }), _el$64), insert(_el$64, () => texts_default.gallery.removeFavoriteTag), createRenderEffect(() => className(_el$63, sharedApply.galleryTagMenuItem)), _el$63;
-                })();
-              },
-              get children() {
-                var _el$61 = _tmpl$172(), _el$62 = _el$61.firstChild;
-                return _el$61.$$click = () => {
-                  setFavoriteTag(tag2()), setCollectionOpen(!1), setFavoriteDialogOpen(!0);
-                }, insert(_el$61, createComponent(Icon, {
-                  name: "heart"
-                }), _el$62), insert(_el$62, () => texts_default.gallery.favoriteTag), createRenderEffect(() => className(_el$61, sharedApply.galleryTagMenuItem)), _el$61;
-              }
-            })
+            get children() {
+              return createComponent(Show, {
+                get when() {
+                  return props.tag;
+                },
+                children: (tag2) => createComponent(Show, {
+                  get when() {
+                    return !tag2().myTag;
+                  },
+                  get fallback() {
+                    return (() => {
+                      var _el$63 = _tmpl$172(), _el$64 = _el$63.firstChild;
+                      return _el$63.$$click = (event) => {
+                        event.stopPropagation(), updateFavoriteTag(tag2());
+                      }, insert(_el$63, createComponent(Icon, {
+                        name: "heart",
+                        filled: !0
+                      }), _el$64), insert(_el$64, () => texts_default.gallery.removeFavoriteTag), createRenderEffect(() => className(_el$63, sharedApply.galleryTagMenuItem)), _el$63;
+                    })();
+                  },
+                  get children() {
+                    var _el$61 = _tmpl$172(), _el$62 = _el$61.firstChild;
+                    return _el$61.$$click = () => {
+                      setFavoriteTag(tag2()), setCollectionOpen(!1), setFavoriteDialogOpen(!0);
+                    }, insert(_el$61, createComponent(Icon, {
+                      name: "heart"
+                    }), _el$62), insert(_el$62, () => texts_default.gallery.favoriteTag), createRenderEffect(() => className(_el$61, sharedApply.galleryTagMenuItem)), _el$61;
+                  }
+                })
+              });
+            }
           })];
         }
       })), createRenderEffect((_p$) => {
@@ -7028,6 +7037,12 @@ Next page`,
     })();
   }
   delegateEvents(["click"]);
+
+  // src/state/events/index.ts
+  var READY_EVENT = "ehpeek:ready";
+  function dispatchReady() {
+    document.dispatchEvent(new Event(READY_EVENT));
+  }
 
   // src/eh/dom/styles.css
   var styles_default = `/* Style dynamic EhSyringe suggestions without observing its injected nodes. */
@@ -11165,7 +11180,7 @@ body.ehpeek-touch-gallery-page .ehpeek-touch-gallery-layout > .dp {
     };
     window.addEventListener("resize", onViewportResize, {
       passive: !0
-    }), installSettingsMenu(), await injectPage(page2);
+    }), installSettingsMenu(), await injectPage(page2), dispatchReady();
   }
   startApp().catch((error) => {
     console.error("[ehpeek] App startup failed", error);
