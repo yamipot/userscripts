@@ -12,12 +12,15 @@ async function loadMyTagsPage(tagSet?: string): Promise<MyTagsPageData> {
 }
 
 export function loadMyTagAppearances(): MyTagAppearance[] | null {
-  return state.gallery.myTagAppearances.stored()
+  return state.gallery.myTags.value && state.gallery.myTagAppearances.stored()
     ? state.gallery.myTagAppearances.reload()
     : null;
 }
 
 export async function refreshMyTags(initialPage?: MyTagsPageData): Promise<MyTagAppearance[] | null> {
+  if (!state.gallery.myTags.value) {
+    return null;
+  }
   try {
     const initialData = initialPage ?? await loadMyTagsPage();
     const options = initialData.options;

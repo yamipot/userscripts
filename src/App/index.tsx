@@ -31,6 +31,7 @@ import {
 } from "../components/TouchUI";
 import * as eh from "../eh";
 import { state, type UiScale } from "../state";
+import { dispatchReady } from "../state/events";
 import texts from "../texts.json";
 import { registerGlobalStyle } from "../utils";
 import ehDomCss from "../eh/dom/styles.css";
@@ -791,6 +792,7 @@ async function startApp(): Promise<void> {
 
   installSettingsMenu();
   await injectPage(page);
+  dispatchReady();
 }
 
 void startApp().catch((error) => {

@@ -567,39 +567,41 @@ function TouchGalleryTagMenu(props: {
             fallback={<WelcomeIcon embedded label={texts.reader.loading} showIcon={false} />}
           >
             <DomNode node={props.source.elems.tagMenuAction} />
-            <Show when={props.tag}>{(tag) => (
-              <Show
-                when={!tag().myTag}
-                fallback={
+            <Show when={state.gallery.myTags.value}>
+              <Show when={props.tag}>{(tag) => (
+                <Show
+                  when={!tag().myTag}
+                  fallback={
+                    <button
+                      type="button"
+                      class={sharedApply.galleryTagMenuItem}
+                      role="menuitem"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void updateFavoriteTag(tag());
+                      }}
+                    >
+                      <Icon name="heart" filled />
+                      <span>{texts.gallery.removeFavoriteTag}</span>
+                    </button>
+                  }
+                >
                   <button
                     type="button"
                     class={sharedApply.galleryTagMenuItem}
                     role="menuitem"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void updateFavoriteTag(tag());
+                    onClick={() => {
+                      setFavoriteTag(tag());
+                      setCollectionOpen(false);
+                      setFavoriteDialogOpen(true);
                     }}
                   >
-                    <Icon name="heart" filled />
-                    <span>{texts.gallery.removeFavoriteTag}</span>
+                    <Icon name="heart" />
+                    <span>{texts.gallery.favoriteTag}</span>
                   </button>
-                }
-              >
-                <button
-                  type="button"
-                  class={sharedApply.galleryTagMenuItem}
-                  role="menuitem"
-                  onClick={() => {
-                    setFavoriteTag(tag());
-                    setCollectionOpen(false);
-                    setFavoriteDialogOpen(true);
-                  }}
-                >
-                  <Icon name="heart" />
-                  <span>{texts.gallery.favoriteTag}</span>
-                </button>
-              </Show>
-            )}</Show>
+                </Show>
+              )}</Show>
+            </Show>
           </Show>
         </div>
       </div>
